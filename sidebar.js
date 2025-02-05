@@ -269,29 +269,7 @@ async function initSidebar() {
         console.error('Error initializing sidebar:', error);
     }
 
-    // Add event listeners for buttons
-    addSpaceBtn.addEventListener('click', () => {
-        const inputContainer = document.getElementById('addSpaceInputContainer');
-        const spaceSwitcher = document.getElementById('spaceSwitcher');
-        const spaceNameInput = document.getElementById('newSpaceName');
-        const isInputVisible = inputContainer.classList.contains('visible');
-
-        // Toggle visibility classes
-        inputContainer.classList.toggle('visible');
-        addSpaceBtn.classList.toggle('active');
-
-        // Toggle space switcher visibility
-        if (isInputVisible) {
-            spaceSwitcher.style.opacity = '1';
-            spaceSwitcher.style.visibility = 'visible';
-        } else {
-            spaceNameInput.value = '';
-            spaceSwitcher.style.opacity = '0';
-            spaceSwitcher.style.visibility = 'hidden';
-        }
-    });
-    document.getElementById('createSpaceBtn').addEventListener('click', createNewSpace);
-    newTabBtn.addEventListener('click', createNewTab);
+    setupDOMElements();
 }
 
 function createSpaceElement(space) {
@@ -307,7 +285,7 @@ function createSpaceElement(space) {
     sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`);
 
     // Set up color select
-    const colorSelect = spaceElement.querySelector('.space-color-select');
+    const colorSelect = spaceElement.getElementById('spaceColorSelect');
     colorSelect.value = space.color;
     colorSelect.addEventListener('change', async () => {
         const newColor = colorSelect.value;
@@ -320,6 +298,28 @@ function createSpaceElement(space) {
         sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${newColor}-color, rgba(255, 255, 255, 0.1))`);
         saveSpaces();
         updateSpaceSwitcher();
+    });
+
+    // Handle color swatch clicks
+    const spaceOptionColorSwatch = spaceElement.getElementById('spaceOptionColorSwatch');
+    spaceOptionColorSwatch.addEventListener('click', (e) => {
+        if (e.target.classList.contains('color-swatch')) {
+            const colorPicker = e.target.closest('.color-picker-grid');
+            const color = e.target.dataset.color;
+            
+            // Update selected swatch
+            colorPicker.querySelectorAll('.color-swatch').forEach(swatch => {
+                swatch.classList.remove('selected');
+            });
+            e.target.classList.add('selected');
+            
+            // Update hidden select value
+            colorSelect.value = color;
+            
+            // Trigger change event on select
+            const event = new Event('change');
+            colorSelect.dispatchEvent(event);
+        }
     });
 
     // Set up space name input
@@ -1440,4 +1440,62 @@ function activateSpaceInDOM(spaceId) {
 
     // Update space switcher
     updateSpaceSwitcher();
+}
+
+function setupDOMElements() {
+    // Add event listeners for buttons
+    addSpaceBtn.addEventListener('click', () => {
+        const inputContainer = document.getElementById('addSpaceInputContainer');
+        const spaceSwitcher = document.getElementById('spaceSwitcher');
+        const spaceNameInput = document.getElementById('newSpaceName');
+        const isInputVisible = inputContainer.classList.contains('visible');
+
+        // Toggle visibility classes
+        inputContainer.classList.toggle('visible');
+        addSpaceBtn.classList.toggle('active');
+
+        // Toggle space switcher visibility
+        if (isInputVisible) {
+            spaceSwitcher.style.opacity = '1';
+            spaceSwitcher.style.visibility = 'visible';
+        } else {
+            spaceNameInput.value = '';
+            spaceSwitcher.style.opacity = '0';
+            spaceSwitcher.style.visibility = 'hidden';
+        }
+    });
+    document.getElementById('createSpaceBtn').addEventListener('click', createNewSpace);
+    newTabBtn.addEventListener('click', createNewTab);
+
+    const createSpaceColorSwatch = document.getElementById('createSpaceColorSwatch');
+    createSpaceColorSwatch.addEventListener('click', (e) => {
+        if (e.target.classList.contains('color-swatch')) {
+            const colorPicker = document.getElementById('createSpaceColorSwatch');
+            const select = document.getElementById('spaceColor');
+            const color = e.target.dataset.color;
+            
+            // Update selected swatch
+            colorPicker.querySelectorAll('.color-swatch').forEach(swatch => {
+                swatch.classList.remove('selected');
+            });
+            e.target.classList.add('selected');
+            
+            // Update hidden select value
+            select.value = color;
+            
+            // Trigger change event on select
+            const event = new Event('change');
+            select.dispatchEvent(event);
+        }
+    });
+
+    // Initialize selected swatches
+    document.querySelectorAll('.space-color-select').forEach(select => {
+        const colorPicker = select.nextElementSibling;
+        const currentColor = select.value;
+        const swatch = colorPicker.querySelector(`[data-color="${currentColor}"]`);
+        if (swatch) {
+            swatch.classList.add('selected');
+        }
+    });
 }

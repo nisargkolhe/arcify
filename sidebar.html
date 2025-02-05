@@ -25,18 +25,30 @@
                 <span>+</span>
             </button>
             <div class="add-space-input-container" id="addSpaceInputContainer">
-                <input type="text" id="newSpaceName" placeholder="Enter space name">
-                <select id="spaceColor" class="space-color-select">
-                    <option value="grey">Grey</option>
-                    <option value="blue">Blue</option>
-                    <option value="red">Red</option>
-                    <option value="yellow">Yellow</option>
-                    <option value="green">Green</option>
-                    <option value="pink">Pink</option>
-                    <option value="purple">Purple</option>
-                    <option value="cyan">Cyan</option>
-                </select>
-                <button id="createSpaceBtn" disabled>Create</button>
+                <div class="color-picker-grid create-space-picker" id="createSpaceColorSwatch" value="grey">
+                    <div class="color-swatch selected" data-color="grey"></div>
+                    <div class="color-swatch" data-color="blue"></div>
+                    <div class="color-swatch" data-color="red"></div>
+                    <div class="color-swatch" data-color="yellow"></div>
+                    <div class="color-swatch" data-color="green"></div>
+                    <div class="color-swatch" data-color="pink"></div>
+                    <div class="color-swatch" data-color="purple"></div>
+                    <div class="color-swatch" data-color="cyan"></div>
+                </div>
+                <div class="create-space-container">
+                    <input type="text" id="newSpaceName" placeholder="Enter space name">
+                    <select id="spaceColor" class="space-color-select">
+                        <option value="grey">Grey</option>
+                        <option value="blue">Blue</option>
+                        <option value="red">Red</option>
+                        <option value="yellow">Yellow</option>
+                        <option value="green">Green</option>
+                        <option value="pink">Pink</option>
+                        <option value="purple">Purple</option>
+                        <option value="cyan">Cyan</option>
+                    </select>
+                    <button id="createSpaceBtn" disabled>Create</button>
+                </div>
             </div>
         </div>
     </div>
@@ -47,7 +59,7 @@
                 <div class="space-options-container">
                     <button class="space-options">⋮</button>
                     <div class="space-options-dropdown">
-                        <select class="space-color-select">
+                        <select class="space-color-select" id="spaceColorSelect">
                             <option value="grey">Grey</option>
                             <option value="blue">Blue</option>
                             <option value="red">Red</option>
@@ -57,6 +69,16 @@
                             <option value="purple">Purple</option>
                             <option value="cyan">Cyan</option>
                         </select>
+                        <div class="color-picker-grid" id="spaceOptionColorSwatch">
+                            <div class="color-swatch" data-color="grey"></div>
+                            <div class="color-swatch" data-color="blue"></div>
+                            <div class="color-swatch" data-color="red"></div>
+                            <div class="color-swatch" data-color="yellow"></div>
+                            <div class="color-swatch" data-color="green"></div>
+                            <div class="color-swatch" data-color="pink"></div>
+                            <div class="color-swatch" data-color="purple"></div>
+                            <div class="color-swatch" data-color="cyan"></div>
+                        </div>
                         <button class="new-folder-btn">New Folder</button>
                         <button class="delete-space-btn">Delete Space</button>
                     </div>

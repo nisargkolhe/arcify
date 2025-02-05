@@ -234,16 +234,40 @@ h3 {
 }
 
 .space-color-select {
-    padding: 4px 8px;
-    border-radius: 8px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    background-color: rgba(255, 255, 255, 0.2);
-    color: #333;
-    font-size: 14px;
-    cursor: pointer;
-    margin: 4px 0;
+    display: none;
+    /* grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 8px;
+    border: none;
+    background: white;
+    width: 100%; */
 }
 
+.space-color-select option {
+    /* width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    border: none;
+    cursor: pointer; */
+    appearance: none;
+    -webkit-appearance: none;
+    /* padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    opacity: 1; */
+}
+
+/* .space-color-select option[value="grey"] { background-color: var(--chrome-grey-color, #888888); }
+.space-color-select option[value="blue"] { background-color: var(--chrome-blue-color, #4285f4); }
+.space-color-select option[value="red"] { background-color: var(--chrome-red-color, #ea4335); }
+.space-color-select option[value="yellow"] { background-color: var(--chrome-yellow-color, #fbbc05); }
+.space-color-select option[value="green"] { background-color: var(--chrome-green-color, #34a853); }
+.space-color-select option[value="pink"] { background-color: var(--chrome-pink-color, #ff69b4); }
+.space-color-select option[value="purple"] { background-color: var(--chrome-purple-color, #9c27b0); }
+.space-color-select option[value="cyan"] { background-color: var(--chrome-cyan-color, #00bcd4); }
 .space-color-select:hover {
     background-color: rgba(255, 255, 255, 0.3);
 }
@@ -251,8 +275,49 @@ h3 {
 .space-color-select:focus {
     outline: none;
     border-color: rgba(0, 0, 0, 0.2);
+} */
+
+.color-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 8px;
+    background: #fff;
+    border-radius: 8px;
 }
 
+.create-space-picker {
+    width: 100%;
+    display: flex;
+    background: none;
+    justify-content: space-between;
+}
+
+.color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.color-swatch.selected {
+    border-color: rgba(0, 0, 0, 0.3);
+}
+
+.color-swatch[data-color="grey"] { background-color: #9CA3AF; }
+.color-swatch[data-color="blue"] { background-color: #60A5FA; }
+.color-swatch[data-color="red"] { background-color: #F87171; }
+.color-swatch[data-color="yellow"] { background-color: #FBBF24; }
+.color-swatch[data-color="green"] { background-color: #34D399; }
+.color-swatch[data-color="pink"] { background-color: #F472B6; }
+.color-swatch[data-color="purple"] { background-color: #A78BFA; }
+.color-swatch[data-color="cyan"] { background-color: #22D3EE; }
 .folder {
     margin: 8px 0;
     /* background-color: rgba(255, 255, 255, 0.1); */
@@ -405,6 +470,12 @@ h3 {
     background-color: rgba(255, 255, 255, 0.1);
     padding: 8px;
     margin-top: 8px; */
+}
+
+.create-space-container {
+    width: 100%;
+    display: flex;
+    gap: 8px;
 }
 
 .add-space-btn {
@@ -616,21 +687,18 @@ h3 {
 }
 
 .add-space-input-container {
-    position: absolute;
-    top: 8px;
-    left: 0;
-    right: 40px;
+    flex-direction: column;
     display: flex;
     gap: 8px;
     align-items: center;
     opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
+    height: 0px;
+    transition: all 0.3s ease;
 }
 
 .add-space-input-container.visible {
     opacity: 1;
-    visibility: visible;
+    height: 5rem;
 }
 
 #newSpaceName {
