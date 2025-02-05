@@ -9,7 +9,8 @@
     "sidePanel",
     "storage",
     "bookmarks",
-    "commands"
+    "commands",
+    "favicon"
   ],
   "side_panel": {
     "default_path": "sidebar.html"

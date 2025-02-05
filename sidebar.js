@@ -32,6 +32,14 @@ function generateUUID() {
     });
 }
 
+// Helper function to fetch favicon
+function faviconURL(u) {
+  const url = new URL(chrome.runtime.getURL("/_favicon/"));
+  url.searchParams.set("pageUrl", u);
+  url.searchParams.set("size", "16");
+  return url.toString();
+}
+
 // Helper function to update bookmark for a tab
 async function updateBookmarkForTab(tab) {
     console.log("updating tab", tab);
@@ -78,7 +86,7 @@ async function updatePinnedFavicons() {
             faviconElement.dataset.tabId = tab.id;
 
             const img = document.createElement('img');
-            img.src = tab.favIconUrl || 'assets/default_icon.png';
+            img.src = faviconURL(tab.url);
             img.alt = tab.title;
 
             faviconElement.appendChild(img);
@@ -863,7 +871,7 @@ function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     }
 
     const favicon = document.createElement('img');
-    favicon.src = tab.favIconUrl || 'assets/default_icon.png';
+    favicon.src = faviconURL(tab.url);
     favicon.classList.add('tab-favicon');
 
     const title = document.createElement('span');
@@ -1141,10 +1149,8 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                     updateBookmarkForTab(tab);
                 }
             }
-            if (changeInfo.favIconUrl) {
-                tabElement.querySelector('.tab-favicon').src = changeInfo.favIconUrl || 'assets/default_icon.png';
-            }
             if (changeInfo.url) {
+                tabElement.querySelector('.tab-favicon').src = faviconURL(changeInfo.url);
                 // Update bookmark URL if this is a pinned tab
                 if (tabElement.closest('[data-tab-type="pinned"]')) {
                     updateBookmarkForTab(tab);
