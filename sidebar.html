@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="sidebar-container">
+    <div id="sidebar-container" class="sidebar-container">
         <div class="pinned-favicons" id="pinnedFavicons">
             <!-- Persistent pinned tabs will be displayed here -->
         </div>
@@ -26,6 +26,16 @@
             </button>
             <div class="add-space-input-container" id="addSpaceInputContainer">
                 <input type="text" id="newSpaceName" placeholder="Enter space name">
+                <select id="spaceColor" class="space-color-select">
+                    <option value="grey">Grey</option>
+                    <option value="blue">Blue</option>
+                    <option value="red">Red</option>
+                    <option value="yellow">Yellow</option>
+                    <option value="green">Green</option>
+                    <option value="pink">Pink</option>
+                    <option value="purple">Purple</option>
+                    <option value="cyan">Cyan</option>
+                </select>
                 <button id="createSpaceBtn" disabled>Create</button>
             </div>
         </div>
@@ -37,6 +47,16 @@
                 <div class="space-options-container">
                     <button class="space-options">⋮</button>
                     <div class="space-options-dropdown">
+                        <select class="space-color-select">
+                            <option value="grey">Grey</option>
+                            <option value="blue">Blue</option>
+                            <option value="red">Red</option>
+                            <option value="yellow">Yellow</option>
+                            <option value="green">Green</option>
+                            <option value="pink">Pink</option>
+                            <option value="purple">Purple</option>
+                            <option value="cyan">Cyan</option>
+                        </select>
                         <button class="new-folder-btn">New Folder</button>
                         <button class="delete-space-btn">Delete Space</button>
                     </div>

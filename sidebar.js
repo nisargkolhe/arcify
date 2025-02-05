@@ -179,6 +179,7 @@ async function initSidebar() {
                 id: groupId,
                 uuid: generateUUID(),
                 name: 'Home',
+                color: 'grey',
                 spaceBookmarks: [],
                 temporaryTabs: currentTabs.map(tab => tab.id),
             };
@@ -234,6 +235,7 @@ async function initSidebar() {
                     id: group.id,
                     uuid: generateUUID(),
                     name: group.title,
+                    color: group.color,
                     spaceBookmarks: spaceBookmarks,
                     temporaryTabs: tabs.map(tab => tab.id)
                 };
@@ -295,10 +297,30 @@ async function initSidebar() {
 function createSpaceElement(space) {
     console.log('Creating space element for:', space.id);
     const spaceElement = spaceTemplate.content.cloneNode(true);
+    const sidebarContainer = document.getElementById('sidebar-container');
     const spaceContainer = spaceElement.querySelector('.space');
     spaceContainer.dataset.spaceId = space.id;
     spaceContainer.style.display = space.id === activeSpaceId ? 'block' : 'none';
     spaceContainer.dataset.spaceUuid = space.id;
+
+    // Set space background color based on the tab group color
+    sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`);
+
+    // Set up color select
+    const colorSelect = spaceElement.querySelector('.space-color-select');
+    colorSelect.value = space.color;
+    colorSelect.addEventListener('change', async () => {
+        const newColor = colorSelect.value;
+        space.color = newColor;
+        
+        // Update tab group color
+        await chrome.tabGroups.update(space.id, { color: newColor });
+        
+        // Update space background color
+        sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${newColor}-color, rgba(255, 255, 255, 0.1))`);
+        saveSpaces();
+        updateSpaceSwitcher();
+    });
 
     // Set up space name input
     const nameInput = spaceElement.querySelector('.space-name');
@@ -1000,7 +1022,9 @@ async function createNewSpace() {
     isCreatingSpace = true;
     try {
         const spaceNameInput = document.getElementById('newSpaceName');
+        const spaceColorSelect = document.getElementById('spaceColor');
         const spaceName = spaceNameInput.value.trim();
+        const spaceColor = spaceColorSelect.value;
 
         if (!spaceName || spaces.some(space => space.name.toLowerCase() === spaceName.toLowerCase())) {
             const errorPopup = document.createElement('div');
@@ -1029,12 +1053,13 @@ async function createNewSpace() {
 
         // Create a new tab group with the new tab
         const groupId = await chrome.tabs.group({ tabIds: [newTab.id] });
-        await chrome.tabGroups.update(groupId, { title: spaceName, color: 'grey' });
+        await chrome.tabGroups.update(groupId, { title: spaceName, color: spaceColor });
 
         const space = {
             id: groupId,
             uuid: generateUUID(),
             name: spaceName,
+            color: spaceColor,
             spaceBookmarks: [],
             temporaryTabs: [newTab.id]
         };
@@ -1043,7 +1068,7 @@ async function createNewSpace() {
         await getOrCreateSpaceFolder(space.name);
 
         spaces.push(space);
-        console.log('New space created:', { spaceId: space.id, spaceName: space.name });
+        console.log('New space created:', { spaceId: space.id, spaceName: space.name, spaceColor: space.color });
 
         createSpaceElement(space);
         updateSpaceSwitcher();
@@ -1061,8 +1086,6 @@ async function createNewSpace() {
         spaceSwitcher.style.visibility = 'visible';
     } catch (error) {
         console.error('Error creating new space:', error);
-    } finally {
-
     }
 }
 
@@ -1406,6 +1429,14 @@ function activateSpaceInDOM(spaceId) {
         s.classList.toggle('active', isActive);
         s.style.display = isActive ? 'block' : 'none';
     });
+
+    // Get space color and update sidebar container background
+    const space = spaces.find(s => s.id === spaceId);
+    if (space) {
+        // Update background color
+        const sidebarContainer = document.getElementById('sidebar-container');
+        sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`);
+    }
 
     // Update space switcher
     updateSpaceSwitcher();
