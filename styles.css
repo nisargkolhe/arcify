@@ -235,47 +235,13 @@ h3 {
 
 .space-color-select {
     display: none;
-    /* grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    padding: 8px;
-    border: none;
-    background: white;
-    width: 100%; */
 }
 
 .space-color-select option {
-    /* width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    border: none;
-    cursor: pointer; */
     appearance: none;
     -webkit-appearance: none;
-    /* padding: 0;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    opacity: 1; */
 }
 
-/* .space-color-select option[value="grey"] { background-color: var(--chrome-grey-color, #888888); }
-.space-color-select option[value="blue"] { background-color: var(--chrome-blue-color, #4285f4); }
-.space-color-select option[value="red"] { background-color: var(--chrome-red-color, #ea4335); }
-.space-color-select option[value="yellow"] { background-color: var(--chrome-yellow-color, #fbbc05); }
-.space-color-select option[value="green"] { background-color: var(--chrome-green-color, #34a853); }
-.space-color-select option[value="pink"] { background-color: var(--chrome-pink-color, #ff69b4); }
-.space-color-select option[value="purple"] { background-color: var(--chrome-purple-color, #9c27b0); }
-.space-color-select option[value="cyan"] { background-color: var(--chrome-cyan-color, #00bcd4); }
-.space-color-select:hover {
-    background-color: rgba(255, 255, 255, 0.3);
-}
-
-.space-color-select:focus {
-    outline: none;
-    border-color: rgba(0, 0, 0, 0.2);
-} */
 
 .color-picker-grid {
     display: grid;
