@@ -1,4 +1,6 @@
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
+import { getOrCreateArcifyFolder, getOrCreateSpaceFolder } from './localstorage.js';
+import { generateUUID, faviconURL } from './utils.js';
 
 // Constants
 const MouseButton = {
@@ -23,22 +25,6 @@ let isOpeningBookmark = false;
 let isDraggingTab = false;
 let currentWindow = null;
 
-// Helper function to generate UUID
-function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-}
-
-// Helper function to fetch favicon
-function faviconURL(u, size = "16") {
-  const url = new URL(chrome.runtime.getURL("/_favicon/"));
-  url.searchParams.set("pageUrl", u);
-  url.searchParams.set("size", size);
-  return url.toString();
-}
 
 // Helper function to update bookmark for a tab
 async function updateBookmarkForTab(tab) {
@@ -189,9 +175,6 @@ async function initSidebar() {
             createSpaceElement(defaultSpace);
             await setActiveSpace(defaultSpace.id);
         } else {
-            const result = await chrome.storage.local.get('spaces');
-            console.log("local storage", result);
-
             // Find tabs that aren't in any group
             const ungroupedTabs = allTabs.filter(tab => tab.groupId === -1 && !tab.pinned);
             let defaultGroupId = null;
@@ -1385,28 +1368,6 @@ async function deleteSpace(spaceId) {
 ////////////////////////////////////////////////////////////////
 // -- Helper Functions
 ////////////////////////////////////////////////////////////////
-
-async function getOrCreateArcifyFolder() {
-    let [ folder ] = await chrome.bookmarks.search({ title: 'Arcify' });
-    if (!folder) {
-        folder = await chrome.bookmarks.create({ title: 'Arcify' });
-    }
-    return folder;
-}
-
-async function getOrCreateSpaceFolder(spaceName) {
-    const arcifyFolder = await getOrCreateArcifyFolder();
-    const children = await chrome.bookmarks.getChildren(arcifyFolder.id);
-    let spaceFolder = children.find((f) => f.title === spaceName);
-
-    if (!spaceFolder) {
-        spaceFolder = await chrome.bookmarks.create({
-            parentId: arcifyFolder.id,
-            title: spaceName
-        });
-    }
-    return spaceFolder;
-}
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
     // 1. Find the target space
