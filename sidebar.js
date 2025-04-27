@@ -1150,8 +1150,6 @@ function handleTabCreated(tab) {
 
                 if (space) {
                     await moveTabToSpace(tab.id, space.id, false /* pinned? */, tab.openerTabId);
-                    // Optionally, update UI or switch to the tab if needed
-                    await chrome.tabs.update(tab.id, { active: true });
                 }
             } catch (error) {
                 console.error('Error handling new tab:', error);
