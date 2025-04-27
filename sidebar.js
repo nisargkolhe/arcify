@@ -3,7 +3,10 @@ import { getOrCreateArcifyFolder, getOrCreateSpaceFolder } from './localstorage.
 import { 
     getSettings, 
     generateUUID, 
-    faviconURL 
+    faviconURL,
+    getTabNameOverrides, 
+    setTabNameOverride, 
+    removeTabNameOverride  
 } from './utils.js';
 
 // Constants
@@ -603,6 +606,10 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                                 } else {
                                     await moveTabToPinned(space, tab);
                                 }
+
+                                // Replace element
+                                const newTabElement = await createTabElement(tab, true, false);
+                                draggingElement.replaceWith(newTabElement);
                             }
 
                             saveSpaces();
@@ -775,7 +782,8 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                             if (existingTab) {
                                 console.log('Creating UI element for active bookmark:', existingTab);
                                 bookmarkedTabURLs.push(existingTab.url);
-                                const tabElement = createTabElement(existingTab, true);
+                                const tabElement = await createTabElement(existingTab, true);
+                                console.log('Appending tab element to container:', tabElement);
                                 container.appendChild(tabElement);
                             } else {
                                 // Create UI element for inactive bookmark
@@ -787,7 +795,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                                     spaceName: space.name
                                 };
                                 console.log('Creating UI element for inactive bookmark:', item.title);
-                                const tabElement = createTabElement(bookmarkTab, true, true);
+                                const tabElement = await createTabElement(bookmarkTab, true, true);
                                 bookmarkedTabURLs.push(item.url);
                                 container.appendChild(tabElement);
                             }
@@ -808,14 +816,14 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
         
 
         // Load temporary tabs
-        space.temporaryTabs.forEach(tabId => {
+        space.temporaryTabs.forEach(async tabId => {
             console.log("checking", tabId, spaces);
             const tab = tabs.find(t => t.id === tabId);
             const pinned = bookmarkedTabURLs.find(url => url == tab.url);
             console.log("pinned", pinned);
 
             if (tab && pinned == null) {
-                const tabElement = createTabElement(tab);
+                const tabElement = await createTabElement(tab);
                 tempContainer.appendChild(tabElement);
             }
         });
@@ -881,6 +889,7 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
         console.log("spaceFolder", spaceFolder);
         if (spaceFolder) {
+            console.log("tab", tab);
             const bookmarkTab = {
                 id: null,
                 title: tab.title,
@@ -888,7 +897,7 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
                 favIconUrl: tab.favIconUrl,
                 spaceName: tab.spaceName
             };
-            const inactiveTabElement = createTabElement(bookmarkTab, true, true);
+            const inactiveTabElement = await createTabElement(bookmarkTab, true, true);
             tabElement.replaceWith(inactiveTabElement);
 
             chrome.tabs.remove(tab.id);
@@ -899,90 +908,249 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
     }
 }
 
-function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
-    console.log('Creating tab element:', tab.id);
+async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
+    console.log('Creating tab element:', tab.id, 'IsBookmarkOnly:', isBookmarkOnly);
     const tabElement = document.createElement('div');
     tabElement.classList.add('tab');
-    if (!isBookmarkOnly) {
+    if (isBookmarkOnly) {
+        tabElement.classList.add('inactive', 'bookmark-only'); // Add specific class for styling
+        tabElement.dataset.url = tab.url;
+    } else {
         tabElement.dataset.tabId = tab.id;
         tabElement.draggable = true;
-
-        // Add active class if this is the active tab
         if (tab.active) {
             tabElement.classList.add('active');
         }
-    } else {
-        tabElement.classList.add('inactive');
-        tabElement.dataset.url = tab.url;
     }
 
     const favicon = document.createElement('img');
     favicon.src = faviconURL(tab.url);
     favicon.classList.add('tab-favicon');
+    favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; }; // Fallback favicon
 
-    const title = document.createElement('span');
-    title.textContent = tab.title;
-    title.classList.add('tab-title');
+    // --- Renaming Elements ---
+    const tabDetails = document.createElement('div');
+    tabDetails.className = 'tab-details';
+
+    const titleDisplay = document.createElement('span');
+    titleDisplay.className = 'tab-title-display';
+
+    const domainDisplay = document.createElement('span');
+    domainDisplay.className = 'tab-domain-display';
+    domainDisplay.style.display = 'none'; // Hide initially
+
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'tab-title-input';
+    titleInput.style.display = 'none'; // Hide initially
+    titleInput.spellcheck = false; // Optional: disable spellcheck
+
+    tabDetails.appendChild(titleDisplay);
+    tabDetails.appendChild(domainDisplay);
+    tabDetails.appendChild(titleInput);
+    // --- End Renaming Elements ---
 
     const actionButton = document.createElement('button');
-    actionButton.classList.add(isBookmarkOnly ? 'tab-remove' : 'tab-close');
-    actionButton.innerHTML = isBookmarkOnly ? '-' : '×';
+    actionButton.classList.add(isBookmarkOnly ? 'tab-remove' : 'tab-close'); // Use 'tab-remove' for bookmarks
+    actionButton.innerHTML = isBookmarkOnly ? '−' : '×'; // Use minus for remove, times for close
+    actionButton.title = isBookmarkOnly ? 'Remove Bookmark' : 'Close Tab';
     actionButton.addEventListener('click', async (e) => {
-        e.stopPropagation(); // Prevent tab activation when closing
-        closeTab(tabElement, tab, isPinned, isBookmarkOnly);
+        e.stopPropagation();
+        const activeSpace = spaces.find(s => s.id === activeSpaceId);
+        console.log("activeSpace", activeSpace);
+        const isCurrentlyPinned = activeSpace?.spaceBookmarks.includes(tab.id);
+        closeTab(tabElement, tab, isCurrentlyPinned, isBookmarkOnly);
     });
 
     tabElement.appendChild(favicon);
-    tabElement.appendChild(title);
+    tabElement.appendChild(tabDetails); // Add the details container
     tabElement.appendChild(actionButton);
 
-    // Add click handler
-    tabElement.addEventListener('click', async () => {
-        // Remove active class from all tabs
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.pinned-favicon').forEach(t => t.classList.remove('active'));
+    // --- Function to update display based on overrides ---
+    const updateDisplay = async () => {
+        // For bookmark-only elements, just display the stored title
+        if (isBookmarkOnly) {
+            titleDisplay.textContent = tab.title || 'Bookmark'; // Use stored title
+            titleDisplay.style.display = 'inline';
+            titleInput.style.display = 'none';
+            domainDisplay.style.display = 'none';
+            return;
+        }
+
+        // For actual tabs, check overrides
+        const overrides = await getTabNameOverrides();
+        const override = overrides[tab.id];
+        let displayTitle = tab.title; // Default to actual tab title
+        let displayDomain = null;
+
+        titleInput.value = tab.title; // Default input value is current tab title
+
+        if (override) {
+            displayTitle = override.name;
+            titleInput.value = override.name; // Set input value to override name
+            try {
+                // Check if current domain differs from original override domain
+                const currentDomain = new URL(tab.url).hostname;
+                if (override.originalDomain && currentDomain !== override.originalDomain) {
+                    displayDomain = currentDomain;
+                }
+            } catch (e) {
+                console.warn("Error parsing URL for domain check:", tab.url, e);
+            }
+        }
+
+        titleDisplay.textContent = displayTitle;
+        if (displayDomain) {
+            domainDisplay.textContent = displayDomain;
+            domainDisplay.style.display = 'block';
+        } else {
+            domainDisplay.style.display = 'none';
+        }
+
+        // Ensure correct elements are visible
+        titleDisplay.style.display = 'inline'; // Or 'block' if needed
+        titleInput.style.display = 'none';
+    };
+
+    // --- Event Listeners for Editing (Only for actual tabs) ---
+    if (!isBookmarkOnly) {
+        tabDetails.addEventListener('dblclick', (e) => {
+            // Prevent dblclick on favicon or close button from triggering rename
+            if (e.target === favicon || e.target === actionButton) return;
+
+            titleDisplay.style.display = 'none';
+            domainDisplay.style.display = 'none'; // Hide domain while editing
+            titleInput.style.display = 'inline-block'; // Or 'block'
+            titleInput.select(); // Select text for easy replacement
+        });
+
+        const saveOrCancelEdit = async (save) => {
+            if (save) {
+                const newName = titleInput.value.trim();
+                try {
+                    // Fetch the latest tab info in case the title changed naturally
+                    const currentTabInfo = await chrome.tabs.get(tab.id);
+                    const originalTitle = currentTabInfo.title;
+
+                    if (newName && newName !== originalTitle) {
+                        await setTabNameOverride(tab.id, tab.url, newName);
+                    } else {
+                        // If name is empty or same as original, remove override
+                        await removeTabNameOverride(tab.id);
+                    }
+                } catch (error) {
+                    console.error("Error getting tab info or saving override:", error);
+                    // Handle cases where the tab might have been closed during edit
+                }
+            }
+            // Update display regardless of save/cancel to show correct state
+            // Need to fetch tab again in case URL changed during edit? Unlikely but possible.
+            try {
+                 const potentiallyUpdatedTab = await chrome.tabs.get(tab.id);
+                 tab.title = potentiallyUpdatedTab.title; // Update local tab object title
+                 tab.url = potentiallyUpdatedTab.url; // Update local tab object url
+            } catch(e) {
+                console.log("Tab likely closed during edit, cannot update display.");
+                // If tab closed, the element will be removed by handleTabRemove anyway
+                return;
+            }
+            await updateDisplay();
+        };
+
+        titleInput.addEventListener('blur', () => saveOrCancelEdit(true));
+        titleInput.addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // Prevent potential form submission if wrapped
+                await saveOrCancelEdit(true);
+                titleInput.blur(); // Explicitly blur to hide input
+            } else if (e.key === 'Escape') {
+                await saveOrCancelEdit(false); // Cancel reverts input visually via updateDisplay
+                titleInput.blur(); // Explicitly blur to hide input
+            }
+        });
+    }
+
+    // --- Initial Display ---
+    await updateDisplay(); // Call initially to set the correct title/domain
+
+    // --- Click Handler ---
+    tabElement.addEventListener('click', async (e) => {
+        // Don't activate tab when clicking input or close button
+        if (e.target === titleInput || e.target === actionButton) return;
+
+        // Remove active class from all tabs and favicons
+        document.querySelectorAll('.tab.active').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.pinned-favicon.active').forEach(t => t.classList.remove('active'));
 
         if (isBookmarkOnly) {
             console.log('Opening bookmark:', tab.url);
-            isOpeningBookmark = true;
-            // Create new tab with bookmark URL
-            const newTab = await chrome.tabs.create({ url: tab.url, active: true });
+            isOpeningBookmark = true; // Set flag
+            try {
+                // Find the space this bookmark belongs to (assuming it's the active one for simplicity)
+                const space = spaces.find(s => s.id === activeSpaceId);
+                if (!space) {
+                    console.error("Cannot open bookmark: Active space not found.");
+                    isOpeningBookmark = false;
+                    return;
+                }
 
-            console.log("newTab", newTab);
-            const bookmarkTab = {
-                id: newTab.id,
-                title: tab.title,
-                url: tab.url,
-                favIconUrl: tab.favIconUrl,
-                spaceName: tab.spaceName
-            };
-            const activeBookmark = createTabElement(bookmarkTab, true, false);
-            activeBookmark.classList.add('active');
+                // Create new tab with bookmark URL in the active group
+                const newTab = await chrome.tabs.create({
+                    url: tab.url,
+                    active: true, // Make it active immediately
+                    windowId: currentWindow.id // Ensure it opens in the current window
+                });
 
-            console.log("activeBookmark", activeBookmark);
-            tabElement.replaceWith(activeBookmark);
+                // Replace tab element
+                const bookmarkTab = {
+                    id: newTab.id,
+                    title: tab.title,
+                    url: tab.url,
+                    favIconUrl: tab.favIconUrl,
+                    spaceName: tab.spaceName
+                };
+                const activeBookmark = await createTabElement(bookmarkTab, true, false);
+                activeBookmark.classList.add('active');
+                tabElement.replaceWith(activeBookmark);
 
-            await chrome.tabs.group({ tabIds: newTab.id, groupId: activeSpaceId });
+                // Immediately group the new tab
+                await chrome.tabs.group({ tabIds: [newTab.id], groupId: activeSpaceId });
 
+                if (isPinned) {
+                    const space = spaces.find(s => s.name === tab.spaceName);
+                    if (space) {
+                        space.spaceBookmarks.push(newTab.id);
+                        saveSpaces();
+                    }
+                }
 
-            isOpeningBookmark = false;
-            // if (isPinned) {
-            //     const space = spaces.find(s => s.name === tab.spaceName);
-            //     if (space) {
-            //         space.spaceBookmarks.push(newTab.id);
-            //         saveSpaces();
-            //     }
-            // }
+                saveSpaces(); // Save updated space state
+
+                // Replace the bookmark-only element with a real tab element
+                activateTabInDOM(newTab.id); // Visually activate
+
+            } catch (error) {
+                console.error("Error opening bookmark:", error);
+            } finally {
+                isOpeningBookmark = false; // Reset flag
+            }
         } else {
-            // Add active class to clicked tab
+            // It's a regular tab, just activate it
             tabElement.classList.add('active');
             chrome.tabs.update(tab.id, { active: true });
+            // Store last active tab for the space
+            const space = spaces.find(s => s.id === tab.groupId);
+            if (space) {
+                space.lastTab = tab.id;
+                saveSpaces();
+            }
         }
     });
 
     // Close tab on middle click
     tabElement.addEventListener('mousedown', (event) => {
         if (event.button === MouseButton.MIDDLE) {
+            event.preventDefault(); // Prevent default middle-click actions (like autoscroll)
             closeTab(tabElement, tab, isPinned, isBookmarkOnly);
         }
     });
@@ -996,6 +1164,13 @@ function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             tabElement.classList.remove('dragging');
         });
     }
+
+    // --- Context Menu ---
+    tabElement.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showTabContextMenu(e.pageX, e.pageY, tab, isPinned, isBookmarkOnly, tabElement);
+    });
+
 
     return tabElement;
 }
@@ -1178,7 +1353,18 @@ function handleTabUpdate(tabId, changeInfo, tab) {
         // Update tab element if it exists
         const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
         if (tabElement) {
-            // Handle tab pinning state changes
+            // Update Favicon if URL changed
+            if (changeInfo.url || changeInfo.favIconUrl) {
+                const img = tabElement.querySelector('img');
+                if (img) {
+                    img.src = faviconURL(tab.url); // Use updated URL
+                }
+            }
+            
+            const titleDisplay = tabElement.querySelector('.tab-title-display');
+            const domainDisplay = tabElement.querySelector('.tab-domain-display');
+            const titleInput = tabElement.querySelector('.tab-title-input'); // Get input element
+
             if (changeInfo.pinned !== undefined) {
                 if (changeInfo.pinned) {
                     tabElement.remove(); // Remove from space
@@ -1187,25 +1373,50 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                 }
                 // Update pinned favicons for both pinning and unpinning
                 updatePinnedFavicons();
-            } else {
-                if (changeInfo.title) {
-                    tabElement.querySelector('.tab-title').textContent = changeInfo.title;
-                    // Update bookmark title if this is a pinned tab
-                    if (tabElement.closest('[data-tab-type="pinned"]')) {
-                        updateBookmarkForTab(tab);
-                    }
+            } else if (titleDisplay && domainDisplay && titleInput) { // Check if elements exist
+                // Don't update if the input field is currently focused
+                if (document.activeElement !== titleInput) {
+                   const overrides = await getTabNameOverrides();
+                   console.log('changeInfo', changeInfo);
+                   console.log('overrides', overrides); 
+                   console.log('tab.url', tab.url); // Log the tab URL her
+                   const override = overrides[tabId]; // Use potentially new URL
+                   console.log('override', override); // Log the override object here
+                   let displayTitle = tab.title; // Use potentially new title
+                   let displayDomain = null;
+   
+                   if (override) {
+                       displayTitle = override.name;
+                       try {
+                           const currentDomain = new URL(tab.url).hostname;
+                           if (currentDomain !== override.originalDomain) {
+                               displayDomain = currentDomain;
+                           }
+                       } catch (e) { /* Ignore invalid URLs */ }
+                   } else {
+                        titleDisplay.textContent = displayTitle;
+                   }
+                   if (displayDomain) {
+                       domainDisplay.textContent = displayDomain;
+                       domainDisplay.style.display = 'block';
+                   } else {
+                       domainDisplay.style.display = 'none';
+                   }
+                   // Update input value only if not focused (might overwrite user typing)
+                   titleInput.value = override ? override.name : tab.title;
+               }
+           }
+
+            if (changeInfo.url) {
+                tabElement.querySelector('.tab-favicon').src = faviconURL(changeInfo.url);
+                // Update bookmark URL if this is a pinned tab
+                if (tabElement.closest('[data-tab-type="pinned"]')) {
+                    updateBookmarkForTab(tab);
                 }
-                if (changeInfo.url) {
-                    tabElement.querySelector('.tab-favicon').src = faviconURL(changeInfo.url);
-                    // Update bookmark URL if this is a pinned tab
-                    if (tabElement.closest('[data-tab-type="pinned"]')) {
-                        updateBookmarkForTab(tab);
-                    }
-                }
-                // Update active state when tab's active state changes
-                if (changeInfo.active !== undefined && changeInfo.active) {
-                    activateTabInDOM(tabId);
-                }
+            }
+            // Update active state when tab's active state changes
+            if (changeInfo.active !== undefined && changeInfo.active) {
+                activateTabInDOM(tabId);
             }
         }
     });
@@ -1410,7 +1621,7 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
         const container = spaceElement.querySelector(containerSelector);
 
         const chromeTab = await chrome.tabs.get(tabId);
-        const tabElement = createTabElement(chromeTab, pinned);
+        const tabElement = await createTabElement(chromeTab, pinned);
         if (container.children.length > 1) {
             if (openerTabId) {
                 let tabs = container.querySelectorAll(`.tab`);
