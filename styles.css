@@ -1103,3 +1103,91 @@ h3 {
     min-height: 1.2em; /* Prevent layout shift */
     text-align: center;
 }
+
+/* Archive Section Styles */
+.archive-section {
+    position: relative; /* Needed for absolute positioning of popup */
+    margin-top: auto; /* Push to the bottom */
+    padding-top: 10px; /* Space above */
+    display: flex;
+    justify-content: flex-start; /* Align button to the left */
+    padding-left: 8px; /* Match sidebar padding */
+    padding-bottom: 8px;
+}
+
+.sidebar-button { /* General style for buttons like archive */
+    background: none;
+    border: none;
+    font-size: 20px; /* Adjust icon size */
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 8px;
+    color: #555; /* Adjust icon color */
+    transition: background-color 0.2s ease;
+}
+
+.sidebar-button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.archived-tabs-popup {
+    display: none; /* Hidden by default */
+    position: absolute;
+    bottom: 100%; /* Position above the button */
+    left: 0;
+    margin-bottom: 5px; /* Space between button and popup */
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    width: 250px; /* Adjust width as needed */
+    max-height: 300px; /* Limit height */
+    overflow-y: auto;
+    z-index: 1100; /* Ensure it's above other elements */
+    padding: 8px;
+    font-size: 13px;
+}
+
+.archived-tabs-list .archived-tab-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.archived-tabs-list .archived-tab-item:hover {
+    background-color: #f0f0f0;
+}
+
+.archived-tab-item img {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.archived-tab-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+}
+
+.no-archived-tabs-message {
+    padding: 10px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+}
+
+/* Simple scrollbar for popup */
+.archived-tabs-popup::-webkit-scrollbar {
+    width: 5px;
+}
+.archived-tabs-popup::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 3px;
+}
