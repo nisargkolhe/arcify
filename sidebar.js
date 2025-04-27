@@ -1,3 +1,4 @@
+import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
 
 // Constants
@@ -441,20 +442,36 @@ async function setActiveSpace(spaceId, updateTab = true) {
         await chrome.tabGroups.update(group.id, {collapsed: true})
     });
 
-    // Uncollpase space's tab group
+    const tabGroupForSpace = tabGroups.find(group => group.id === spaceId);
+    if (!tabGroupForSpace) {
+        const space = spaces.find(s => s.id === spaceId);
+        const newTab = await ChromeHelper.createNewTab();
+        const groupId = await ChromeHelper.createNewTabGroup(newTab, space.name, space.color);
+
+        // update spaceId with new groupId
+        spaces = spaces.map(s => {
+            if (s.id === spaceId) {
+                return { ...s, id: groupId };
+            }
+            return s;
+        });
+        saveSpaces();
+    } else {
+        // Uncollpase space's tab group
     await chrome.tabGroups.update(spaceId, {collapsed: false})
 
-    // Get all tabs in the space and activate the last one
-    if (updateTab) {
-        const space = spaces.find(s => s.id === parseInt(spaceId));
-        console.log("updateTab space",space);
+        // Get all tabs in the space and activate the last one
+        if (updateTab) {
+            const space = spaces.find(s => s.id === parseInt(spaceId));
+            console.log("updateTab space",space);
         chrome.tabs.query({ groupId: spaceId }, tabs => {
-            if (tabs.length > 0) {
-                const lastTab = space.lastTab ?? tabs[tabs.length - 1].id;
+                if (tabs.length > 0) {
+                    const lastTab = space.lastTab ?? tabs[tabs.length - 1].id;
                 chrome.tabs.update(lastTab, { active: true });
-                activateTabInDOM(lastTab);
-            }
-        });
+                    activateTabInDOM(lastTab);
+                }
+            });
+        }
     }
 }
 
@@ -1077,21 +1094,8 @@ async function createNewSpace() {
             }, 3000);
             return;
         }
-
-        // First create a new tab
-        const newTab = await new Promise((resolve, reject) => {
-            chrome.tabs.create({ active: true }, (tab) => {
-                if (chrome.runtime.lastError) {
-                    reject(chrome.runtime.lastError);
-                } else {
-                    resolve(tab);
-                }
-            });
-        });
-
-        // Create a new tab group with the new tab
-        const groupId = await chrome.tabs.group({ tabIds: [newTab.id] });
-        await chrome.tabGroups.update(groupId, { title: spaceName, color: spaceColor });
+        const newTab = await ChromeHelper.createNewTab();
+        const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceName, spaceColor);
 
         const space = {
             id: groupId,
