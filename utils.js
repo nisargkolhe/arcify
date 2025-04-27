@@ -13,3 +13,20 @@ function faviconURL(u, size = "16") {
     url.searchParams.set("size", size);
     return url.toString();
 }
+
+// Helper function to get settings from storage
+async function getSettings() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get({ defaultSpaceName: 'Home' }, (items) => {
+            resolve(items.defaultSpaceName); // Resolve with the value
+        });
+    });
+}
+
+  
+// Export the functions you want to use elsewhere
+export { 
+    getSettings, 
+    generateUUID, 
+    faviconURL 
+};
