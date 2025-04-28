@@ -25,7 +25,7 @@ let isCreatingSpace = false;
 let isOpeningBookmark = false;
 let isDraggingTab = false;
 let currentWindow = null;
-
+let defaultSpaceName = 'Home';
 
 // Helper function to update bookmark for a tab
 async function updateBookmarkForTab(tab) {
@@ -131,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initSidebar() {
     console.log('Initializing sidebar...');
+    defaultSpaceName = await Utils.getSettings(); 
     try {
         currentWindow = await chrome.windows.getCurrent({populate: false});
 
@@ -153,13 +154,13 @@ async function initSidebar() {
             // Create default tab group and move all tabs to it
             console.log('currentTabs', currentTabs);
             const groupId = await chrome.tabs.group({tabIds: currentTabs.map(tab => tab.id)});
-            await chrome.tabGroups.update(groupId, {title: 'Home', color: 'grey'});
+            await chrome.tabGroups.update(groupId, {title: defaultSpaceName, color: 'grey'});
 
             // Create default space with UUID
             const defaultSpace = {
                 id: groupId,
                 uuid: Utils.generateUUID(),
-                name: 'Home',
+                name: defaultSpaceName,
                 color: 'grey',
                 spaceBookmarks: [],
                 temporaryTabs: currentTabs.map(tab => tab.id),
@@ -183,7 +184,7 @@ async function initSidebar() {
             // If there are ungrouped tabs, check for existing Default group or create new one
             if (ungroupedTabs.length > 0) {
                 console.log("found ungrouped tabs", ungroupedTabs);
-                const defaultGroup = tabGroups.find(group => group.title === 'Home');
+                const defaultGroup = tabGroups.find(group => group.title === defaultSpaceName);
                 if (defaultGroup) {
                     console.log("found existing default group", defaultGroup);
                     if (defaultGroup.windowId === currentWindow.id) {
@@ -192,12 +193,12 @@ async function initSidebar() {
                     } else {
                         // Create new Default group
                         defaultGroupId = await chrome.tabs.group({tabIds: ungroupedTabs.map(tab => tab.id)});
-                        await chrome.tabGroups.update(defaultGroupId, {title: 'Home'+currentWindow.id, color: 'grey'});
+                        await chrome.tabGroups.update(defaultGroupId, {title: defaultSpaceName+currentWindow.id, color: 'grey'});
                     }
                 } else {
                     // Create new Default group
                     defaultGroupId = await chrome.tabs.group({tabIds: ungroupedTabs.map(tab => tab.id)});
-                    await chrome.tabGroups.update(defaultGroupId, {title: 'Home', color: 'grey'});
+                    await chrome.tabGroups.update(defaultGroupId, {title: defaultSpaceName, color: 'grey'});
                 }
             }
 
@@ -1174,37 +1175,37 @@ function handleTabUpdate(tabId, changeInfo, tab) {
         }
         console.log('Tab updated:', tabId, changeInfo, spaces);
 
-        // Handle tab pinning state changes
-        if (changeInfo.pinned !== undefined) {
-            if (changeInfo.pinned) {
-                moveTabToSpace(tabId, activeSpaceId, true /* pinned */);
-            } else {
-                moveTabToSpace(tabId, activeSpaceId, false /* pinned */);
-            }
-            // Update pinned favicons for both pinning and unpinning
-            updatePinnedFavicons();
-        }
-
         // Update tab element if it exists
         const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
         if (tabElement) {
-            if (changeInfo.title) {
-                tabElement.querySelector('.tab-title').textContent = changeInfo.title;
-                // Update bookmark title if this is a pinned tab
-                if (tabElement.closest('[data-tab-type="pinned"]')) {
-                    updateBookmarkForTab(tab);
+            // Handle tab pinning state changes
+            if (changeInfo.pinned !== undefined) {
+                if (changeInfo.pinned) {
+                    tabElement.remove(); // Remove from space
+                } else {
+                    moveTabToSpace(tabId, activeSpaceId, false /* pinned */);
                 }
-            }
-            if (changeInfo.url) {
-                tabElement.querySelector('.tab-favicon').src = Utils.getFaviconUrl(changeInfo.url);
-                // Update bookmark URL if this is a pinned tab
-                if (tabElement.closest('[data-tab-type="pinned"]')) {
-                    updateBookmarkForTab(tab);
+                // Update pinned favicons for both pinning and unpinning
+                updatePinnedFavicons();
+            } else {
+                if (changeInfo.title) {
+                    tabElement.querySelector('.tab-title').textContent = changeInfo.title;
+                    // Update bookmark title if this is a pinned tab
+                    if (tabElement.closest('[data-tab-type="pinned"]')) {
+                        updateBookmarkForTab(tab);
+                    }
                 }
-            }
-            // Update active state when tab's active state changes
-            if (changeInfo.active !== undefined && changeInfo.active) {
-                activateTabInDOM(tabId);
+                if (changeInfo.url) {
+                    tabElement.querySelector('.tab-favicon').src = Utils.getFaviconUrl(changeInfo.url);
+                    // Update bookmark URL if this is a pinned tab
+                    if (tabElement.closest('[data-tab-type="pinned"]')) {
+                        updateBookmarkForTab(tab);
+                    }
+                }
+                // Update active state when tab's active state changes
+                if (changeInfo.active !== undefined && changeInfo.active) {
+                    activateTabInDOM(tabId);
+                }
             }
         }
     });
