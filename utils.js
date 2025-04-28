@@ -13,7 +13,15 @@ const Utils = {
         url.searchParams.set("pageUrl", u);
         url.searchParams.set("size", size);
         return url.toString();
-    }
+    },
+
+    getSettings: function() {
+        return new Promise((resolve) => {
+            chrome.storage.local.get({ defaultSpaceName: 'Home' }, (items) => {
+                resolve(items.defaultSpaceName); // Resolve with the value
+            });
+        });
+    },
 }
 
 export { Utils };
