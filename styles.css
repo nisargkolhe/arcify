@@ -561,6 +561,53 @@ h3 {
     margin-right: 8px;
 }
 
+
+.tab-details {
+    flex-grow: 1; /* Allow details to take up space */
+    overflow: hidden; /* Prevent long text overflow */
+    display: flex; /* Use flex for vertical alignment if needed */
+    flex-direction: column; /* Stack title and domain */
+    justify-content: center; /* Center vertically */
+    margin-left: 8px; /* Space from favicon */
+}
+
+.tab-title-display,
+.tab-title-input {
+    white-space: nowrap; /* Prevent wrapping */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis (...) for overflow */
+    display: block; /* Ensure they take full width */
+    width: 100%;
+}
+
+.tab-title-input {
+    /* Style the input to look integrated */
+    border: none;
+    background-color: rgba(255, 255, 255, 0.2); /* Slight background */
+    padding: 2px 4px;
+    margin: -2px -4px; /* Adjust to align with display text */
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    border-radius: 3px;
+}
+
+.tab-title-input:focus {
+    outline: 1px solid var(--chrome-blue-color); /* Simple focus indicator */
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+.tab-domain-display {
+    font-size: 0.75em; /* Smaller font size */
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block; /* Takes its own line */
+    margin-top: 2px; /* Space below title */
+    font-weight: 800;
+}
+
 .tab-title {
     flex: 1;
     white-space: nowrap;
