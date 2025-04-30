@@ -4,6 +4,27 @@ const MAX_ARCHIVED_TABS = 100;
 const ARCHIVED_TABS_KEY = 'archivedTabs';
 
 const Utils = {
+
+    processBookmarkFolder: async function(folder, groupId) {
+        const bookmarks = [];
+        const items = await chrome.bookmarks.getChildren(folder.id);
+        const tabs = await chrome.tabs.query({groupId: groupId});
+        for (const item of items) {
+            if (item.url) {
+                // This is a bookmark
+                const tab = tabs.find(t => t.url === item.url);
+                if (tab) {
+                    bookmarks.push(tab.id);
+                }
+            } else {
+                // This is a folder, recursively process it
+                const subFolderBookmarks = await this.processBookmarkFolder(item);
+                bookmarks.push(...subFolderBookmarks);
+            }
+        }
+        
+        return bookmarks;
+    },
     
     // Helper function to generate UUID (If you want to move this too)
     generateUUID: function() {
