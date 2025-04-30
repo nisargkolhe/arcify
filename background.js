@@ -11,7 +11,7 @@ chrome.sidePanel.setPanelBehavior({
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install') {
+    if (details.reason === 'install' || details.reason === 'update') {
         chrome.tabs.create({ url: 'onboarding.html', active: true }, async (tab) => {
             const tabGroups = await chrome.tabGroups.query({});
             const defaultGroup = tabGroups.find(group => group.title === 'Home');
