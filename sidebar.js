@@ -298,6 +298,7 @@ function createSpaceElement(space) {
 
     // Set space background color based on the tab group color
     sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`);
+    sidebarContainer.style.setProperty('--space-bg-color-dark', `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`);
 
     // Set up color select
     const colorSelect = spaceElement.getElementById('spaceColorSelect');
@@ -311,6 +312,8 @@ function createSpaceElement(space) {
         
         // Update space background color
         sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${newColor}-color, rgba(255, 255, 255, 0.1))`);
+        sidebarContainer.style.setProperty('--space-bg-color-dark', `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`);
+
         saveSpaces();
         updateSpaceSwitcher();
     });
@@ -1672,6 +1675,7 @@ function activateSpaceInDOM(spaceId) {
         // Update background color
         const sidebarContainer = document.getElementById('sidebar-container');
         sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`);
+        sidebarContainer.style.setProperty('--space-bg-color-dark', `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`);
     }
 
     // Update space switcher

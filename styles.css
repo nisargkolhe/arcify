@@ -6,13 +6,21 @@
 
 :root {
     --chrome-grey-color: #ccc;
-    --chrome-blue-color: #1b73e88a;
-    --chrome-red-color: #ff766db8;
-    --chrome-yellow-color: #ffcb5191;
-    --chrome-green-color: #20c05299;
-    --chrome-pink-color: #f359b085;
-    --chrome-purple-color: #a947fe7d;
-    --chrome-cyan-color: #31c5d57d;
+    --chrome-blue-color: #8bb3f3;
+    --chrome-red-color: #ff9e97;
+    --chrome-yellow-color: #ffe29f;
+    --chrome-green-color: #8bda99;
+    --chrome-pink-color: #fbaad7;
+    --chrome-purple-color: #d6a6ff;
+    --chrome-cyan-color: #a5e2ea;
+    --chrome-grey-color-dark: #c2c2c2;
+    --chrome-blue-color-dark: #84a9e7;
+    --chrome-red-color-dark: #f4968f;
+    --chrome-yellow-color-dark: #f1d698;
+    --chrome-green-color-dark: #54cb70;
+    --chrome-pink-color-dark: #f881c2;
+    --chrome-purple-color-dark: #dfb8ff;
+    --chrome-cyan-color-dark: #b7e8ee;
 }
 
 body {
@@ -291,12 +299,16 @@ h3 {
     border-radius: 8px;
     overflow: hidden;
     /* border: 1px solid rgba(0, 0, 0, 0.1); */
-    background-color: rgba(255, 255, 255, 0.2);
+    /* background-color: rgba(255, 255, 255, 0.2); */
+    background: var(--space-bg-color-dark, rgba(255, 255, 255, 0.1));
     transition: all 0.3s;
+    position: relative;
+    z-index: 1;
 }
 
 .folder.collapsed {
-    background-color: rgba(1, 1, 1, 0);
+    /* background-color: rgba(1, 1, 1, 0); */
+    background: var(--space-bg-color, rgba(255, 255, 255, 0.1));
 }
 
 .folder.collapsed div.tab-placeholder {
@@ -309,7 +321,8 @@ h3 {
 }
 
 .folder.collapsed:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    /* background-color: rgba(255, 255, 255, 0.2); */
+    background: var(--space-bg-color-dark, rgba(255, 255, 255, 0.1));
 }
 
 .folder-title {
@@ -445,7 +458,7 @@ h3 {
 }
 
 .tabs-container {
-    min-height: 40px;
+    min-height: 60px;
     /* border-radius: 8px;
     background-color: rgba(255, 255, 255, 0.1);
     padding: 8px;
@@ -558,10 +571,14 @@ h3 {
     border-radius: 12px;
     cursor: pointer;
     transition: background-color 0.2s;
+    background: var(--space-bg-color, rgba(255, 255, 255, 0.1));
+    position: relative;
 }
 
 .tab:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    background: var(--space-bg-color-dark, rgba(255, 255, 255, 0.1));
+    /* make background darker */
+    /* background-color: #bdbdbd; */
 }
 
 .tab.active {
@@ -1080,4 +1097,12 @@ h3 {
 /* Optional: Add focus style for accessibility */
 .ios-toggle:focus + .toggle-label {
     box-shadow: 0 0 1px #4CD964;
+}
+
+.placeholder-container {
+    padding: 8px 16px;
+    position: absolute;
+    z-index: 0;
+    width: 100%;
+    left: 0;
 }
