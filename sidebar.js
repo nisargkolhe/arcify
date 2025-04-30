@@ -142,6 +142,10 @@ async function initSidebar() {
         let allTabs = await chrome.tabs.query({currentWindow: true});
         console.log("tabGroups", tabGroups);
         console.log("allTabs", allTabs);
+
+        // Check for duplicates
+        await LocalStorage.mergeDuplicateSpaceFolders();
+
         // Create bookmarks folder for spaces if it doesn't exist
         const spacesFolder = await LocalStorage.getOrCreateArcifyFolder();
 
