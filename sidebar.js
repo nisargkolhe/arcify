@@ -1,5 +1,5 @@
 import { ChromeHelper } from './chromeHelper.js';
-import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
+import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON, RESTORE_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
 
@@ -131,7 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initSidebar() {
     console.log('Initializing sidebar...');
-    defaultSpaceName = await Utils.getSettings(); 
+    let settings = await Utils.getSettings();
+    if (settings.defaultSpaceName) {
+        defaultSpaceName = settings.defaultSpaceName;
+    }
     try {
         currentWindow = await chrome.windows.getCurrent({populate: false});
 
@@ -1436,10 +1439,10 @@ async function handleTabRemove(tabId) {
         space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
     });
 
-
-    // If not a pinned tab or bookmark not found, remove the element
-    tabElement?.remove();
-
+    if (!isPinned) {
+        // If not a pinned tab or bookmark not found, remove the element
+        tabElement?.remove();
+    }
 
     saveSpaces();
 }
@@ -1675,6 +1678,133 @@ function activateSpaceInDOM(spaceId) {
     updateSpaceSwitcher();
 }
 
+// Function to display the archived tabs popup
+async function showArchivedTabsPopup() {
+    const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
+
+    const popup = spaceElement.querySelector('.archived-tabs-popup');
+    const list = popup.querySelector('.archived-tabs-list');
+    const message = popup.querySelector('.no-archived-tabs-message');
+    list.innerHTML = ''; // Clear previous items
+
+    if (!(await Utils.isArchivingEnabled())) {
+        message.textContent = 'Tab Archiving is disabled. Go to extension settings to enable.';
+        list.style.display = 'none';
+        return;
+    }
+
+    const allArchived = await Utils.getArchivedTabs();
+    // Filter for the currently active space
+    const spaceArchived = allArchived.filter(tab => tab.spaceId === activeSpaceId);
+
+    if (spaceArchived.length === 0) {
+        // message.style.display = 'block';
+        message.textContent = 'No archived tabs in this space.';
+        list.style.display = 'none';
+    } else {
+        // message.style.display = 'none';
+        message.textContent = '';
+        list.style.display = 'block';
+        spaceArchived.forEach(archivedTab => {
+            // Create a simple representation (can reuse parts of createTabElement if desired)
+            const item = document.createElement('div');
+            item.className = 'tab archived-item'; // Reuse tab class for basic styling
+            item.title = `${archivedTab.name}\n${archivedTab.url}\nArchived: ${new Date(archivedTab.archivedAt).toLocaleString()}`;
+
+            const favicon = document.createElement('img');
+            favicon.src = Utils.getFaviconUrl(archivedTab.url);
+            favicon.className = 'tab-favicon';
+            favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; };
+
+            const details = document.createElement('div');
+            details.className = 'tab-details';
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'tab-title-display';
+            titleSpan.textContent = archivedTab.name;
+            details.appendChild(titleSpan);
+            // details.textContent = archivedTab.name; // Just show name for simplicity
+
+            const restoreButton = document.createElement('button');
+            // restoreButton.textContent = '⎌'; // Or an icon
+            restoreButton.innerHTML = RESTORE_ICON;
+            restoreButton.className = 'tab-restore'; // Add specific class for styling if needed
+            restoreButton.style.marginLeft = 'auto'; // Push to the right
+            restoreButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                Utils.restoreArchivedTab(archivedTab);
+                item.remove(); // Remove immediately from popup
+                // Optionally check if list is now empty and show message
+                if (list.children.length === 0) {
+                     message.style.display = 'block';
+                     list.style.display = 'none';
+                }
+            });
+
+            item.appendChild(favicon);
+            item.appendChild(details);
+            item.appendChild(restoreButton);
+            list.appendChild(item);
+        });
+    }
+}
+
+
+// Function to show the custom context menu for tabs
+function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement) {
+    // Remove any existing context menus
+    const existingMenu = document.getElementById('tab-context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+
+    const contextMenu = document.createElement('div');
+    contextMenu.id = 'tab-context-menu';
+    contextMenu.className = 'context-menu'; // Reuse general context menu styling
+    contextMenu.style.position = 'fixed';
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+
+    // --- Menu Items ---
+
+    // 1. Archive Tab (Only for active tabs)
+    if (!isBookmarkOnly) {
+        const archiveOption = document.createElement('div');
+        archiveOption.className = 'context-menu-item';
+        archiveOption.textContent = 'Archive Tab';
+        archiveOption.addEventListener('click', async () => {
+            await Utils.archiveTab(tab.id); // Use the utility function
+            contextMenu.remove();
+        });
+        contextMenu.appendChild(archiveOption);
+    }
+
+    // 2. TODO: Move tab to another space
+
+    // 3. Close Tab / Remove Bookmark
+    const closeOption = document.createElement('div');
+    closeOption.className = 'context-menu-item';
+    closeOption.textContent = isBookmarkOnly ? 'Remove Bookmark' : 'Close Tab';
+    closeOption.addEventListener('click', () => {
+        closeTab(tabElement, tab, isPinned, isBookmarkOnly);
+        contextMenu.remove();
+    });
+    contextMenu.appendChild(closeOption);
+
+    // --- Add to DOM and setup closing ---
+    document.body.appendChild(contextMenu);
+
+    // Close context menu when clicking outside
+    const closeContextMenu = (e) => {
+        if (!contextMenu.contains(e.target)) {
+            contextMenu.remove();
+            document.removeEventListener('click', closeContextMenu, { capture: true }); // Use capture phase
+        }
+    };
+    // Use capture phase to catch clicks before they bubble up
+    document.addEventListener('click', closeContextMenu, { capture: true });
+}
+
+
 function setupDOMElements() {
     const spaceSwitcher = document.getElementById('spaceSwitcher');
     spaceSwitcher.addEventListener('wheel', (event) => {
@@ -1738,6 +1868,25 @@ function setupDOMElements() {
         if (swatch) {
             swatch.classList.add('selected');
         }
+    });
+
+    document.querySelectorAll('.space').forEach(space => {
+        const popup = space.querySelector('.archived-tabs-popup');
+        const archiveButton = space.querySelector('.sidebar-button');
+        // const archivedTabsPopup = popup.querySelector('.archived-tabs-popup');
+        const spaceContent = space.querySelector('.space-content');
+
+        archiveButton.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent closing immediately if clicking outside logic exists
+            spaceContent.classList.toggle('hidden');
+            const isVisible = popup.style.opacity == 1;
+            if (isVisible) {
+                popup.classList.toggle('visible');
+            } else {
+                showArchivedTabsPopup(); // Populate and show
+                popup.classList.toggle('visible');
+            }
+        });
     });
 }
 
