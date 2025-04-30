@@ -170,10 +170,13 @@ async function initSidebar() {
             };
 
             // Create bookmark folder for space bookmarks using UUID
-            await chrome.bookmarks.create({
-                parentId: spacesFolder.id,
-                title: defaultSpace.name
-            });
+            const bookmarkFolder = spacesFolder.children.find(f => f.title == defaultSpaceName);
+            if (!bookmarkFolder) {
+                await chrome.bookmarks.create({
+                    parentId: spacesFolder.id,
+                    title: defaultSpaceName
+                });
+            }
 
             spaces = [defaultSpace];
             saveSpaces();
@@ -225,28 +228,8 @@ async function initSidebar() {
                 } else {
                     console.log("found folder", group.title)
                     // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
-                    const processBookmarkFolder = async (folder) => {
-                        const bookmarks = [];
-                        const items = await chrome.bookmarks.getChildren(folder.id);
-                        
-                        for (const item of items) {
-                            if (item.url) {
-                                // This is a bookmark
-                                const tab = tabs.find(t => t.url === item.url);
-                                if (tab) {
-                                    bookmarks.push(tab.id);
-                                }
-                            } else {
-                                // This is a folder, recursively process it
-                                const subFolderBookmarks = await processBookmarkFolder(item);
-                                bookmarks.push(...subFolderBookmarks);
-                            }
-                        }
-                        
-                        return bookmarks;
-                    };
                     
-                    spaceBookmarks = await processBookmarkFolder(bookmarkFolder);
+                    spaceBookmarks = await Utils.processBookmarkFolder(bookmarkFolder, group.id);
                     // Remove null values from spaceBookmarks
                     spaceBookmarks = spaceBookmarks.filter(id => id !== null);
 
@@ -315,7 +298,7 @@ function createSpaceElement(space) {
         sidebarContainer.style.setProperty('--space-bg-color-dark', `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`);
 
         saveSpaces();
-        updateSpaceSwitcher();
+        await updateSpaceSwitcher();
     });
 
     // Handle color swatch clicks
@@ -358,7 +341,7 @@ function createSpaceElement(space) {
 
         space.name = nameInput.value;
         saveSpaces();
-        updateSpaceSwitcher();
+        await updateSpaceSwitcher();
     });
 
     // Set up containers
@@ -393,16 +376,58 @@ function createSpaceElement(space) {
     spacesList.appendChild(spaceElement);
 }
 
-function updateSpaceSwitcher() {
+async function updateSpaceSwitcher() {
     console.log('Updating space switcher...');
     spaceSwitcher.innerHTML = '';
     spaces.forEach(space => {
         const button = document.createElement('button');
         button.textContent = space.name;
         button.classList.toggle('active', space.id === activeSpaceId);
-        button.addEventListener('click', async () => await setActiveSpace(space.id));
+        button.addEventListener('click', async () => {
+            console.log("clicked for active", space);
+            const groups = await chrome.tabGroups.query({});
+            console.log("groups", groups);
+            await setActiveSpace(space.id);
+        });
         spaceSwitcher.appendChild(button);
     });
+
+    // Inactive space from bookmarks
+    const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+    const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+    spaceFolders.forEach(spaceFolder => {
+        if(spaces.find(space => space.name == spaceFolder.title)) {
+            return;
+        } else {
+            const button = document.createElement('button');
+            button.textContent = spaceFolder.title;
+            button.addEventListener('click', async () => {
+                console.log("button click inactive space", spaceFolder);
+                isCreatingSpace = true;
+                const newTab = await ChromeHelper.createNewTab();
+                const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceFolder.title, 'grey');
+                const spaceBookmarks = await Utils.processBookmarkFolder(spaceFolder, groupId);
+                const space = {
+                    id: groupId,
+                    uuid: Utils.generateUUID(),
+                    name: spaceFolder.title,
+                    color: 'grey',
+                    spaceBookmarks: spaceBookmarks,
+                    temporaryTabs: [newTab.id],
+                    lastTab: newTab.id,
+                };
+                spaces.push(space);
+                saveSpaces();
+                createSpaceElement(space);
+                await setActiveSpace(space.id);
+                isCreatingSpace = false;
+            });
+            spaceSwitcher.appendChild(button);
+        } 
+    });
+
+    // const spaceFolder = spaceFolders.find(f => f.title === space.name);
+
 }
 
 function getDragAfterElement(container, y) {
@@ -424,7 +449,7 @@ async function setActiveSpace(spaceId, updateTab = true) {
     console.log('Setting active space:', spaceId);
 
     // Centralize logic in our new helper function
-    activateSpaceInDOM(spaceId);
+    await activateSpaceInDOM(spaceId);
 
     let tabGroups = await chrome.tabGroups.query({});
     let tabGroupsToClose = tabGroups.filter(group => group.id !== spaceId);
@@ -434,6 +459,7 @@ async function setActiveSpace(spaceId, updateTab = true) {
 
     const tabGroupForSpace = tabGroups.find(group => group.id === spaceId);
     if (!tabGroupForSpace) {
+        isCreatingSpace = true;
         const space = spaces.find(s => s.id === spaceId);
         const newTab = await ChromeHelper.createNewTab();
         const groupId = await ChromeHelper.createNewTabGroup(newTab, space.name, space.color);
@@ -446,15 +472,16 @@ async function setActiveSpace(spaceId, updateTab = true) {
             return s;
         });
         saveSpaces();
+        isCreatingSpace = false;
     } else {
         // Uncollpase space's tab group
-    await chrome.tabGroups.update(spaceId, {collapsed: false})
+        await chrome.tabGroups.update(spaceId, {collapsed: false})
 
         // Get all tabs in the space and activate the last one
         if (updateTab) {
             const space = spaces.find(s => s.id === parseInt(spaceId));
             console.log("updateTab space",space);
-        chrome.tabs.query({ groupId: spaceId }, tabs => {
+            chrome.tabs.query({ groupId: spaceId }, tabs => {
                 if (tabs.length > 0) {
                     const lastTab = space.lastTab ?? tabs[tabs.length - 1].id;
                 chrome.tabs.update(lastTab, { active: true });
@@ -1274,7 +1301,7 @@ async function createNewSpace() {
         console.log('New space created:', { spaceId: space.id, spaceName: space.name, spaceColor: space.color });
 
         createSpaceElement(space);
-        updateSpaceSwitcher();
+        await updateSpaceSwitcher();
         await setActiveSpace(space.id);
         saveSpaces();
 
@@ -1515,6 +1542,10 @@ function handleTabMove(tabId, moveInfo) {
 }
 
 function handleTabActivated(activeInfo) {
+    if (isCreatingSpace) {
+        console.log('Skipping tab creation handler - space is being created');
+        return;
+    }
     chrome.windows.getCurrent({populate: false}, async (currentWindow) => {
         if (activeInfo.windowId !== currentWindow.id) {
             console.log('New tab is in a different window, ignoring...');
@@ -1537,7 +1568,7 @@ function handleTabActivated(activeInfo) {
 
         if (spaceWithTab && spaceWithTab.id !== activeSpaceId) {
             // Switch to the space containing the tab
-            activateSpaceInDOM(spaceWithTab.id);
+            await activateSpaceInDOM(spaceWithTab.id);
             activateTabInDOM(activeInfo.tabId);
         } else {
             // Activate only the tab in the current space
@@ -1577,7 +1608,7 @@ async function deleteSpace(spaceId) {
 
         // Save changes
         saveSpaces();
-        updateSpaceSwitcher();
+        await updateSpaceSwitcher();
     }
 }
 
@@ -1658,7 +1689,7 @@ function activateTabInDOM(tabId) {
     }
 }
 
-function activateSpaceInDOM(spaceId) {
+async function activateSpaceInDOM(spaceId) {
     // Update global state
     activeSpaceId = spaceId;
 
@@ -1679,7 +1710,7 @@ function activateSpaceInDOM(spaceId) {
     }
 
     // Update space switcher
-    updateSpaceSwitcher();
+    await updateSpaceSwitcher();
 }
 
 // Function to display the archived tabs popup
