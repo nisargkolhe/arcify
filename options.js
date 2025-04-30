@@ -1,26 +1,48 @@
+import { Utils } from './utils.js'; 
+
 // Function to save options to chrome.storage
-function saveOptions() {
+async function saveOptions() {
   const defaultSpaceName = document.getElementById('defaultSpaceName').value;
-  chrome.storage.local.set({
-    defaultSpaceName: defaultSpaceName || 'Home' // Default to 'Home' if empty
-  }, () => {
-    // Update status to let user know options were saved.
+  const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
+  const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+//   const saveButton = document.getElementById('saveSettingsBtn'); // Or however settings are saved
+
+  const settings = {
+    defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
+    autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
+    autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 30,
+  };
+
+  try {
+    await chrome.storage.sync.set(settings);
+    console.log('Settings saved:', settings);
+
+    // Notify background script to update the alarm immediately
+    await chrome.runtime.sendMessage({ action: 'updateAutoArchiveSettings' });
+
+    // Show status message to user
     const status = document.getElementById('status');
+    console.log('Status:', status);
     status.textContent = 'Options saved.';
     setTimeout(() => {
       status.textContent = '';
-    }, 1500);
-  });
+    }, 2000);
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
 }
 
 // Function to restore options from chrome.storage
-function restoreOptions() {
-  // Use default value defaultSpaceName = 'Home'
-  chrome.storage.local.get({
-    defaultSpaceName: 'Home'
-  }, (items) => {
-    document.getElementById('defaultSpaceName').value = items.defaultSpaceName;
-  });
+async function restoreOptions() {
+
+    const settings = await Utils.getSettings(); 
+
+    const defaultSpaceName = document.getElementById('defaultSpaceName');
+    const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled'); 
+    const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+    defaultSpaceName.value = settings.defaultSpaceName;
+    autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
+    autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
 }
 
 document.addEventListener('DOMContentLoaded', restoreOptions);

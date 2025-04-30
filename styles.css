@@ -19,7 +19,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
     color: #333;
     height: 100vh;
-    overflow-y: auto;
+    overflow: hidden;
     font-weight: 500;
 }
 
@@ -27,6 +27,7 @@ h3 {
     opacity: 0.8;
     font-weight: 600;
     margin-left: 8px;
+    margin-bottom: 8px;
     color: #0c0c0c9e;
 }
 
@@ -164,10 +165,10 @@ h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
 }
 
 .space-name {
+    flex-grow: 1;
     background: none;
     border: none;
     font-size: 16px;
@@ -191,11 +192,11 @@ h3 {
 .space-options {
     background: none;
     border: none;
-    font-size: 18px;
-    color: #666;
+    font-size: 20px;
+    color: #555;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 8px;
+    border-radius: 8px;
 }
 
 .space-options:hover {
@@ -404,6 +405,19 @@ h3 {
     display: none;
 }
 
+.space-content {
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+    opacity: 1;
+    z-index: 1;
+}
+
+.space-content.hidden {
+    opacity: 0;
+    z-index: 0;
+}
+
 .pinned-tabs,
 .temporary-tabs {
     margin-top: 12px;
@@ -413,7 +427,7 @@ h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    /* margin-bottom: 8px; */
 }
 
 .clean-tabs-btn {
@@ -615,6 +629,21 @@ h3 {
     text-overflow: ellipsis;
 }
 
+.tab-restore {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    margin-left: 8px;
+}
+
 .tab-close,
 .tab-remove {
     width: 28px;
@@ -639,7 +668,7 @@ h3 {
 }
 
 .tab-close:hover,
-.tab-remove:hover {
+.tab-remove:hover, .tab-restore:hover {
     background-color: rgba(0, 0, 0, 0.1);
 }
 
@@ -890,4 +919,165 @@ h3 {
     font-size: 0.9rem;
     min-height: 1.2em; /* Prevent layout shift */
     text-align: center;
+}
+
+/* Archive Section Styles */
+.archive-section {
+    position: absolute; /* Needed for absolute positioning of popup */
+    width: 100%;
+    margin-top: auto; /* Push to the bottom */
+    display: flex;
+    justify-content: flex-start; /* Align button to the left */
+    transition: all 0.3s ease;
+}
+
+.sidebar-button { /* General style for buttons like archive */
+    background: none;
+    border: none;
+    font-size: 20px; /* Adjust icon size */
+    padding: 8px;
+    cursor: pointer;
+    border-radius: 8px;
+    color: #555; /* Adjust icon color */
+    transition: background-color 0.2s ease;
+}
+
+.sidebar-button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.archived-tabs-popup {
+    display: block; /* Hidden by default */
+    height: 100%;
+    opacity: 0;
+    margin-top: 12px;
+    width: 100%;
+    max-height: 50%; /* Limit height */
+    overflow-y: auto;
+    z-index: 0; /* Ensure it's above other elements */
+    transition: all 0.3s ease;
+    /* padding: 8px; */
+    /* font-size: 13px; */
+}
+
+.archived-tabs-popup.visible {
+    opacity: 1;
+    z-index: 2;
+    /* height: 25rem; */
+}
+
+.archived-tabs-list .archived-tab-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.archived-tabs-list .archived-tab-item:hover {
+    background-color: #f0f0f0;
+}
+
+.archived-tab-item img {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.archived-tab-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+}
+
+.no-archived-tabs-message {
+    padding: 10px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+}
+
+/* Simple scrollbar for popup */
+.archived-tabs-popup::-webkit-scrollbar {
+    width: 5px;
+}
+.archived-tabs-popup::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 3px;
+}
+
+.svg-icon {
+    width: 24px;
+    margin: 0 4px;
+    fill: currentColor;
+    opacity: 0.7;
+}
+
+/* iOS Toggle Switch Styles */
+.options-setting-toggle {
+    display: flex; /* Align label and toggle horizontally */
+    align-items: end; 
+    justify-content: space-between; /* Push toggle to the right */
+}
+
+.toggle-switch-container {
+    position: relative;
+    display: inline-block;
+    width: 51px;  /* Standard iOS toggle width */
+    height: 31px; /* Standard iOS toggle height */
+}
+
+/* Hide the default checkbox */
+.ios-toggle {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+/* Style the visual label (the track) */
+.toggle-label {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc; /* Default track color (off) */
+    transition: .4s;
+    border-radius: 34px; /* Make it rounded */
+}
+
+/* Style the knob (the circle) */
+.toggle-label:before {
+    position: absolute;
+    content: "";
+    height: 27px; /* Knob height */
+    width: 27px;  /* Knob width */
+    left: 2px;    /* Initial position (off) */
+    bottom: 2px;  /* Position from bottom */
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%; /* Make it a circle */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Subtle shadow */
+}
+
+/* Change track color when checked */
+.ios-toggle:checked + .toggle-label {
+    background-color: #4CD964; /* iOS green */
+}
+
+/* Move the knob when checked */
+.ios-toggle:checked + .toggle-label:before {
+    transform: translateX(20px); /* Move knob to the right */
+}
+
+/* Optional: Add focus style for accessibility */
+.ios-toggle:focus + .toggle-label {
+    box-shadow: 0 0 1px #4CD964;
 }

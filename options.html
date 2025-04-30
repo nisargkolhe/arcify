@@ -13,10 +13,25 @@
             <input type="text" id="defaultSpaceName" class="options-input"> 
         </div>
 
-        <button id="save" class="options-button">Save Settings</button> 
+        <div class="options-setting-item options-setting-toggle">
+             <label for="autoArchiveEnabled" class="options-label">Enable Auto-Archiving:</label>
+             <div class="toggle-switch-container">
+                 <input type="checkbox" id="autoArchiveEnabled" class="ios-toggle">
+                 <label for="autoArchiveEnabled" class="toggle-label"></label> <!-- Visual part of the toggle -->
+             </div>
+        </div>
+
+        <div class="options-setting-item">
+           <label for="autoArchiveIdleMinutes" class="options-label">Archive Tabs After Idle (minutes):</label>
+           <input type="number" id="autoArchiveIdleMinutes" class="options-input" min="1" step="1">
+           <small class="options-description">Tabs inactive for this duration (and not pinned or audible) will be archived.</small>
+        </div>
+
+        <button id="save" class="options-button">Save Settings</button>
         <div id="status" class="options-status"></div>
     </div>
 
-    <script src="options.js"></script>
+    <script type="module" src="utils.js"></script>
+    <script type="module" src="options.js"></script> <!-- Ensure options.js is type="module" if it uses imports -->
 </body>
 </html>
