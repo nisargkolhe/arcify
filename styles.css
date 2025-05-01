@@ -1106,3 +1106,26 @@ h3 {
     width: 100%;
     left: 0;
 }
+
+#spaceSwitcher button {
+    /* Add transition for smooth movement */
+    transition: transform 0.2s ease-in-out, margin-left 0.2s ease-in-out, margin-right 0.2s ease-in-out;
+    /* Ensure buttons don't wrap unexpectedly if you add margins */
+    white-space: nowrap;
+}
+
+/* Class to add margin *before* an element */
+.drag-over-placeholder-before {
+    margin-left: 50px; /* Adjust size as needed */
+}
+
+/* Class to add margin *after* an element (for dropping at the end) */
+.drag-over-placeholder-after {
+     margin-right: 50px; /* Adjust size as needed */
+}
+
+/* Optional: Style for the button being dragged */
+.dragging-switcher {
+    opacity: 0.5;
+    /* Add any other styles for the dragged item */
+}
