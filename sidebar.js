@@ -45,7 +45,7 @@ async function updateBookmarkForTab(tab) {
             });
         }
     }
-    
+
 }
 
 console.log("hi");
@@ -232,7 +232,7 @@ async function initSidebar() {
                 } else {
                     console.log("found folder", group.title)
                     // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
-                    
+
                     spaceBookmarks = await Utils.processBookmarkFolder(bookmarkFolder, group.id);
                     // Remove null values from spaceBookmarks
                     spaceBookmarks = spaceBookmarks.filter(id => id !== null);
@@ -293,10 +293,10 @@ function createSpaceElement(space) {
     colorSelect.addEventListener('change', async () => {
         const newColor = colorSelect.value;
         space.color = newColor;
-        
+
         // Update tab group color
         await chrome.tabGroups.update(space.id, { color: newColor });
-        
+
         // Update space background color
         sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${newColor}-color, rgba(255, 255, 255, 0.1))`);
         sidebarContainer.style.setProperty('--space-bg-color-dark', `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`);
@@ -311,16 +311,16 @@ function createSpaceElement(space) {
         if (e.target.classList.contains('color-swatch')) {
             const colorPicker = e.target.closest('.color-picker-grid');
             const color = e.target.dataset.color;
-            
+
             // Update selected swatch
             colorPicker.querySelectorAll('.color-swatch').forEach(swatch => {
                 swatch.classList.remove('selected');
             });
             e.target.classList.add('selected');
-            
+
             // Update hidden select value
             colorSelect.value = color;
-            
+
             // Trigger change event on select
             const event = new Event('change');
             colorSelect.dispatchEvent(event);
@@ -572,7 +572,7 @@ async function updateSpaceSwitcher() {
                 isCreatingSpace = false;
             });
             spaceSwitcher.appendChild(button);
-        } 
+        }
     });
 
     // const spaceFolder = spaceFolders.find(f => f.title === space.name);
@@ -1017,7 +1017,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
             // Process the space folder and get all bookmarked URLs
             bookmarkedTabURLs = await processBookmarkNode(spaceFolder, pinnedContainer);
         }
-        
+
 
         // Load temporary tabs
         space.temporaryTabs.forEach(async tabId => {
@@ -1067,7 +1067,7 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
 
             await searchAndRemoveBookmark(spaceFolder.id);
         }
-        
+
         return;
     }
 
@@ -1289,7 +1289,14 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         document.querySelectorAll('.tab.active').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.pinned-favicon.active').forEach(t => t.classList.remove('active'));
 
-        if (isBookmarkOnly) {
+        let chromeTab = null;
+        try {
+            chromeTab = await chrome.tabs.get(tab.id);
+        } catch(e) {
+            console.log("Tab likely closed during archival.", e, tab);
+        }
+
+        if (isBookmarkOnly || !chromeTab) {
             console.log('Opening bookmark:', tab.url);
             isOpeningBookmark = true; // Set flag
             try {
@@ -1554,7 +1561,7 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                     img.src = Utils.getFaviconUrl(tab.url); // Use updated URL
                 }
             }
-            
+
             const titleDisplay = tabElement.querySelector('.tab-title-display');
             const domainDisplay = tabElement.querySelector('.tab-domain-display');
             const titleInput = tabElement.querySelector('.tab-title-input'); // Get input element
@@ -1572,13 +1579,13 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                 if (document.activeElement !== titleInput) {
                    const overrides = await Utils.getTabNameOverrides();
                    console.log('changeInfo', changeInfo);
-                   console.log('overrides', overrides); 
+                   console.log('overrides', overrides);
                    console.log('tab.url', tab.url); // Log the tab URL her
                    const override = overrides[tabId]; // Use potentially new URL
                    console.log('override', override); // Log the override object here
                    let displayTitle = tab.title; // Use potentially new title
                    let displayDomain = null;
-   
+
                    if (override) {
                        displayTitle = override.name;
                        try {
@@ -2009,9 +2016,9 @@ function setupDOMElements() {
     const spaceSwitcher = document.getElementById('spaceSwitcher');
     spaceSwitcher.addEventListener('wheel', (event) => {
         event.preventDefault();
-        
+
         const scrollAmount = event.deltaY;
-        
+
         spaceSwitcher.scrollLeft += scrollAmount;
     }, { passive: false });
 
@@ -2044,16 +2051,16 @@ function setupDOMElements() {
             const colorPicker = document.getElementById('createSpaceColorSwatch');
             const select = document.getElementById('spaceColor');
             const color = e.target.dataset.color;
-            
+
             // Update selected swatch
             colorPicker.querySelectorAll('.color-swatch').forEach(swatch => {
                 swatch.classList.remove('selected');
             });
             e.target.classList.add('selected');
-            
+
             // Update hidden select value
             select.value = color;
-            
+
             // Trigger change event on select
             const event = new Event('change');
             select.dispatchEvent(event);
@@ -2117,6 +2124,6 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 }
             }
         });
-        
-    }   
+
+    }
 });

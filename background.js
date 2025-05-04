@@ -12,19 +12,7 @@ chrome.sidePanel.setPanelBehavior({
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install' || details.reason === 'update') {
-        chrome.tabs.create({ url: 'onboarding.html', active: true }, async (tab) => {
-            const tabGroups = await chrome.tabGroups.query({});
-            const defaultGroup = tabGroups.find(group => group.title === 'Home');
-            if (defaultGroup) {
-                console.log("found existing default group", defaultGroup);
-                // Move ungrouped tabs to existing Default group
-                await chrome.tabs.group({tabIds: tab.id, groupId: defaultGroup.id});
-            } else {
-                // Create new Default group
-                defaultGroupId = await chrome.tabs.group({tabIds: tab.id});
-                await chrome.tabGroups.update(defaultGroupId, {title: 'Home', color: 'grey'});
-            }
-        });
+        chrome.tabs.create({ url: 'onboarding.html', active: true });
     }
     if (chrome.contextMenus) {
         chrome.contextMenus.create({
