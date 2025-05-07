@@ -79,7 +79,7 @@ We use GitHub Issues to track bugs and feature requests. Before creating a new i
 
 ## Contributing
 
-Discord to discuss development: https://discord.gg/DFPaQJ79
+Discord to discuss development: https://discord.gg/D9jQHQnjNb
 
 We welcome contributions! Here's how you can help:
 
