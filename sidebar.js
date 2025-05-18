@@ -376,6 +376,22 @@ function createSpaceElement(space) {
     // Load tabs
     loadTabs(space, pinnedContainer, tempContainer);
 
+    const popup = spaceElement.querySelector('.archived-tabs-popup');
+    const archiveButton = spaceElement.querySelector('.sidebar-button');
+    const spaceContent = spaceElement.querySelector('.space-content');
+
+    archiveButton.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent closing immediately if clicking outside logic exists
+        spaceContent.classList.toggle('hidden');
+        const isVisible = popup.style.opacity == 1;
+        if (isVisible) {
+            popup.classList.toggle('visible');
+        } else {
+            showArchivedTabsPopup(); // Populate and show
+            popup.classList.toggle('visible');
+        }
+    });
+
     // Add to DOM
     spacesList.appendChild(spaceElement);
 }
@@ -556,11 +572,19 @@ async function updateSpaceSwitcher() {
                 const newTab = await ChromeHelper.createNewTab();
                 const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceFolder.title, 'grey');
                 const spaceBookmarks = await Utils.processBookmarkFolder(spaceFolder, groupId);
+
+                const colors = [
+                    "grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan"
+                ];
+
+                const randomIndex = Math.floor(Math.random() * colors.length);
+                const color = colors[randomIndex];
+
                 const space = {
                     id: groupId,
                     uuid: Utils.generateUUID(),
                     name: spaceFolder.title,
-                    color: 'grey',
+                    color: color,
                     spaceBookmarks: spaceBookmarks,
                     temporaryTabs: [newTab.id],
                     lastTab: newTab.id,
@@ -1901,18 +1925,15 @@ async function showArchivedTabsPopup() {
     }
 
     const allArchived = await Utils.getArchivedTabs();
-    // Filter for the currently active space
-    const spaceArchived = allArchived.filter(tab => tab.spaceId === activeSpaceId);
-
-    if (spaceArchived.length === 0) {
+    if (allArchived.length === 0) {
         // message.style.display = 'block';
-        message.textContent = 'No archived tabs in this space.';
+        message.textContent = 'No archived tabs.';
         list.style.display = 'none';
     } else {
         // message.style.display = 'none';
         message.textContent = '';
         list.style.display = 'block';
-        spaceArchived.forEach(archivedTab => {
+        allArchived.forEach(archivedTab => {
             // Create a simple representation (can reuse parts of createTabElement if desired)
             const item = document.createElement('div');
             item.className = 'tab archived-item'; // Reuse tab class for basic styling
@@ -2075,25 +2096,6 @@ function setupDOMElements() {
         if (swatch) {
             swatch.classList.add('selected');
         }
-    });
-
-    document.querySelectorAll('.space').forEach(space => {
-        const popup = space.querySelector('.archived-tabs-popup');
-        const archiveButton = space.querySelector('.sidebar-button');
-        // const archivedTabsPopup = popup.querySelector('.archived-tabs-popup');
-        const spaceContent = space.querySelector('.space-content');
-
-        archiveButton.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent closing immediately if clicking outside logic exists
-            spaceContent.classList.toggle('hidden');
-            const isVisible = popup.style.opacity == 1;
-            if (isVisible) {
-                popup.classList.toggle('visible');
-            } else {
-                showArchivedTabsPopup(); // Populate and show
-                popup.classList.toggle('visible');
-            }
-        });
     });
 }
 
