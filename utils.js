@@ -15,10 +15,15 @@ const Utils = {
                 const tab = tabs.find(t => t.url === item.url);
                 if (tab) {
                     bookmarks.push(tab.id);
+                    // Set tab name override with the bookmark's title
+                    if (item.title && item.title !== tab.title) { // Only override if bookmark title is present and different
+                        await this.setTabNameOverride(tab.id, tab.url, item.title);
+                        console.log(`Override set for tab ${tab.id} from bookmark: ${item.title}`);
+                    }
                 }
             } else {
                 // This is a folder, recursively process it
-                const subFolderBookmarks = await this.processBookmarkFolder(item);
+                const subFolderBookmarks = await this.processBookmarkFolder(item, groupId);
                 bookmarks.push(...subFolderBookmarks);
             }
         }
