@@ -1,29 +1,35 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description:
+globs:
+alwaysApply: false
 ---
-### `utils.js` - Core Utilities
-- **Tab Name Overrides**: Custom tab naming system
-- **Favicon Handling**: Chrome favicon API integration
-- **Settings Management**: User preferences and configuration
-- **Archive System**: Tab archiving and restoration
-- **UUID Generation**: Unique identifiers for spaces
-- **Bookmark Title Updates**: Sync tab titles with bookmarks
+# Helper Modules
 
-### `localstorage.js` - Data Persistence
-- **Bookmark Folder Management**: Create/manage Arcify bookmark structure
-- **Duplicate Folder Merging**: Handle bookmark folder conflicts
-- **Recursive Folder Operations**: Deep bookmark tree manipulation
-- **Space Folder Creation**: Organize bookmarks by space
+## ChromeHelper
 
-### `chromeHelper.js` - Browser API Abstractions
-- **Tab Creation**: Simplified new tab creation
-- **Tab Group Management**: Create and configure tab groups
-- **Error Handling**: Consistent Chrome API error management
+The `ChromeHelper` module encapsulates Chrome API interactions and provides a cleaner interface for:
+- Creating new tabs
+- Creating new tab groups
+- Managing tab groups
 
-### `icons.js` - UI Assets
-- **SVG Icon Definitions**: Folder, restore, and UI icons
-- **Consistent Iconography**: Maintain visual consistency
+## LocalStorage
 
+The `LocalStorage` module manages persistent storage using Chrome's bookmarks API:
+- `getOrCreateArcifyFolder()` - Gets or creates the root bookmark folder
+- `getOrCreateSpaceFolder(name)` - Gets or creates a bookmark folder for a space
 
+## Utils
+
+The `Utils` module provides utility functions for:
+- Generating UUIDs
+- Getting settings
+- Getting favicon URLs
+- Managing tab name overrides
+- Handling tab archiving and restoration
+
+## Constants
+
+The codebase defines several constants:
+- `MouseButton` - Enum for mouse button values
+- Default space names and colors
+- Global state flags like `isCreatingSpace`, `isOpeningBookmark`
