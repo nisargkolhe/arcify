@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 Arcify is a Chrome extension that replicates Arc browser's innovative vertical tab management system. The extension provides a sidebar interface for organizing tabs into "Spaces" (tab groups) with advanced features like:
 
@@ -13,3 +13,4 @@ Arcify is a Chrome extension that replicates Arc browser's innovative vertical t
 - **Drag & Drop**: Intuitive tab organization and space management
 - **Keyboard Shortcuts**: Quick access (Ctrl/Cmd+K for sidebar, Ctrl/Cmd+D for pin toggle)
 The goal is to bring Arc's beloved tab management philosophy to Chrome users, emphasizing clean organization, reduced tab clutter, and context-based browsing.
+
