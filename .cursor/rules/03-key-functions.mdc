@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 ### Core Tab Management (`sidebar.js`)
 - **`initSidebar()`**: Initialize extension state and create default space
@@ -31,3 +31,4 @@ alwaysApply: false
 - **`runAutoArchiveCheck()`**: Identify and archive inactive tabs
 - **`updateTabLastActivity(tabId)`**: Track tab usage for archiving
 - **`setupAutoArchiveAlarm()`**: Configure periodic archiving checks
+

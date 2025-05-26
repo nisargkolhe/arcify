@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 ### `utils.js` - Core Utilities
 - **Tab Name Overrides**: Custom tab naming system
@@ -25,4 +25,5 @@ alwaysApply: false
 ### `icons.js` - UI Assets
 - **SVG Icon Definitions**: Folder, restore, and UI icons
 - **Consistent Iconography**: Maintain visual consistency
+
 

@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 ### File Structure Principles
 - **Single Responsibility**: Each module handles one core concern
@@ -34,3 +34,4 @@ alwaysApply: false
 - **Side Panel Integration**: Leverage Chrome's native side panel API
 - **Tab Group API**: Utilize Chrome's tab grouping for space implementation
 - **Bookmark API**: Deep integration with Chrome's bookmark system for persistence 
+
