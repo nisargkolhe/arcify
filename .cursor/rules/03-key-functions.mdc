@@ -1,5 +1,33 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+### Core Tab Management (`sidebar.js`)
+- **`initSidebar()`**: Initialize extension state and create default space
+- **`setActiveSpace(spaceId)`**: Switch between spaces and update UI
+- **`createNewSpace()`**: Create new workspace with tab group and bookmark folder
+- **`moveTabToSpace(tabId, spaceId)`**: Transfer tabs between spaces
+- **`moveTabToPinned(space, tab)`**: Convert temporary tab to pinned (bookmarked)
+- **`moveTabToTemp(space, tab)`**: Convert pinned tab to temporary
+
+### Space Management
+- **`createSpaceElement(space)`**: Generate DOM for space in sidebar
+- **`updateSpaceSwitcher()`**: Refresh space navigation UI
+- **`deleteSpace(spaceId)`**: Remove space and handle tab cleanup
+- **`loadTabs(space, pinnedContainer, tempContainer)`**: Populate space with tabs
+
+### Tab Lifecycle Handlers
+- **`handleTabCreated(tab)`**: Process new tabs and assign to active space
+- **`handleTabUpdate(tabId, changeInfo, tab)`**: Update tab display and bookmarks
+- **`handleTabRemove(tabId)`**: Clean up removed tabs from spaces
+- **`handleTabActivated(activeInfo)`**: Update active tab highlighting
+
+### Drag & Drop System
+- **`setupDragAndDrop(pinnedContainer, tempContainer)`**: Enable tab reordering
+- **`getDragAfterElement(container, y)`**: Calculate drop position for tabs
+
+### Auto-Archiving (`background.js`)
+- **`runAutoArchiveCheck()`**: Identify and archive inactive tabs
+- **`updateTabLastActivity(tabId)`**: Track tab usage for archiving
+- **`setupAutoArchiveAlarm()`**: Configure periodic archiving checks
