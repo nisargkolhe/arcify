@@ -1,5 +1,36 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+### File Structure Principles
+- **Single Responsibility**: Each module handles one core concern
+- **ES6 Modules**: Clean imports/exports for dependency management
+- **Consistent Naming**: camelCase for functions, kebab-case for files
+- **Event-Driven Architecture**: Reactive to Chrome browser events
+
+### Coding Standards
+- **Async/Await**: Prefer modern async patterns over callbacks
+- **Error Handling**: Comprehensive try-catch blocks for Chrome API calls
+- **Console Logging**: Detailed logging for debugging and monitoring
+- **DOM Manipulation**: Direct DOM access with proper event cleanup
+- **Chrome API Best Practices**: Follow Manifest V3 guidelines
+### Key Patterns
+- **Space-Centric Design**: Everything organized around the concept of "Spaces"
+- **Bookmark-First Persistence**: Use Chrome bookmarks as primary storage
+- **Event Delegation**: Efficient event handling for dynamic content
+- **Progressive Enhancement**: Graceful degradation when features unavailable
+
+### Development Guidelines
+- **Arc Browser Inspiration**: Study Arc's UX patterns for feature implementation
+- **Performance First**: Minimize DOM operations and API calls
+- **User Experience**: Prioritize intuitive interactions and visual feedback
+- **Accessibility**: Ensure keyboard navigation and screen reader support
+- **Cross-Platform**: Support both Windows (Ctrl) and Mac (Cmd) shortcuts
+
+### Extension-Specific Considerations
+- **Manifest V3 Compliance**: Use service workers, avoid persistent background pages
+- **Permission Minimization**: Request only necessary Chrome permissions
+- **Side Panel Integration**: Leverage Chrome's native side panel API
+- **Tab Group API**: Utilize Chrome's tab grouping for space implementation
+- **Bookmark API**: Deep integration with Chrome's bookmark system for persistence 
