@@ -1,36 +1,41 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description:
+globs:
+alwaysApply: false
 ---
-### Core Architecture Pattern
-- **Manifest V3 Extension**: Modern Chrome extension using service worker background script
-- **Modular ES6 Structure**: Clean separation of concerns with ES6 modules
-- **Side Panel API**: Utilizes Chrome's native side panel for persistent sidebar
-- **Event-Driven**: Reactive to Chrome tab/window events with proper cleanup
+# App Architecture
 
-### Key Components
-```
-├── manifest.json          # Extension configuration and permissions
-├── background.js          # Service worker for tab lifecycle and auto-archiving
-├── sidebar.html/js        # Main UI and tab management logic
-├── options.html/js        # Settings and configuration
-├── onboarding.html        # First-run experience
-├── utils.js              # Shared utilities and helper functions
-├── localstorage.js       # Bookmark and data persistence layer
-├── chromeHelper.js       # Chrome API abstractions
-└── icons.js              # UI icon definitions
-```
+## Core Concepts
 
-### Data Flow
-1. **Tab Events** → Background Script → Sidebar Updates
-2. **User Actions** → Sidebar → Chrome APIs → State Updates
-3. **Persistence** → Chrome Bookmarks + Local Storage
-4. **Spaces** → Tab Groups + Bookmark Folders
+- **Spaces**: Represented as Chrome tab groups with additional metadata and bookmarks
+- **Tabs**: Browser tabs that can be either temporary or pinned (bookmarked)
+- **Bookmarks**: Saved tabs that persist even when the tab is closed
 
-### State Management
-- **Spaces Array**: In-memory representation of tab groups/spaces
-- **Chrome Storage**: Settings and temporary data
-- **Chrome Bookmarks**: Persistent tab storage organized by space folders
-- **Tab Activity Tracking**: For auto-archiving functionality
+## State Management
 
+The extension maintains a global state in the `spaces` array, with each space containing:
+- `id`: Chrome tab group ID
+- `uuid`: Unique identifier
+- `name`: Display name
+- `color`: Color theme
+- `spaceBookmarks`: Array of pinned tab IDs
+- `temporaryTabs`: Array of temporary tab IDs
+
+Chrome bookmarks are used as the persistent storage mechanism. Each space has a corresponding bookmark folder.
+
+## Event Handlers
+
+The extension uses Chrome event listeners to respond to tab changes:
+- `chrome.tabs.onCreated` - Handles new tab creation
+- `chrome.tabs.onUpdated` - Handles tab URL or title changes
+- `chrome.tabs.onRemoved` - Handles tab closures
+- `chrome.tabs.onActivated` - Handles tab switching
+
+## DOM Structure
+
+The sidebar UI has these key components:
+- Space switcher at top
+- Per-space tab container
+- Pinned tabs section
+- Temporary tabs section
+- Add space and new tab buttons

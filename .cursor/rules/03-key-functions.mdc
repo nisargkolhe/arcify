@@ -1,34 +1,43 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description:
+globs:
+alwaysApply: false
 ---
-### Core Tab Management (`sidebar.js`)
-- **`initSidebar()`**: Initialize extension state and create default space
-- **`setActiveSpace(spaceId)`**: Switch between spaces and update UI
-- **`createNewSpace()`**: Create new workspace with tab group and bookmark folder
-- **`moveTabToSpace(tabId, spaceId)`**: Transfer tabs between spaces
-- **`moveTabToPinned(space, tab)`**: Convert temporary tab to pinned (bookmarked)
-- **`moveTabToTemp(space, tab)`**: Convert pinned tab to temporary
+# Key Functions
 
-### Space Management
-- **`createSpaceElement(space)`**: Generate DOM for space in sidebar
-- **`updateSpaceSwitcher()`**: Refresh space navigation UI
-- **`deleteSpace(spaceId)`**: Remove space and handle tab cleanup
-- **`loadTabs(space, pinnedContainer, tempContainer)`**: Populate space with tabs
+## Space Management
 
-### Tab Lifecycle Handlers
-- **`handleTabCreated(tab)`**: Process new tabs and assign to active space
-- **`handleTabUpdate(tabId, changeInfo, tab)`**: Update tab display and bookmarks
-- **`handleTabRemove(tabId)`**: Clean up removed tabs from spaces
-- **`handleTabActivated(activeInfo)`**: Update active tab highlighting
+- `initSidebar()` - Initialize the sidebar, creating default spaces if needed
+- `createSpaceElement(space)` - Create DOM elements for a space
+- `setActiveSpace(spaceId)` - Switch to a specific space
+- `createNewSpace()` - Create a new space
+- `deleteSpace(spaceId)` - Delete a space and its tabs
 
-### Drag & Drop System
-- **`setupDragAndDrop(pinnedContainer, tempContainer)`**: Enable tab reordering
-- **`getDragAfterElement(container, y)`**: Calculate drop position for tabs
+## Tab Management
 
-### Auto-Archiving (`background.js`)
-- **`runAutoArchiveCheck()`**: Identify and archive inactive tabs
-- **`updateTabLastActivity(tabId)`**: Track tab usage for archiving
-- **`setupAutoArchiveAlarm()`**: Configure periodic archiving checks
+- `createTabElement(tab, isPinned, isBookmarkOnly)` - Create DOM element for a tab
+- `loadTabs(space, pinnedContainer, tempContainer)` - Load tabs for a space
+- `createNewTab()` - Create a new tab in the active space
+- `closeTab(tabElement, tab, isPinned, isBookmarkOnly)` - Close a tab
+- `moveTabToPinned(space, tab)` - Move a tab to the pinned section
+- `moveTabToTemp(space, tab)` - Move a tab to the temporary section
+- `moveTabToSpace(tabId, spaceId, pinned)` - Move a tab to a different space
 
+## Event Handlers
+
+- `handleTabCreated(tab)` - Handle newly created tabs
+- `handleTabUpdate(tabId, changeInfo, tab)` - Handle tab updates
+- `handleTabRemove(tabId)` - Handle tab removal
+- `handleTabActivated(activeInfo)` - Handle tab activation
+
+## Bookmarks Management
+
+- `updateBookmarkForTab(tab)` - Update bookmark for a tab
+- `searchBookmarks(folderId, tab)` - Search for bookmark matching a tab
+
+## UI Features
+
+- `setupDragAndDrop(pinnedContainer, tempContainer)` - Set up drag-and-drop functionality
+- `showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement)` - Show context menu for tabs
+- `showArchivedTabsPopup()` - Display archived tabs popup
+- `updatePinnedFavicons()` - Update the pinned favicons display

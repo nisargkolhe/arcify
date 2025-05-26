@@ -1,37 +1,44 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description:
+globs:
+alwaysApply: false
 ---
-### File Structure Principles
-- **Single Responsibility**: Each module handles one core concern
-- **ES6 Modules**: Clean imports/exports for dependency management
-- **Consistent Naming**: camelCase for functions, kebab-case for files
-- **Event-Driven Architecture**: Reactive to Chrome browser events
+# Code Organization
 
-### Coding Standards
-- **Async/Await**: Prefer modern async patterns over callbacks
-- **Error Handling**: Comprehensive try-catch blocks for Chrome API calls
-- **Console Logging**: Detailed logging for debugging and monitoring
-- **DOM Manipulation**: Direct DOM access with proper event cleanup
-- **Chrome API Best Practices**: Follow Manifest V3 guidelines
-### Key Patterns
-- **Space-Centric Design**: Everything organized around the concept of "Spaces"
-- **Bookmark-First Persistence**: Use Chrome bookmarks as primary storage
-- **Event Delegation**: Efficient event handling for dynamic content
-- **Progressive Enhancement**: Graceful degradation when features unavailable
+## Initialization Flow
 
-### Development Guidelines
-- **Arc Browser Inspiration**: Study Arc's UX patterns for feature implementation
-- **Performance First**: Minimize DOM operations and API calls
-- **User Experience**: Prioritize intuitive interactions and visual feedback
-- **Accessibility**: Ensure keyboard navigation and screen reader support
-- **Cross-Platform**: Support both Windows (Ctrl) and Mac (Cmd) shortcuts
+1. Event listener setup on `DOMContentLoaded`
+2. `initSidebar()` called
+   - Chrome API calls to get current tabs and groups
+   - Create spaces based on existing tab groups or create default space
+   - Set up DOM elements and event handlers
+3. Setup event listeners for Chrome tab events
 
-### Extension-Specific Considerations
-- **Manifest V3 Compliance**: Use service workers, avoid persistent background pages
-- **Permission Minimization**: Request only necessary Chrome permissions
-- **Side Panel Integration**: Leverage Chrome's native side panel API
-- **Tab Group API**: Utilize Chrome's tab grouping for space implementation
-- **Bookmark API**: Deep integration with Chrome's bookmark system for persistence 
+## Component Structure
 
+The code is organized around the concept of spaces and tabs:
+
+- Space management functions
+- Tab management functions 
+- Event handlers
+- UI interaction handlers
+- Helper functions
+
+## State Persistence
+
+State is persisted in two ways:
+
+1. Chrome bookmarks API for persistent storage
+   - Each space has its own folder
+   - Bookmarked tabs are stored in these folders
+   
+2. Chrome storage API for extension state
+   - `saveSpaces()` function saves to `chrome.storage.local`
+   - Spaces array contains the current state
+
+## Event Flow
+
+1. User interacts with UI (clicks, drags tabs)
+2. Event handlers update the DOM
+3. Chrome API calls update the browser state
+4. `saveSpaces()` persists the updated state
