@@ -188,11 +188,77 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
 
 export async function showArchivedTabsPopup(activeSpaceId) {
     const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
-
     const popup = spaceElement.querySelector('.archived-tabs-popup');
     const list = popup.querySelector('.archived-tabs-list');
     const message = popup.querySelector('.no-archived-tabs-message');
-    list.innerHTML = ''; // Clear previous items
+    list.innerHTML = '';
+
+    // --- Archiving Controls ---
+    let controls = popup.querySelector('.archiving-controls');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'archiving-controls';
+        popup.insertBefore(controls, list);
+    } else {
+        controls.innerHTML = '';
+    }
+
+    // Fetch current settings
+    const settings = await Utils.getSettings();
+    const archivingEnabled = settings.autoArchiveEnabled;
+    const archiveTime = settings.autoArchiveIdleMinutes;
+
+    // Toggle (styled)
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'archiving-toggle-label';
+    const toggleWrapper = document.createElement('span');
+    toggleWrapper.className = 'archiving-toggle';
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = archivingEnabled;
+    const slider = document.createElement('span');
+    slider.className = 'archiving-toggle-slider';
+    toggleWrapper.appendChild(toggle);
+    toggleWrapper.appendChild(slider);
+    toggleLabel.appendChild(toggleWrapper);
+    toggleLabel.appendChild(document.createTextNode('Enable Archiving'));
+    controls.appendChild(toggleLabel);
+
+    // Archive time input (styled)
+    const timeContainer = document.createElement('div');
+    timeContainer.className = 'archiving-time-container';
+    const timeInput = document.createElement('input');
+    timeInput.type = 'number';
+    timeInput.min = '1';
+    timeInput.value = archiveTime;
+    timeInput.className = 'archiving-time-input';
+    timeInput.disabled = !archivingEnabled;
+    const minLabel = document.createElement('span');
+    minLabel.textContent = 'min';
+    timeContainer.appendChild(timeInput);
+    timeContainer.appendChild(minLabel);
+    controls.appendChild(timeContainer);
+
+    // Event listeners
+    toggle.addEventListener('change', async (e) => {
+        const enabled = toggle.checked;
+        timeInput.disabled = !enabled;
+        await Utils.setArchivingEnabled(enabled);
+    });
+    timeInput.addEventListener('change', async (e) => {
+        let val = parseInt(timeInput.value, 10);
+        if (isNaN(val) || val < 1) val = 1;
+        timeInput.value = val;
+        await Utils.setArchiveTime(val);
+    });
+
+    // --- End Archiving Controls ---
+
+    if (!archivingEnabled) {
+        message.textContent = 'Tab Archiving is disabled. Use the toggle above to enable.';
+        list.style.display = 'none';
+        return;
+    }
 
     if (!(await Utils.isArchivingEnabled())) {
         message.textContent = 'Tab Archiving is disabled. Go to extension settings to enable.';

@@ -239,6 +239,18 @@ const Utils = {
             console.error(`Error restoring archived tab ${archivedTabData.url}:`, error);
         }
     },
+
+    setArchivingEnabled: async function(enabled) {
+        const settings = await this.getSettings();
+        settings.autoArchiveEnabled = enabled;
+        await chrome.storage.sync.set({ autoArchiveEnabled: enabled });
+    },
+
+    setArchiveTime: async function(minutes) {
+        const settings = await this.getSettings();
+        settings.autoArchiveIdleMinutes = minutes;
+        await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
+    },
 }
 
 export { Utils };

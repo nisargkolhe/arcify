@@ -1129,3 +1129,79 @@ h3 {
     opacity: 0.5;
     /* Add any other styles for the dragged item */
 }
+
+.archiving-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 16px 0 8px;
+}
+
+.archiving-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--sidebar-text-color, #222);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Toggle Switch */
+.archiving-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  display: inline-block;
+}
+.archiving-toggle input[type='checkbox'] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.archiving-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #ccc;
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+.archiving-toggle input:checked + .archiving-toggle-slider {
+  background: #4caf50;
+}
+.archiving-toggle-slider:before {
+  content: '';
+  position: absolute;
+  left: 3px; top: 3px;
+  width: 14px; height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.archiving-toggle input:checked + .archiving-toggle-slider:before {
+  transform: translateX(16px);
+}
+
+.archiving-time-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.archiving-time-input {
+  width: 64px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 2px 6px;
+  font-size: 14px;
+  background: var(--sidebar-bg, #f7f7f7);
+  color: var(--sidebar-text-color, #222);
+  outline: none;
+  transition: border 0.2s;
+}
+.archiving-time-input:disabled {
+  background: #f0f0f0;
+  color: #aaa;
+  border-color: #eee;
+}
