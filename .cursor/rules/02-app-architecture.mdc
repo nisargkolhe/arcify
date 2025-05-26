@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 ### Core Architecture Pattern
 - **Manifest V3 Extension**: Modern Chrome extension using service worker background script
@@ -33,3 +33,4 @@ alwaysApply: false
 - **Chrome Storage**: Settings and temporary data
 - **Chrome Bookmarks**: Persistent tab storage organized by space folders
 - **Tab Activity Tracking**: For auto-archiving functionality
+
