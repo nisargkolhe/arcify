@@ -1,5 +1,35 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+### Core Architecture Pattern
+- **Manifest V3 Extension**: Modern Chrome extension using service worker background script
+- **Modular ES6 Structure**: Clean separation of concerns with ES6 modules
+- **Side Panel API**: Utilizes Chrome's native side panel for persistent sidebar
+- **Event-Driven**: Reactive to Chrome tab/window events with proper cleanup
+
+### Key Components
+```
+├── manifest.json          # Extension configuration and permissions
+├── background.js          # Service worker for tab lifecycle and auto-archiving
+├── sidebar.html/js        # Main UI and tab management logic
+├── options.html/js        # Settings and configuration
+├── onboarding.html        # First-run experience
+├── utils.js              # Shared utilities and helper functions
+├── localstorage.js       # Bookmark and data persistence layer
+├── chromeHelper.js       # Chrome API abstractions
+└── icons.js              # UI icon definitions
+```
+
+### Data Flow
+1. **Tab Events** → Background Script → Sidebar Updates
+2. **User Actions** → Sidebar → Chrome APIs → State Updates
+3. **Persistence** → Chrome Bookmarks + Local Storage
+4. **Spaces** → Tab Groups + Bookmark Folders
+
+### State Management
+- **Spaces Array**: In-memory representation of tab groups/spaces
+- **Chrome Storage**: Settings and temporary data
+- **Chrome Bookmarks**: Persistent tab storage organized by space folders
+- **Tab Activity Tracking**: For auto-archiving functionality

@@ -1,5 +1,15 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+Arcify is a Chrome extension that replicates Arc browser's innovative vertical tab management system. The extension provides a sidebar interface for organizing tabs into "Spaces" (tab groups) with advanced features like:
+
+- **Vertical Tab Management**: Sidebar-based tab organization inspired by Arc browser
+- **Spaces System**: Tab groups that function as workspaces for different contexts (work, personal, projects)
+- **Pinned vs Temporary Tabs**: Persistent pinned tabs and auto-archiving temporary tabs
+- **Bookmark Integration**: Seamless integration with Chrome bookmarks for persistent tab storage
+- **Auto-archiving**: Intelligent tab cleanup based on inactivity
+- **Drag & Drop**: Intuitive tab organization and space management
+- **Keyboard Shortcuts**: Quick access (Ctrl/Cmd+K for sidebar, Ctrl/Cmd+D for pin toggle)
+The goal is to bring Arc's beloved tab management philosophy to Chrome users, emphasizing clean organization, reduced tab clutter, and context-based browsing.

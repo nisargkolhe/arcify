@@ -1,5 +1,28 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+### `utils.js` - Core Utilities
+- **Tab Name Overrides**: Custom tab naming system
+- **Favicon Handling**: Chrome favicon API integration
+- **Settings Management**: User preferences and configuration
+- **Archive System**: Tab archiving and restoration
+- **UUID Generation**: Unique identifiers for spaces
+- **Bookmark Title Updates**: Sync tab titles with bookmarks
+
+### `localstorage.js` - Data Persistence
+- **Bookmark Folder Management**: Create/manage Arcify bookmark structure
+- **Duplicate Folder Merging**: Handle bookmark folder conflicts
+- **Recursive Folder Operations**: Deep bookmark tree manipulation
+- **Space Folder Creation**: Organize bookmarks by space
+
+### `chromeHelper.js` - Browser API Abstractions
+- **Tab Creation**: Simplified new tab creation
+- **Tab Group Management**: Create and configure tab groups
+- **Error Handling**: Consistent Chrome API error management
+
+### `icons.js` - UI Assets
+- **SVG Icon Definitions**: Folder, restore, and UI icons
+- **Consistent Iconography**: Maintain visual consistency
+
