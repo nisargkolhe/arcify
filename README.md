@@ -18,34 +18,78 @@ A Chrome extension that replicates Arc browser's tab management system, providin
 
 ### Prerequisites
 
+- Node.js (v16 or higher)
+- npm or yarn
 - Google Chrome or Chromium-based browser
 - Git (for version control)
 - Basic knowledge of HTML, CSS, and JavaScript
 
-### Loading the Extension
+### Quick Start
 
-1. Clone the repository
+1. **Clone and Install**
    ```bash
    git clone https://github.com/nisargkolhe/arcify.git
    cd arcify
+   npm install
    ```
 
-2. Open Chrome Extensions page
+2. **Development Build**
+   ```bash
+   npm run dev
+   ```
+   This creates a `dist-dev/` folder with source maps for debugging and watches for file changes.
+
+3. **Production Build**
+   ```bash
+   npm run build
+   ```
+   This creates an optimized `dist/` folder ready for distribution.
+
+4. **Create Distribution Package**
+   ```bash
+   npm run build:zip
+   ```
+   This builds the extension and creates `arcify-extension.zip` for Chrome Web Store submission.
+
+### Loading the Extension in Chrome
+
+1. **Open Chrome Extensions page**
    - Navigate to `chrome://extensions/`
    - Or go to Menu → More Tools → Extensions
 
-3. Enable Developer Mode
+2. **Enable Developer Mode**
    - Toggle the "Developer mode" switch in the top right corner
 
-4. Load the Extension
+3. **Load the Extension**
    - Click "Load unpacked"
-   - Select the directory containing the extension files
+   - Select the `dist/` or `dist-dev/` directory
    - The extension should now appear in your browser
 
-5. Development
-   - Make changes to the code
-   - Click the refresh icon on the extension card to apply changes
-   - Check the extension's developer tools for any errors
+### Development Workflow
+
+1. **Make Changes**
+   - Edit source files in the root directory
+   - For development: `npm run dev` (watches for changes)
+   - For production testing: `npm run build`
+
+2. **Reload Extension**
+   - Go to `chrome://extensions/`
+   - Click the refresh icon on the Arcify extension card
+   - Or use Ctrl+R in the extension's popup/sidebar
+
+3. **Debug**
+   - Use Chrome DevTools for the extension pages
+   - Check the extension's service worker in `chrome://extensions/`
+   - View console logs in the extension's background page
+
+### Build Scripts
+
+- `npm run dev` - Development build with file watching
+- `npm run build` - Production build
+- `npm run build:zip` - Build and create zip package
+- `npm run zip` - Create zip from existing build
+- `npm run clean` - Remove all build artifacts
+- `npm run preview` - Preview the built extension
 
 ## Issues and Feature Requests
 
