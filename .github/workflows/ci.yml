@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build extension (development)
+        run: npm run dev
+      
+      - name: Build extension (production)
+        run: npm run build
+      
+      - name: Create zip package
+        run: npm run zip
+      
+      - name: Verify build artifacts
+        run: |
+          echo "Checking build artifacts..."
+          ls -la dist/
+          ls -la dist-dev/
+          ls -la *.zip
+          
+          echo "Verifying manifest.json exists in both builds..."
+          test -f dist/manifest.json
+          test -f dist-dev/manifest.json
+          
+          echo "Verifying main files exist..."
+          test -f dist/background.js
+          test -f dist/sidebar.js
+          test -f dist/sidebar.html
+          
+          echo "✅ All build artifacts verified!"
+      
+      - name: Upload build artifacts (on main branch)
+        if: github.ref == 'refs/heads/main' && matrix.node-version == '18'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-build
+          path: |
+            dist/
+            *.zip
+          retention-days: 7 

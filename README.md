@@ -90,6 +90,47 @@ A Chrome extension that replicates Arc browser's tab management system, providin
 - `npm run zip` - Create zip from existing build
 - `npm run clean` - Remove all build artifacts
 - `npm run preview` - Preview the built extension
+- `npm run info` - Display build information and status
+- `npm run release <type>` - Create a new release (patch/minor/major/x.y.z)
+
+### Release Process
+
+The project uses automated releases via GitHub Actions. To create a new release:
+
+1. **Prepare your changes**
+   ```bash
+   # Make sure all changes are committed
+   git status
+   ```
+
+2. **Create a release**
+   ```bash
+   # For bug fixes (2.2.0 → 2.2.1)
+   npm run release patch
+   
+   # For new features (2.2.0 → 2.3.0)
+   npm run release minor
+   
+   # For breaking changes (2.2.0 → 3.0.0)
+   npm run release major
+   
+   # For specific version
+   npm run release 2.5.0
+   ```
+
+3. **Automated process**
+   - Updates `package.json` and `manifest.json` versions
+   - Builds and tests the extension
+   - Creates a git tag and pushes to GitHub
+   - GitHub Actions automatically:
+     - Builds the extension
+     - Generates release notes from commits
+     - Creates a GitHub release
+     - Attaches the zip file and SHA256 checksum
+
+4. **Monitor the release**
+   - Check the [Actions tab](https://github.com/nisargkolhe/arcify/actions) for build status
+   - Review the generated release at [Releases](https://github.com/nisargkolhe/arcify/releases)
 
 ## Issues and Feature Requests
 
