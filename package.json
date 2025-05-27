@@ -10,7 +10,8 @@
     "zip": "node scripts/zip.js",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-dev *.zip",
-    "info": "node scripts/build-info.js"
+    "info": "node scripts/build-info.js",
+    "release": "node scripts/release.js"
   },
   "devDependencies": {
     "vite": "^6.0.0",

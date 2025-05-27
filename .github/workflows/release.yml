@@ -1,0 +1,174 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v2.1.3, etc.
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for changelog generation
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build extension
+        run: npm run build
+      
+      - name: Create zip package
+        run: npm run zip
+      
+      - name: Generate SHA256 checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(sha256sum arcify-extension.zip | cut -d ' ' -f 1)
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+          echo "SHA256: $CHECKSUM" > checksum.txt
+      
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Generate release notes
+        id: release_notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const fs = require('fs');
+            
+            // Get the current tag and previous tag
+            const currentTag = context.ref.replace('refs/tags/', '');
+            
+            let previousTag;
+            try {
+              previousTag = execSync('git describe --tags --abbrev=0 HEAD^', { encoding: 'utf8' }).trim();
+            } catch (error) {
+              // If no previous tag exists, use the first commit
+              previousTag = execSync('git rev-list --max-parents=0 HEAD', { encoding: 'utf8' }).trim();
+            }
+            
+            // Get commits between tags
+            const commits = execSync(`git log ${previousTag}..${currentTag} --pretty=format:"%h %s" --no-merges`, { encoding: 'utf8' }).trim();
+            
+            // Read package.json for extension info
+            const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const manifestJson = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            
+            // Generate release notes
+            let releaseNotes = `# ${manifestJson.name} v${steps.version.outputs.version}\n\n`;
+            releaseNotes += `${manifestJson.description}\n\n`;
+            
+            if (commits) {
+              releaseNotes += `## 🚀 What's Changed\n\n`;
+              const commitLines = commits.split('\n');
+              
+              // Categorize commits
+              const features = [];
+              const fixes = [];
+              const other = [];
+              
+              commitLines.forEach(line => {
+                if (line.toLowerCase().includes('feat') || line.toLowerCase().includes('add')) {
+                  features.push(line);
+                } else if (line.toLowerCase().includes('fix') || line.toLowerCase().includes('bug')) {
+                  fixes.push(line);
+                } else {
+                  other.push(line);
+                }
+              });
+              
+              if (features.length > 0) {
+                releaseNotes += `### ✨ New Features\n`;
+                features.forEach(commit => {
+                  const [hash, ...messageParts] = commit.split(' ');
+                  releaseNotes += `- ${messageParts.join(' ')} (${hash})\n`;
+                });
+                releaseNotes += '\n';
+              }
+              
+              if (fixes.length > 0) {
+                releaseNotes += `### 🐛 Bug Fixes\n`;
+                fixes.forEach(commit => {
+                  const [hash, ...messageParts] = commit.split(' ');
+                  releaseNotes += `- ${messageParts.join(' ')} (${hash})\n`;
+                });
+                releaseNotes += '\n';
+              }
+              
+              if (other.length > 0) {
+                releaseNotes += `### 🔧 Other Changes\n`;
+                other.forEach(commit => {
+                  const [hash, ...messageParts] = commit.split(' ');
+                  releaseNotes += `- ${messageParts.join(' ')} (${hash})\n`;
+                });
+                releaseNotes += '\n';
+              }
+            }
+            
+            // Add installation instructions
+            releaseNotes += `## 📦 Installation\n\n`;
+            releaseNotes += `### Chrome Web Store\n`;
+            releaseNotes += `*Coming soon - extension will be available on the Chrome Web Store*\n\n`;
+            releaseNotes += `### Manual Installation\n`;
+            releaseNotes += `1. Download \`arcify-extension.zip\` from the assets below\n`;
+            releaseNotes += `2. Extract the zip file\n`;
+            releaseNotes += `3. Open Chrome and go to \`chrome://extensions/\`\n`;
+            releaseNotes += `4. Enable "Developer mode" in the top right\n`;
+            releaseNotes += `5. Click "Load unpacked" and select the extracted folder\n\n`;
+            
+            // Add file info
+            releaseNotes += `## 📋 File Information\n\n`;
+            releaseNotes += `| File | SHA256 Checksum |\n`;
+            releaseNotes += `|------|----------------|\n`;
+            releaseNotes += `| arcify-extension.zip | \`${steps.checksum.outputs.checksum}\` |\n\n`;
+            
+            // Add compatibility info
+            releaseNotes += `## 🔧 Compatibility\n\n`;
+            releaseNotes += `- **Chrome**: Version 88+ (Manifest V3 support required)\n`;
+            releaseNotes += `- **Edge**: Version 88+ (Chromium-based)\n`;
+            releaseNotes += `- **Brave**: Version 1.20+\n`;
+            releaseNotes += `- **Opera**: Version 74+\n\n`;
+            
+            releaseNotes += `## 🛠️ Development\n\n`;
+            releaseNotes += `Built with:\n`;
+            releaseNotes += `- Vite.js for modern build tooling\n`;
+            releaseNotes += `- Chrome Extension Manifest V3\n`;
+            releaseNotes += `- ES6 Modules\n\n`;
+            
+            releaseNotes += `---\n\n`;
+            releaseNotes += `**Full Changelog**: https://github.com/${{ github.repository }}/compare/${previousTag}...${currentTag}`;
+            
+            return releaseNotes;
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Arcify v${{ steps.version.outputs.version }}
+          body: ${{ steps.release_notes.outputs.result }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+          files: |
+            arcify-extension.zip
+            checksum.txt 
