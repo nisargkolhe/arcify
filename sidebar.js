@@ -151,7 +151,9 @@ async function initSidebar() {
 
         // Create bookmarks folder for spaces if it doesn't exist
         const spacesFolder = await LocalStorage.getOrCreateArcifyFolder();
-
+        console.log("spacesFolder", spacesFolder);
+        const subFolders = await chrome.bookmarks.getChildren(spacesFolder.id);
+        console.log("subFolders", subFolders);
         if (tabGroups.length === 0) {
             let currentTabs = allTabs.filter(tab => tab.id && !tab.pinned) ?? [];
 
@@ -177,7 +179,7 @@ async function initSidebar() {
             };
 
             // Create bookmark folder for space bookmarks using UUID
-            const bookmarkFolder = spacesFolder.children.find(f => f.title == defaultSpaceName);
+            const bookmarkFolder = subFolders.find(f => !f.url && f.title == defaultSpaceName);
             if (!bookmarkFolder) {
                 await chrome.bookmarks.create({
                     parentId: spacesFolder.id,
