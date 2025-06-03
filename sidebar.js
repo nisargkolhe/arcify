@@ -576,21 +576,15 @@ async function updateSpaceSwitcher() {
                 console.log("button click inactive space", spaceFolder);
                 isCreatingSpace = true;
                 const newTab = await ChromeHelper.createNewTab();
-                const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceFolder.title, 'grey');
+                const groupColor = await Utils.getTabGroupColor(spaceFolder.title);
+                const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceFolder.title, groupColor);
                 const spaceBookmarks = await Utils.processBookmarkFolder(spaceFolder, groupId);
-
-                const colors = [
-                    "grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan"
-                ];
-
-                const randomIndex = Math.floor(Math.random() * colors.length);
-                const color = colors[randomIndex];
 
                 const space = {
                     id: groupId,
                     uuid: Utils.generateUUID(),
                     name: spaceFolder.title,
-                    color: color,
+                    color: groupColor,
                     spaceBookmarks: spaceBookmarks,
                     temporaryTabs: [newTab.id],
                     lastTab: newTab.id,
@@ -1753,7 +1747,7 @@ function handleTabActivated(activeInfo) {
 
         if (spaceWithTab && spaceWithTab.id !== activeSpaceId) {
             // Switch to the space containing the tab
-            await activateSpaceInDOM(spaceWithTab.id);
+            await activateSpaceInDOM(spaceWithTab.id, spaces, updateSpaceSwitcher);
             activateTabInDOM(activeInfo.tabId);
         } else {
             // Activate only the tab in the current space
