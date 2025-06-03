@@ -28,7 +28,7 @@ jobs:
         run: npm ci
       
       - name: Build extension (development)
-        run: npm run dev
+        run: npm run build:dev
       
       - name: Build extension (production)
         run: npm run build
