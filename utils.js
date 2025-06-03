@@ -98,6 +98,21 @@ const Utils = {
         }
     },
 
+    getTabGroupColor: async function (groupName) {
+        let tabGroups = await chrome.tabGroups.query({});
+
+        const chromeTabGroupColors = [
+            'grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'
+        ];
+        const existingGroup = tabGroups.find(group => group.title === groupName);
+        if (existingGroup) {
+            return existingGroup.color;
+        } else {
+            const randomIndex = Math.floor(Math.random() * chromeTabGroupColors.length);
+            return chromeTabGroupColors[randomIndex];
+        }
+    },
+
     updateBookmarkTitleIfNeeded: async function(tab, activeSpace, newTitle) {    
         console.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
     
