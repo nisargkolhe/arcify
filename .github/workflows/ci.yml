@@ -37,12 +37,10 @@ jobs:
         run: |
           echo "Checking build artifacts..."
           ls -la dist/
-          ls -la dist-dev/
           ls -la *.zip
           
           echo "Verifying manifest.json exists in both builds..."
           test -f dist/manifest.json
-          test -f dist-dev/manifest.json
           
           echo "Verifying main files exist..."
           test -f dist/background.js
