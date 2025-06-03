@@ -166,14 +166,15 @@ async function initSidebar() {
             // Create default tab group and move all tabs to it
             console.log('currentTabs', currentTabs);
             const groupId = await chrome.tabs.group({tabIds: currentTabs.map(tab => tab.id)});
-            await chrome.tabGroups.update(groupId, {title: defaultSpaceName, color: 'grey'});
+            const groupColor = await Utils.getTabGroupColor(defaultSpaceName);
+            await chrome.tabGroups.update(groupId, {title: defaultSpaceName, color: groupColor});
 
             // Create default space with UUID
             const defaultSpace = {
                 id: groupId,
                 uuid: Utils.generateUUID(),
                 name: defaultSpaceName,
-                color: 'grey',
+                color: groupColor,
                 spaceBookmarks: [],
                 temporaryTabs: currentTabs.map(tab => tab.id),
             };
