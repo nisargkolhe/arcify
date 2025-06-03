@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite build --config vite.config.dev.js --watch",
     "build": "vite build",
-    "build:dev": "vite build --config vite.config.dev.js",
     "build:zip": "vite build && npm run zip",
     "zip": "node scripts/zip.js",
     "preview": "vite preview",
