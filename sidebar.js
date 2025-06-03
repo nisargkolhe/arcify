@@ -28,8 +28,8 @@ let currentWindow = null;
 let defaultSpaceName = 'Home';
 
 // Helper function to update bookmark for a tab
-async function updateBookmarkForTab(tab) {
-    console.log("updating tab", tab);
+async function updateBookmarkForTab(tab, bookmarkTitle) {
+    console.log("updating bookmark", tab, bookmarkTitle);
     const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
     const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
 
@@ -40,7 +40,7 @@ async function updateBookmarkForTab(tab) {
         const bookmark = bookmarks.find(b => b.url === tab.url);
         if (bookmark) {
             await chrome.bookmarks.update(bookmark.id, {
-                title: tab.title,
+                title: bookmarkTitle,
                 url: tab.url
             });
         }
@@ -1028,7 +1028,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                                     favIconUrl: null,
                                     spaceName: space.name
                                 };
-                                console.log('Creating UI element for inactive bookmark:', item.title);
+                                console.log('Creating UI element for inactive bookmark:', item);
                                 const tabElement = await createTabElement(bookmarkTab, true, true);
                                 bookmarkedTabURLs.push(item.url);
                                 container.appendChild(tabElement);
@@ -1327,7 +1327,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         }
 
         if (isBookmarkOnly || !chromeTab) {
-            console.log('Opening bookmark:', tab.url);
+            console.log('Opening bookmark:', tab);
             isOpeningBookmark = true; // Set flag
             try {
                 // Find the space this bookmark belongs to (assuming it's the active one for simplicity)
@@ -1344,6 +1344,11 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                     active: true, // Make it active immediately
                     windowId: currentWindow.id // Ensure it opens in the current window
                 });
+
+                // If bookmark has a custom name, set tab name override
+                if (tab.title && newTab.title !== tab.title) {
+                    await Utils.setTabNameOverride(newTab.id, tab.url, tab.title);
+                }
 
                 // Replace tab element
                 const bookmarkTab = {
@@ -1570,6 +1575,7 @@ function handleTabUpdate(tabId, changeInfo, tab) {
             const titleDisplay = tabElement.querySelector('.tab-title-display');
             const domainDisplay = tabElement.querySelector('.tab-domain-display');
             const titleInput = tabElement.querySelector('.tab-title-input'); // Get input element
+            let displayTitle = tab.title; // Use potentially new title
 
             if (changeInfo.pinned !== undefined) {
                 if (changeInfo.pinned) {
@@ -1588,7 +1594,6 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                    console.log('tab.url', tab.url); // Log the tab URL her
                    const override = overrides[tabId]; // Use potentially new URL
                    console.log('override', override); // Log the override object here
-                   let displayTitle = tab.title; // Use potentially new title
                    let displayDomain = null;
 
                    if (override) {
@@ -1617,7 +1622,7 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                 tabElement.querySelector('.tab-favicon').src = Utils.getFaviconUrl(changeInfo.url);
                 // Update bookmark URL if this is a pinned tab
                 if (tabElement.closest('[data-tab-type="pinned"]')) {
-                    updateBookmarkForTab(tab);
+                    updateBookmarkForTab(tab, displayTitle);
                 }
             }
             // Update active state when tab's active state changes
