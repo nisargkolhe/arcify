@@ -266,6 +266,36 @@ const Utils = {
         settings.autoArchiveIdleMinutes = minutes;
         await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
     },
+
+    // Search and remove bookmark by URL from a folder structure recursively
+    searchAndRemoveBookmark: async function(folderId, tabUrl, options = {}) {
+        const {
+            removeTabElement = false, // Whether to also remove the tab element from DOM
+            tabElement = null, // The tab element to remove if removeTabElement is true
+            logRemoval = false // Whether to log the removal
+        } = options;
+
+        const items = await chrome.bookmarks.getChildren(folderId);
+        for (const item of items) {
+            if (item.url === tabUrl) {
+                if (logRemoval) {
+                    console.log("removing bookmark", item);
+                }
+                await chrome.bookmarks.remove(item.id);
+                
+                if (removeTabElement && tabElement) {
+                    tabElement.remove();
+                }
+                
+                return true; // Bookmark found and removed
+            } else if (!item.url) {
+                // This is a folder, search recursively
+                const found = await this.searchAndRemoveBookmark(item.id, tabUrl, options);
+                if (found) return true;
+            }
+        }
+        return false; // Bookmark not found
+    },
 }
 
 export { Utils };

@@ -57,9 +57,12 @@ async function updatePinnedFavicons() {
 
     // Remove favicon elements for tabs that are no longer pinned
     Array.from(pinnedFavicons.children).forEach(element => {
-        const tabId = element.dataset.tabId;
-        if (!pinnedTabs.some(tab => tab.id.toString() === tabId)) {
-            element.remove();
+        // Only remove elements that are pinned favicons (have the pinned-favicon class)
+        if (element.classList.contains('pinned-favicon')) {
+            const tabId = element.dataset.tabId;
+            if (!pinnedTabs.some(tab => tab.id.toString() === tabId)) {
+                element.remove();
+            }
         }
     });
 
@@ -71,6 +74,7 @@ async function updatePinnedFavicons() {
             faviconElement.className = 'pinned-favicon';
             faviconElement.title = tab.title;
             faviconElement.dataset.tabId = tab.id;
+            faviconElement.draggable = true; // Make pinned favicon draggable
 
             const img = document.createElement('img');
             img.src = Utils.getFaviconUrl(tab.url, "96");
@@ -85,9 +89,30 @@ async function updatePinnedFavicons() {
                 chrome.tabs.update(tab.id, { active: true });
             });
 
+            // Add drag event listeners for pinned favicon
+            faviconElement.addEventListener('dragstart', () => {
+                faviconElement.classList.add('dragging');
+            });
+
+            faviconElement.addEventListener('dragend', () => {
+                faviconElement.classList.remove('dragging');
+            });
+
             pinnedFavicons.appendChild(faviconElement);
         }
     });
+
+    // Show/hide placeholder based on whether there are pinned tabs
+    const placeholderContainer = pinnedFavicons.querySelector('.pinned-placeholder-container');
+    if (placeholderContainer) {
+        if (pinnedTabs.length === 0) {
+            placeholderContainer.style.display = 'block';
+        } else {
+            placeholderContainer.style.display = 'none';
+        }
+    }
+
+    // Add drag and drop event listeners
     pinnedFavicons.addEventListener('dragover', e => {
         e.preventDefault();
         e.currentTarget.classList.add('drag-over');
@@ -130,6 +155,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Setup Quick Pin listener
     setupQuickPinListener(spaces, moveTabToSpace, moveTabToPinned, moveTabToTemp);
+
+    // Add event listener for placeholder close button
+    const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');
+    const placeholderContainer = document.querySelector('.pinned-placeholder-container');
+    if (closePlaceholderBtn && placeholderContainer) {
+        closePlaceholderBtn.addEventListener('click', () => {
+            placeholderContainer.style.display = 'none';
+        });
+    }
 });
 
 async function initSidebar() {
@@ -691,21 +725,6 @@ function saveSpaces() {
     });
 }
 
-const searchBookmarks = async (folderId, tab) => {
-    const items = await chrome.bookmarks.getChildren(folderId);
-    console.log("searching to delete", folderId, items);
-    for (const item of items) {
-        if (item.url === tab.url) {
-            console.log("found and deleted");
-            await chrome.bookmarks.remove(item.id);
-        } else if (!item.url) {
-            console.log("recursive folder search", item.id);
-            // Recursively search in subfolders
-            await searchBookmarks(item.id, tab);
-        }
-    }
-};
-
 async function moveTabToPinned(space, tab) {
     space.temporaryTabs = space.temporaryTabs.filter(id => id !== tab.id);
     if (!space.spaceBookmarks.includes(tab.id)) {
@@ -716,7 +735,7 @@ async function moveTabToPinned(space, tab) {
     const existingBookmark = bookmarks.find(b => b.url === tab.url);
     if (!existingBookmark) {
         // delete existing bookmark
-        await searchBookmarks(spaceFolder.id, tab);
+        await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
 
         await chrome.bookmarks.create({
             parentId: spaceFolder.id,
@@ -732,21 +751,7 @@ async function moveTabToTemp(space, tab) {
     const spaceFolder = spaceFolders.find(f => f.title === space.name);
 
     if (spaceFolder) {
-        const searchAndRemoveBookmark = async (folderId) => {
-            const items = await chrome.bookmarks.getChildren(folderId);
-            for (const item of items) {
-                if (item.url === tab.url) {
-                    await chrome.bookmarks.remove(item.id);
-                    return true;
-                } else if (!item.url) {
-                    const found = await searchAndRemoveBookmark(item.id);
-                    if (found) return true;
-                }
-            }
-            return false;
-        };
-
-        await searchAndRemoveBookmark(spaceFolder.id);
+        await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
     }
 
     // Move tab from bookmarks to temporary tabs in space data
@@ -823,7 +828,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                                     }
 
                                     // Find and remove the bookmark from its original location
-                                    await searchBookmarks(spaceFolder.id, tab);
+                                    await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
 
                                     // Create the bookmark in the new location
                                     await chrome.bookmarks.create({
@@ -860,6 +865,9 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                         }
                         isDraggingTab = false;
                     });
+                } else if(draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
+                    const tabId = parseInt(draggingElement.dataset.tabId);
+                    chrome.tabs.update(tabId, { pinned: false });
                 }
             }
         });
@@ -1075,24 +1083,11 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
         console.log("spaceFolder", spaceFolder);
         if (spaceFolder) {
-            const searchAndRemoveBookmark = async (folderId) => {
-                const items = await chrome.bookmarks.getChildren(folderId);
-                for (const item of items) {
-                    if (item.url === tab.url) {
-                        console.log("removing bookmark", item);
-                        await chrome.bookmarks.remove(item.id);
-                        tabElement.remove();
-                        return true; // Bookmark found and removed
-                    } else if (!item.url) {
-                        // This is a folder, search recursively
-                        const found = await searchAndRemoveBookmark(item.id);
-                        if (found) return true;
-                    }
-                }
-                return false;
-            };
-
-            await searchAndRemoveBookmark(spaceFolder.id);
+            await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url, {
+                removeTabElement: true,
+                tabElement: tabElement,
+                logRemoval: true
+            });
         }
 
         return;
@@ -1576,6 +1571,29 @@ function handleTabUpdate(tabId, changeInfo, tab) {
 
             if (changeInfo.pinned !== undefined) {
                 if (changeInfo.pinned) {
+                    // Find which space this tab belongs to
+                    const spaceWithTab = spaces.find(space =>
+                        space.spaceBookmarks.includes(tabId) ||
+                        space.temporaryTabs.includes(tabId)
+                    );
+                    
+                    // If tab was in a space and was bookmarked, remove it from bookmarks
+                    if (spaceWithTab && spaceWithTab.spaceBookmarks.includes(tabId)) {
+                        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+                        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+                        const spaceFolder = spaceFolders.find(f => f.title === spaceWithTab.name);
+                        
+                        if (spaceFolder) {
+                            await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
+                        }
+                    }
+                    
+                    // Remove tab from all spaces data when it becomes pinned
+                    spaces.forEach(space => {
+                        space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
+                        space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
+                    });
+                    saveSpaces();
                     tabElement.remove(); // Remove from space
                 } else {
                     moveTabToSpace(tabId, activeSpaceId, false /* pinned */);

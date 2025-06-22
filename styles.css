@@ -1205,3 +1205,56 @@ h3 {
   color: #aaa;
   border-color: #eee;
 }
+
+.pinned-placeholder-container {
+    padding: 8px 16px;
+    text-align: center;
+    width: 100%;
+}
+
+.pinned-tab-placeholder {
+    color: rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    border: 2px dashed rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    background: var(--sidebar-secondary-bg, rgba(0, 0, 0, 0.02));
+    text-align: center;
+    position: relative;
+}
+
+.placeholder-close-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: none;
+    border: none;
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.placeholder-close-btn:hover {
+    color: var(--sidebar-text-color, #333);
+    background-color: var(--tab-hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.placeholder-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.placeholder-subtitle {
+    font-size: 12px;
+    max-width: 200px;
+    margin: 0 auto;
+    line-height: 1.4;
+}
