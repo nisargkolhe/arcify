@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.tabs.onActivated.addListener(handleTabActivated);
 
     // Setup Quick Pin listener
-    setupQuickPinListener(spaces, moveTabToSpace, moveTabToPinned, moveTabToTemp);
+    setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp);
 
     // Add event listener for placeholder close button
     const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');

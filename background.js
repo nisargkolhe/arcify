@@ -32,6 +32,14 @@ if (chrome.contextMenus) {
     });
 }
 
+// Listen for messages from the content script (sidebar)
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    // Forward the pin toggle command to the sidebar
+    if (request.command === "toggleSpacePin") {
+        chrome.runtime.sendMessage({ command: "toggleSpacePin", tabId: request.tabId });
+    }
+});
+
 chrome.commands.onCommand.addListener(function(command) {
     if (command === "quickPinToggle") {
         console.log("sending");

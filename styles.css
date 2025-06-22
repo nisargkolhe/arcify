@@ -148,7 +148,13 @@ h3 {
 }
 
 .context-menu-item:hover {
-    background-color: #f5f5f5;
+    background-color: var(--tab-hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.context-menu-separator {
+    height: 1px;
+    background-color: var(--sidebar-border-color, #eee);
+    margin: 4px 0;
 }
 
 .spaces-list {

@@ -148,6 +148,32 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
 
     // --- Menu Items ---
 
+    // Only show these options for actual tabs that are part of a space
+    if (!isBookmarkOnly) {
+        const addToFavoritesOption = document.createElement('div');
+        addToFavoritesOption.className = 'context-menu-item';
+        addToFavoritesOption.textContent = 'Add to Favorites';
+        addToFavoritesOption.addEventListener('click', async () => {
+            await chrome.tabs.update(tab.id, { pinned: true });
+            contextMenu.remove();
+        });
+        contextMenu.appendChild(addToFavoritesOption);
+
+        const pinInSpaceOption = document.createElement('div');
+        pinInSpaceOption.className = 'context-menu-item';
+        pinInSpaceOption.textContent = isPinned ? 'Unpin Tab' : 'Pin Tab';
+        pinInSpaceOption.addEventListener('click', () => {
+            chrome.runtime.sendMessage({ command: 'toggleSpacePin', tabId: tab.id });
+            contextMenu.remove();
+        });
+        contextMenu.appendChild(pinInSpaceOption);
+
+        // Add a separator
+        const separator = document.createElement('div');
+        separator.className = 'context-menu-separator';
+        contextMenu.appendChild(separator);
+    }
+
     // 1. Archive Tab (Only for active tabs)
     if (!isBookmarkOnly) {
         const archiveOption = document.createElement('div');
@@ -312,30 +338,54 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     }
 }
 
-export function setupQuickPinListener(spaces, moveTabToSpace, moveTabToPinned, moveTabToTemp) {
+export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp) {
     chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-        if (request.command === "quickPinToggle") {
-            console.log("listening");
-            chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-                const currentTab = tabs[0];
-                console.log("currentTab", currentTab);
+        if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {
+            console.log(`[QuickPin] Received command: ${request.command}`, { request });
+            chrome.storage.local.get('spaces', function(result) {
+                const spaces = result.spaces || [];
+                console.log("[QuickPin] Loaded spaces from storage:", spaces);
 
-                const spaceWithTempTab = spaces.find(space =>
-                    space.temporaryTabs.includes(currentTab.id)
-                );
-                console.log("spaceWithTempTab", spaceWithTempTab);
-                if (spaceWithTempTab) {
-                    moveTabToSpace(currentTab.id, spaceWithTempTab.id, true);
-                    moveTabToPinned(spaceWithTempTab, currentTab);
-                } else {
-                    const spaceWithBookmark = spaces.find(space =>
-                        space.spaceBookmarks.includes(currentTab.id)
-                    );
-                    console.log("spaceWithBookmark", spaceWithBookmark);
-                    if (spaceWithBookmark) {
-                        moveTabToSpace(currentTab.id, spaceWithBookmark.id, false);
-                        moveTabToTemp(spaceWithBookmark, currentTab);
+                const getTabAndToggle = (tabToToggle) => {
+                    if (!tabToToggle) {
+                        console.error("[QuickPin] No tab found to toggle.");
+                        return;
                     }
+                    console.log("[QuickPin] Toggling pin state for tab:", tabToToggle);
+                    
+                    const spaceWithTempTab = spaces.find(space =>
+                        space.temporaryTabs.includes(tabToToggle.id)
+                    );
+
+                    if (spaceWithTempTab) {
+                        console.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
+                        moveTabToSpace(tabToToggle.id, spaceWithTempTab.id, true);
+                        moveTabToPinned(spaceWithTempTab, tabToToggle);
+                    } else {
+                        const spaceWithBookmark = spaces.find(space =>
+                            space.spaceBookmarks.includes(tabToToggle.id)
+                        );
+
+                        if (spaceWithBookmark) {
+                            console.log(`[QuickPin] Tab ${tabToToggle.id} is a bookmarked tab in space "${spaceWithBookmark.name}". Unpinning it.`);
+                            moveTabToSpace(tabToToggle.id, spaceWithBookmark.id, false);
+                            moveTabToTemp(spaceWithBookmark, tabToToggle);
+                        } else {
+                            console.warn(`[QuickPin] Tab ${tabToToggle.id} not found in any space as temporary or bookmarked.`);
+                        }
+                    }
+                };
+
+                if (request.command === "quickPinToggle") {
+                    console.log("[QuickPin] Handling quickPinToggle for active tab.");
+                    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+                        getTabAndToggle(tabs[0]);
+                    });
+                } else if (request.command === "toggleSpacePin" && request.tabId) {
+                    console.log(`[QuickPin] Handling toggleSpacePin for tabId: ${request.tabId}`);
+                    chrome.tabs.get(request.tabId, function(tab) {
+                        getTabAndToggle(tab);
+                    });
                 }
             });
         }
