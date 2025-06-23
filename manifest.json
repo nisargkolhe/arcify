@@ -40,8 +40,8 @@
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Ctrl+K",
-        "mac": "Command+K"
+        "default": "Ctrl+E",
+        "mac": "Command+E"
       },
       "description": "Toggle side panel"
     },

@@ -234,7 +234,7 @@ h3 {
     background: none;
     border: none;
     font-size: 20px;
-    color: #555;
+    color: #101010bd;
     cursor: pointer;
     padding: 8px;
     border-radius: 8px;
@@ -382,7 +382,7 @@ h3 {
     width: 18px;
     height: 16px;
     margin-right: 8px;
-    fill: currentColor;
+    fill: #101010bd;
     opacity: 0.7;
     transition: transform 0.2s;
 }
@@ -410,7 +410,7 @@ h3 {
     font-size: 0.8em;
     background: none;
     border: none;
-    color: #666;
+    color: #101010bd;
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
@@ -479,7 +479,7 @@ h3 {
 .clean-tabs-btn {
     background: none;
     border: none;
-    color: #666;
+    color: #101010bd;
     font-size: 12px;
     padding: 4px 8px;
     border-radius: 4px;
@@ -606,6 +606,7 @@ h3 {
     transition: background-color 0.2s;
     background: var(--space-bg-color, rgba(255, 255, 255, 0.1));
     position: relative;
+    font-weight: 600;
 }
 
 .tab:hover {
@@ -988,7 +989,7 @@ h3 {
     padding: 8px;
     cursor: pointer;
     border-radius: 8px;
-    color: #555; /* Adjust icon color */
+    color: #101010bd; /* Adjust icon color */
     transition: background-color 0.2s ease;
 }
 
@@ -1048,7 +1049,7 @@ h3 {
 .no-archived-tabs-message {
     padding: 10px;
     text-align: center;
-    color: #666;
+    color: #101010bd;
     font-style: italic;
 }
 
@@ -1290,4 +1291,26 @@ h3 {
     max-width: 200px;
     margin: 0 auto;
     line-height: 1.4;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --chrome-grey-color: #9b9797;
+        --chrome-blue-color: #5678ae;
+        --chrome-red-color: #b36c67;
+        --chrome-yellow-color: #a99457;
+        --chrome-green-color: #4f8057;
+        --chrome-pink-color: #b06c92;
+        --chrome-purple-color: #8d75a1;
+        --chrome-cyan-color: #5e9299;
+        --chrome-grey-color-dark: #817e7e;
+        --chrome-blue-color-dark: #4f6f9c;
+        --chrome-red-color-dark: #a7645e;
+        --chrome-yellow-color-dark: rgb(144, 122, 57);
+        --chrome-green-color-dark: #436f4a;
+        --chrome-pink-color-dark: #935779;
+        --chrome-purple-color-dark: #7c668e;
+        --chrome-cyan-color-dark: #55858b;
+    }
 }
