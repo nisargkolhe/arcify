@@ -607,27 +607,8 @@ async function updateSpaceSwitcher() {
             const button = document.createElement('button');
             button.textContent = spaceFolder.title;
             button.addEventListener('click', async () => {
-                console.log("button click inactive space", spaceFolder);
-                isCreatingSpace = true;
                 const newTab = await ChromeHelper.createNewTab();
-                const groupColor = await Utils.getTabGroupColor(spaceFolder.title);
-                const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceFolder.title, groupColor);
-                const spaceBookmarks = await Utils.processBookmarkFolder(spaceFolder, groupId);
-
-                const space = {
-                    id: groupId,
-                    uuid: Utils.generateUUID(),
-                    name: spaceFolder.title,
-                    color: groupColor,
-                    spaceBookmarks: spaceBookmarks,
-                    temporaryTabs: [newTab.id],
-                    lastTab: newTab.id,
-                };
-                spaces.push(space);
-                saveSpaces();
-                createSpaceElement(space);
-                await setActiveSpace(space.id);
-                isCreatingSpace = false;
+                await createSpaceFromInactive(spaceFolder.title, newTab);
             });
             spaceSwitcher.appendChild(button);
         }
@@ -715,6 +696,60 @@ async function setActiveSpace(spaceId, updateTab = true) {
                 }
             });
         }
+    }
+}
+
+async function createSpaceFromInactive(spaceName, tabToMove) {
+    console.log(`Creating inactive space "${spaceName}" with tab:`, tabToMove);
+    isCreatingSpace = true;
+    try {
+        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+        const spaceFolder = spaceFolders.find(f => f.title === spaceName);
+
+        if (!spaceFolder) {
+            console.error(`Bookmark folder for inactive space "${spaceName}" not found.`);
+            return;
+        }
+
+        const groupColor = await Utils.getTabGroupColor(spaceName);
+        const groupId = await ChromeHelper.createNewTabGroup(tabToMove, spaceName, groupColor);
+        const spaceBookmarks = await Utils.processBookmarkFolder(spaceFolder, groupId);
+
+        const space = {
+            id: groupId,
+            uuid: Utils.generateUUID(),
+            name: spaceName,
+            color: groupColor,
+            spaceBookmarks: spaceBookmarks,
+            temporaryTabs: [tabToMove.id],
+            lastTab: tabToMove.id,
+        };
+
+        // Remove the moved tab from its old space
+        const oldSpace = spaces.find(s => 
+            s.temporaryTabs.includes(tabToMove.id) || s.spaceBookmarks.includes(tabToMove.id)
+        );
+        if (oldSpace) {
+            oldSpace.temporaryTabs = oldSpace.temporaryTabs.filter(id => id !== tabToMove.id);
+            oldSpace.spaceBookmarks = oldSpace.spaceBookmarks.filter(id => id !== tabToMove.id);
+        }
+        
+        // Remove the tab's DOM element from the old space's UI
+        const tabElementToRemove = document.querySelector(`[data-tab-id="${tabToMove.id}"]`);
+        if (tabElementToRemove) {
+            tabElementToRemove.remove();
+        }
+
+        spaces.push(space);
+        saveSpaces();
+        createSpaceElement(space);
+        await setActiveSpace(space.id);
+        updateSpaceSwitcher();
+    } catch (error) {
+        console.error(`Error creating space from inactive bookmark:`, error);
+    } finally {
+        isCreatingSpace = false;
     }
 }
 
@@ -1407,9 +1442,11 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     }
 
     // --- Context Menu ---
-    tabElement.addEventListener('contextmenu', (e) => {
+    tabElement.addEventListener('contextmenu', async (e) => {
         e.preventDefault();
-        showTabContextMenu(e.pageX, e.pageY, tab, isPinned, isBookmarkOnly, tabElement, closeTab);
+        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+        const allBookmarkSpaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+        showTabContextMenu(e.pageX, e.pageY, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive);
     });
 
 
@@ -1814,6 +1851,15 @@ async function deleteSpace(spaceId) {
 ////////////////////////////////////////////////////////////////
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
+    // Remove tab from its original space data first
+    const sourceSpace = spaces.find(s => 
+        s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
+    );
+    if (sourceSpace && sourceSpace.id !== spaceId) {
+        sourceSpace.temporaryTabs = sourceSpace.temporaryTabs.filter(id => id !== tabId);
+        sourceSpace.spaceBookmarks = sourceSpace.spaceBookmarks.filter(id => id !== tabId);
+    }
+    
     // 1. Find the target space
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {

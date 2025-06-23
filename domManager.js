@@ -132,7 +132,7 @@ export function activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher) {
     updateSpaceSwitcher();
 }
 
-export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab) {
+export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive) {
     // Remove any existing context menus
     const existingMenu = document.getElementById('tab-context-menu');
     if (existingMenu) {
@@ -172,9 +172,65 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         const separator = document.createElement('div');
         separator.className = 'context-menu-separator';
         contextMenu.appendChild(separator);
+
+        // 2. Move to Space
+        const moveToSpaceItem = document.createElement('div');
+        moveToSpaceItem.className = 'context-menu-item with-submenu';
+        moveToSpaceItem.textContent = 'Move to Space';
+
+        const submenu = document.createElement('div');
+        submenu.className = 'context-menu submenu';
+
+        // Add active spaces
+        const currentSpace = spaces.find(s => s.temporaryTabs.includes(tab.id) || s.spaceBookmarks.includes(tab.id));
+        const otherActiveSpaces = spaces.filter(s => s.id !== currentSpace?.id);
+        otherActiveSpaces.forEach(space => {
+            const submenuItem = document.createElement('div');
+            submenuItem.className = 'context-menu-item';
+            submenuItem.textContent = space.name;
+            submenuItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                contextMenu.remove(); // Close menu immediately for better UX
+                
+                await moveTabToSpace(tab.id, space.id, false);
+                // Set the space as active, but prevent it from auto-activating a different tab
+                await setActiveSpace(space.id, false); 
+                // Explicitly activate the tab that was just moved
+                await chrome.tabs.update(tab.id, { active: true });
+            });
+            submenu.appendChild(submenuItem);
+        });
+
+        // Add inactive spaces
+        const activeSpaceNames = new Set(spaces.map(s => s.name));
+        const inactiveSpaceFolders = allBookmarkSpaceFolders.filter(f => !f.url && !activeSpaceNames.has(f.title));
+        
+        if (otherActiveSpaces.length > 0 && inactiveSpaceFolders.length > 0) {
+            const separator = document.createElement('div');
+            separator.className = 'context-menu-separator';
+            submenu.appendChild(separator);
+        }
+
+        inactiveSpaceFolders.forEach(folder => {
+            const submenuItem = document.createElement('div');
+            submenuItem.className = 'context-menu-item';
+            submenuItem.textContent = folder.title;
+            submenuItem.addEventListener('click', (e) => {
+                e.stopPropagation();
+                createSpaceFromInactive(folder.title, tab);
+                contextMenu.remove();
+            });
+            submenu.appendChild(submenuItem);
+        });
+
+        // Only add the "Move to" menu if there's somewhere to move to
+        if (submenu.hasChildNodes()) {
+            moveToSpaceItem.appendChild(submenu);
+            contextMenu.appendChild(moveToSpaceItem);
+        }
     }
 
-    // 1. Archive Tab (Only for active tabs)
+    // Archive Tab (Only for active tabs)
     if (!isBookmarkOnly) {
         const archiveOption = document.createElement('div');
         archiveOption.className = 'context-menu-item';
@@ -186,9 +242,7 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         contextMenu.appendChild(archiveOption);
     }
 
-    // 2. TODO: Move tab to another space
-
-    // 3. Close Tab / Remove Bookmark
+    // Close Tab / Remove Bookmark
     const closeOption = document.createElement('div');
     closeOption.className = 'context-menu-item';
     closeOption.textContent = isBookmarkOnly ? 'Remove Bookmark' : 'Close Tab';
