@@ -164,6 +164,49 @@ document.addEventListener('DOMContentLoaded', () => {
             placeholderContainer.style.display = 'none';
         });
     }
+
+    // --- Space Switching with Trackpad Swipe ---
+    let isSwiping = false;
+    let swipeTimeout = null;
+    const swipeThreshold = 50; // Min horizontal movement to trigger a swipe
+
+    document.getElementById('sidebar-container').addEventListener('wheel', async (event) => {
+        // Ignore vertical scrolling or if a swipe is already being processed
+        if (Math.abs(event.deltaX) < Math.abs(event.deltaY) || isSwiping) {
+            return;
+        }
+
+        if (Math.abs(event.deltaX) > swipeThreshold) {
+            isSwiping = true;
+            event.preventDefault(); // Stop browser from navigating back/forward
+
+            const currentIndex = spaces.findIndex(s => s.id === activeSpaceId);
+            if (currentIndex === -1) {
+                isSwiping = false;
+                return;
+            }
+
+            let nextIndex;
+            // deltaX > 0 means swiping right (finger moves right, content moves left) -> previous space
+            if (event.deltaX > 0) {
+                nextIndex = (currentIndex - 1 + spaces.length) % spaces.length;
+            } else {
+            // deltaX < 0 means swiping left (finger moves left, content moves right) -> next space
+                nextIndex = (currentIndex + 1) % spaces.length;
+            }
+            
+            const nextSpace = spaces[nextIndex];
+            if (nextSpace) {
+                await setActiveSpace(nextSpace.id);
+            }
+
+            // Cooldown to prevent re-triggering during the same gesture
+            clearTimeout(swipeTimeout);
+            swipeTimeout = setTimeout(() => {
+                isSwiping = false;
+            }, 400); // 400ms cooldown
+        }
+    }, { passive: false }); // 'passive: false' is required to use preventDefault()
 });
 
 async function initSidebar() {
