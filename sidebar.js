@@ -1333,6 +1333,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             domainDisplay.style.display = 'none'; // Hide domain while editing
             titleInput.style.display = 'inline-block'; // Or 'block'
             titleInput.select(); // Select text for easy replacement
+            titleInput.focus(); // Focus the input
         });
 
         const saveOrCancelEdit = async (save) => {
@@ -1346,11 +1347,15 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
                     if (newName && newName !== originalTitle) {
                         await Utils.setTabNameOverride(tab.id, tab.url, newName);
-                        await Utils.updateBookmarkTitleIfNeeded(tab, activeSpace, newName);
+                        if (isPinned) {
+                            await Utils.updateBookmarkTitleIfNeeded(tab, activeSpace, newName);
+                        }
                     } else {
                         // If name is empty or same as original, remove override
                         await Utils.removeTabNameOverride(tab.id);
-                        await Utils.updateBookmarkTitleIfNeeded(tab, activeSpace, originalTitle);
+                        if (isPinned) {
+                            await Utils.updateBookmarkTitleIfNeeded(tab, activeSpace, originalTitle);
+                        }
                     }
                 } catch (error) {
                     console.error("Error getting tab info or saving override:", error);
