@@ -78,6 +78,10 @@ async function updatePinnedFavicons() {
 
             const img = document.createElement('img');
             img.src = Utils.getFaviconUrl(tab.url, "96");
+            img.onerror = () => { 
+                img.src = tab.favIconUrl; 
+                img.onerror = () => { img.src = 'assets/default_icon.png'; }; // Fallback favicon
+            };
             img.alt = tab.title;
 
             faviconElement.appendChild(img);
@@ -191,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event.deltaX < 0) {
                 nextIndex = (currentIndex - 1 + spaces.length) % spaces.length;
             } else {
-            // deltaX < 0 means swiping left (finger moves left, content moves right) -> next space
+                // deltaX < 0 means swiping left (finger moves left, content moves right) -> next space
                 nextIndex = (currentIndex + 1) % spaces.length;
             }
             
@@ -1230,7 +1234,10 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     const favicon = document.createElement('img');
     favicon.src = Utils.getFaviconUrl(tab.url);
     favicon.classList.add('tab-favicon');
-    favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; }; // Fallback favicon
+    favicon.onerror = () => { 
+        favicon.src = tab.favIconUrl; 
+        favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; }; // Fallback favicon
+    }; // Fallback favicon
 
     // --- Renaming Elements ---
     const tabDetails = document.createElement('div');
@@ -1640,7 +1647,11 @@ function handleTabUpdate(tabId, changeInfo, tab) {
             if (changeInfo.url || changeInfo.favIconUrl) {
                 const img = tabElement.querySelector('img');
                 if (img) {
-                    img.src = Utils.getFaviconUrl(tab.url); // Use updated URL
+                    img.src = tab.favIconUrl;
+                    img.onerror = () => { 
+                        img.src = tab.favIconUrl; 
+                        img.onerror = () => { img.src = 'assets/default_icon.png'; }; // Fallback favicon
+                    };
                 }
             }
 
