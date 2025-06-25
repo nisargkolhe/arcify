@@ -1198,9 +1198,15 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         console.log("spaceFolder", spaceFolder);
         if (spaceFolder) {
             console.log("tab", tab);
+
+            // For actual tabs, check overrides
+            const overrides = await Utils.getTabNameOverrides();
+            const override = overrides[tab.id];
+            const displayTitle = override ? override.name : tab.title;
+
             const bookmarkTab = {
                 id: null,
-                title: tab.title,
+                title: displayTitle,
                 url: tab.url,
                 favIconUrl: tab.favIconUrl,
                 spaceName: tab.spaceName

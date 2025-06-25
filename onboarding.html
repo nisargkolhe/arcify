@@ -39,6 +39,12 @@
             object-fit: contain;
             margin-bottom: 1rem;
             max-width: 50vh;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .intro:hover {
+            transform: scale(1.02);
         }
 
         .screenshots {
@@ -167,6 +173,18 @@
         .faq-answer li:last-child {
             margin-bottom: 0;
         }
+
+        .faq-answer a {
+            color: #cc4444;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .faq-answer a:hover {
+            color: #aa3333;
+            text-decoration: underline;
+        }
         .roadmap-container {
             max-width: 800px;
             margin: 4rem auto;
@@ -212,19 +230,134 @@
             line-height: 1.5;
             margin: 0;
         }
+
+        .tutorial-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .tutorial-content {
+            text-align: center;
+        }
+
+        .tutorial-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #cc4444;
+        }
+
+        .tutorial-subtitle {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .tutorial-gif {
+            max-width: 100%;
+            max-height: 60vh;
+            object-fit: contain;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .tutorial-gif:hover {
+            transform: scale(1.02);
+        }
     </style>
 </head>
 <body>
     <div class="container" style="margin-bottom: 2rem;">
-        <img src="assets/intro.png" alt="Arc-Style Sidebar Introduction" class="intro">
+        <img src="assets/intro.png" alt="Arc-Style Sidebar Introduction" class="intro" data-scroll-to="tutorial-container">
         <div class="screenshots">
             <img src="assets/left.png" alt="Arc-Style Sidebar Overview" class="screenshot annotation">
             <img src="assets/extension.gif" alt="Spaces and Pinned Tabs" class="screenshot">
             <img src="assets/right.png" alt="Smart Features" class="screenshot annotation">
         </div>
+        <div class="tutorial-container" id="tutorial-container">
+            <div class="tutorial-content">
+                <h2 class="tutorial-title">Recommended Chrome Settings</h2>
+                <p class="tutorial-subtitle">Change sidepanel position and keyboard shortcuts to match Arc in chrome://settings</p>
+                <img src="assets/chrometutorial.gif" alt="Chrome Tutorial" class="tutorial-gif">
+            </div>
+        </div>
+        <div class="faq-container">
+            <h2>FAQs</h2>
+            <div class="faq-list">
+                <div class="faq-item">
+                    <div class="faq-question">How do I set my side panel to be on the left side?</div>
+                    <div class="faq-answer">
+                        <a href="#" data-scroll-to="tutorial-container">Follow the recommended settings instructions</a>
+                        <ol>
+                            <li>Go to Chrome Settings (⋮ menu > Settings)</li>
+                            <li>Click on "Appearance" in the sidebar</li>
+                            <li>Scroll down to "Side panel position"</li>
+                            <li>Select "Show on left"</li>
+                        </ol>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">How do I change shortcut to Cmd+S instead?</div>
+                    <div class="faq-answer">
+                        <a href="#" data-scroll-to="tutorial-container">Follow the recommended settings instructions</a>
+                        <ol>
+                            <li>Go to Chrome Settings (⋮ menu > Settings)</li>
+                            <li>Click on "Extensions" in the sidebar</li>
+                            <li>Click on "Keyboard shortcuts" at the bottom</li>
+                            <li>Find "Arcify" and customize the shortcut</li>
+                        </ol>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">Can I move tabs between spaces?</div>
+                    <div class="faq-answer">
+                        <p>Yes! Right click on the tab and use the "Move to space" option.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">Where can I see my stored pinned tabs in spaces?</div>
+                    <div class="faq-answer">
+                        Your pinned tabs are stored in your Chrome bookmarks under the "Arcify" folder. Each space has its own subfolder containing its pinned tabs for easy access and organization.
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">Are my spaces and pinned tabs synced across devices?</div>
+                    <div class="faq-answer">
+                        Yes! Since your spaces and pinned tabs are stored in Chrome bookmarks, they automatically sync across all your devices where you're signed into Chrome with the same account.
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="roadmap-container">
+            <h2>What's Next</h2>
+            <div class="roadmap">
+                <div class="roadmap-item">
+                    <div class="roadmap-content">
+                        <h3>Missing feature X</h3>
+                        <p>Something which is still missing? Send feedback to contact@nisarg.me and I'll try to add it to the roadmap. :)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="changelog-container">
             <h2>Changelog</h2>
             <div class="changelog-list">
+                <div class="changelog-item">
+                    <div class="changelog-version">Version 3.1</div>
+                    <ul class="changelog-changes">
+                        <li>Move tabs between spaces: Right click on tab to move to any existing space.</li>
+                        <li>Drag and drop tabs into favorites to pin them.</li>
+                        <li>Swipe on trackpad to switch spaces, just like Arc!</li>
+                        <li>Background colors are now darker if dark mode is enabled.</li>
+                        <li>Favicons are now much more reliable.</li>
+                        <li>Minor bug fixes and improvements.</li>
+                    </ul>
+                </div>
                 <div class="changelog-item">
                     <div class="changelog-version">Version 3.0</div>
                     <ul class="changelog-changes">
@@ -282,86 +415,7 @@
                 </div>
             </div>
         </div>
-        <div class="faq-container">
-            <h2>FAQs</h2>
-            <div class="faq-list">
-                <div class="faq-item">
-                    <div class="faq-question">How do I set my side panel to be on the left side?</div>
-                    <div class="faq-answer">
-                        <ol>
-                            <li>Go to Chrome Settings (⋮ menu > Settings)</li>
-                            <li>Click on "Appearance" in the sidebar</li>
-                            <li>Scroll down to "Side panel position"</li>
-                            <li>Select "Show on left"</li>
-                        </ol>
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">Can I change shortcut to Cmd+S instead?</div>
-                    <div class="faq-answer">
-                        <ol>
-                            <li>Go to Chrome Settings (⋮ menu > Settings)</li>
-                            <li>Click on "Extensions" in the sidebar</li>
-                            <li>Click on "Keyboard shortcuts" at the bottom</li>
-                            <li>Find "Arcify" and customize the shortcut</li>
-                        </ol>
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">Can I move tabs between spaces?</div>
-                    <div class="faq-answer">
-                        Currently, you can move tabs between spaces by using Chrome's tab groups feature. Simply drag a tab to a different tab group that corresponds to your desired space and toggle the extension. Native functionality to move tabs directly within the extension is coming soon!
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">Where can I see my stored pinned tabs?</div>
-                    <div class="faq-answer">
-                        Your pinned tabs are stored in your Chrome bookmarks under the "Arcify" folder. Each space has its own subfolder containing its pinned tabs for easy access and organization.
-                    </div>
-                </div>
-                <div class="faq-item">
-                    <div class="faq-question">Are my spaces and pinned tabs synced across devices?</div>
-                    <div class="faq-answer">
-                        Yes! Since your spaces and pinned tabs are stored in Chrome bookmarks, they automatically sync across all your devices where you're signed into Chrome with the same account.
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="roadmap-container">
-            <h2>What's Next</h2>
-            <div class="roadmap">
-                <div class="roadmap-item">
-                    <div class="roadmap-content">
-                        <h3>Add styling customization</h3>
-                        <p>Personalize your sidebar with custom colors, themes, and visual preferences</p>
-                    </div>
-                </div>
-                <div class="roadmap-item">
-                    <div class="roadmap-content">
-                        <h3>Move tabs around spaces</h3>
-                        <p>Seamlessly drag and drop tabs between different spaces</p>
-                    </div>
-                </div>
-                <div class="roadmap-item">
-                    <div class="roadmap-content">
-                        <h3>Ability to rename tabs</h3>
-                        <p>Customize tab names for better organization</p>
-                    </div>
-                </div>
-                <div class="roadmap-item">
-                    <div class="roadmap-content">
-                        <h3>Auto close tabs</h3>
-                        <p>Smart tab management to automatically close inactive tabs</p>
-                    </div>
-                </div>
-                <div class="roadmap-item">
-                    <div class="roadmap-content">
-                        <h3>Missing feature X</h3>
-                        <p>Something which is still missing? Send feedback to contact@nisarg.me and I'll try to add it to the roadmap. :)</p>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
+    <script src="onboarding-script.js"></script>
 </body>
 </html>

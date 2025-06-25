@@ -21,6 +21,7 @@ export default defineConfig({
         background: resolve(__dirname, 'background.js'),
         'sidebar-script': resolve(__dirname, 'sidebar.js'),
         'options-script': resolve(__dirname, 'options.js'),
+        'onboarding-script': resolve(__dirname, 'onboarding.js'),
         utils: resolve(__dirname, 'utils.js'),
         localstorage: resolve(__dirname, 'localstorage.js'),
         chromeHelper: resolve(__dirname, 'chromeHelper.js'),
@@ -28,7 +29,7 @@ export default defineConfig({
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          const mainScripts = ['background', 'sidebar-script', 'options-script', 'utils', 'localstorage', 'chromeHelper', 'icons'];
+          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons'];
           if (mainScripts.includes(chunkInfo.name)) {
             return chunkInfo.name === 'sidebar-script' ? 'sidebar.js' : 
                    chunkInfo.name === 'options-script' ? 'options.js' : 
