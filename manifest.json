@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Arcify: Arc like vertical tab spaces",
-  "version": "2.3.0",
+  "version": "3.1.0",
   "description": "A sidebar extension that replicates Arc browser's tab management system",
   "permissions": [
     "tabs",
