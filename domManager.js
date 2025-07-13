@@ -442,6 +442,20 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                     });
                 }
             });
+        } else if (request.action === "spotlightOpened") {
+            console.log("[Spotlight] Spotlight opened with mode:", request.mode);
+            // Highlight new tab button if spotlight is in new-tab mode
+            const newTabBtn = document.getElementById('newTabBtn');
+            if (request.mode === 'new-tab' && newTabBtn) {
+                newTabBtn.classList.add('spotlight-active');
+            }
+        } else if (request.action === "spotlightClosed") {
+            console.log("[Spotlight] Spotlight closed");
+            // Remove highlighting from new tab button
+            const newTabBtn = document.getElementById('newTabBtn');
+            if (newTabBtn) {
+                newTabBtn.classList.remove('spotlight-active');
+            }
         }
     });
 } 
