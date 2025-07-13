@@ -35,3 +35,7 @@ lerna-debug.log*
 *.sw?
 
 .config/
+
+# Vibe coding
+CLAUDE.md
+.claude/*

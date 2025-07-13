@@ -11,7 +11,13 @@
     "bookmarks",
     "alarms",
     "commands",
-    "favicon"
+    "favicon",
+    "scripting",
+    "topSites",
+    "history"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "side_panel": {
     "default_path": "sidebar.html"
@@ -54,6 +60,20 @@
         "mac": "Command+D"
       },
       "description": "Quick Pin/Unpin Tab"
+    },
+    "toggleSpotlight": {
+      "suggested_key": {
+        "default": "Ctrl+K",
+        "mac": "Command+K"
+      },
+      "description": "Current Tab URL"
+    },
+    "toggleSpotlightNewTab": {
+      "suggested_key": {
+        "default": "Ctrl+H",
+        "mac": "Command+H"
+      },
+      "description": "New Tab"
     }
   },
   "options_page": "options.html"

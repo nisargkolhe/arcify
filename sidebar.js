@@ -1534,7 +1534,8 @@ function createNewTab(callback = () => {}) {
             if (space) {
                 space.temporaryTabs.push(tab.id);
                 saveSpaces();
-                if(callback) {
+                // Callback call fails sometimes with "callback is not a function" error.
+                if(typeof callback === 'function') {
                     callback();
                 }
             }
