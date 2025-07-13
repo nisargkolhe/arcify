@@ -949,9 +949,7 @@
             return;
         }
 
-        // Show loading state
-        resultsContainer.innerHTML = '<div class="arcify-spotlight-loading">Searching...</div>';
-
+        // Keep previous results while searching (no loading state to avoid jittery UI)
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
             const results = await searchEngine.search(query, mode);
