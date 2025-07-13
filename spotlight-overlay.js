@@ -1,7 +1,7 @@
 // spotlight-overlay-fixed.js - Self-contained spotlight with embedded search
 // Privacy-safe content script injected on-demand only
 
-(function(spotlightTabMode = 'current-tab') {
+(async function(spotlightTabMode = 'current-tab') {
     
     // Result type constants
     const ResultType = {
@@ -420,6 +420,32 @@
         }
     }
 
+    // Function to get accent color CSS based on active space color
+    function getAccentColorCSS(spaceColor) {
+        // Chrome extension color values (matching the sidebar color system)
+        const colorMap = {
+            grey: { main: '#ccc', alpha15: 'rgba(204, 204, 204, 0.15)', alpha20: 'rgba(204, 204, 204, 0.2)', alpha80: 'rgba(204, 204, 204, 0.8)' },
+            blue: { main: '#8bb3f3', alpha15: 'rgba(139, 179, 243, 0.15)', alpha20: 'rgba(139, 179, 243, 0.2)', alpha80: 'rgba(139, 179, 243, 0.8)' },
+            red: { main: '#ff9e97', alpha15: 'rgba(255, 158, 151, 0.15)', alpha20: 'rgba(255, 158, 151, 0.2)', alpha80: 'rgba(255, 158, 151, 0.8)' },
+            yellow: { main: '#ffe29f', alpha15: 'rgba(255, 226, 159, 0.15)', alpha20: 'rgba(255, 226, 159, 0.2)', alpha80: 'rgba(255, 226, 159, 0.8)' },
+            green: { main: '#8bda99', alpha15: 'rgba(139, 218, 153, 0.15)', alpha20: 'rgba(139, 218, 153, 0.2)', alpha80: 'rgba(139, 218, 153, 0.8)' },
+            pink: { main: '#fbaad7', alpha15: 'rgba(251, 170, 215, 0.15)', alpha20: 'rgba(251, 170, 215, 0.2)', alpha80: 'rgba(251, 170, 215, 0.8)' },
+            purple: { main: '#d6a6ff', alpha15: 'rgba(214, 166, 255, 0.15)', alpha20: 'rgba(214, 166, 255, 0.2)', alpha80: 'rgba(214, 166, 255, 0.8)' },
+            cyan: { main: '#a5e2ea', alpha15: 'rgba(165, 226, 234, 0.15)', alpha20: 'rgba(165, 226, 234, 0.2)', alpha80: 'rgba(165, 226, 234, 0.8)' }
+        };
+
+        const colors = colorMap[spaceColor] || colorMap.purple; // Fallback to purple
+
+        return `
+            :root {
+                --spotlight-accent-color: ${colors.main};
+                --spotlight-accent-color-15: ${colors.alpha15};
+                --spotlight-accent-color-20: ${colors.alpha20};
+                --spotlight-accent-color-80: ${colors.alpha80};
+            }
+        `;
+    }
+
     // Search Engine with caching
     class SearchEngine {
         constructor() {
@@ -599,8 +625,25 @@
     // Mark as injected only when creating new dialog
     window.arcifySpotlightInjected = true;
 
-    // CSS styles (same as before)
+    // Get active space color
+    let activeSpaceColor = 'purple'; // Default fallback
+    try {
+        const colorResponse = await chrome.runtime.sendMessage({
+            action: 'getActiveSpaceColor'
+        });
+        if (colorResponse && colorResponse.success && colorResponse.color) {
+            activeSpaceColor = colorResponse.color;
+            console.log('[Spotlight] Using active space color:', activeSpaceColor);
+        }
+    } catch (error) {
+        console.log('[Spotlight] Failed to get active space color, using default:', error);
+    }
+
+    // CSS styles with dynamic accent color
+    const accentColorDefinitions = getAccentColorCSS(activeSpaceColor);
     const spotlightCSS = `
+        ${accentColorDefinitions}
+        
         #arcify-spotlight-dialog {
             border: none;
             padding: 0;
@@ -687,12 +730,12 @@
 
         .arcify-spotlight-result-item:hover,
         .arcify-spotlight-result-item:focus {
-            background: rgba(139, 92, 246, 0.15);
+            background: var(--spotlight-accent-color-15);
             outline: none;
         }
 
         .arcify-spotlight-result-item.selected {
-            background: rgba(139, 92, 246, 0.2);
+            background: var(--spotlight-accent-color-20);
         }
 
         .arcify-spotlight-result-favicon {
@@ -729,7 +772,7 @@
 
         .arcify-spotlight-result-action {
             font-size: 12px;
-            color: rgba(139, 92, 246, 0.8);
+            color: var(--spotlight-accent-color-80);
             margin-left: 12px;
             flex-shrink: 0;
         }
