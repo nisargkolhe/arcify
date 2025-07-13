@@ -422,26 +422,30 @@
 
     // Function to get accent color CSS based on active space color
     function getAccentColorCSS(spaceColor) {
-        // Chrome extension color values (matching the sidebar color system)
+        // RGB values for each color name (matching --chrome-*-color variables in styles.css)
+        // We need this mapping to create rgba() variants with different opacities
+        // Can't directly reuse the constants in styles.css due to two reasons:
+        //   1. Color constants are in hexcode, cannot use this value in rgba
+        //   2. CSS is not directly available in content scripts
         const colorMap = {
-            grey: { main: '#ccc', alpha15: 'rgba(204, 204, 204, 0.15)', alpha20: 'rgba(204, 204, 204, 0.2)', alpha80: 'rgba(204, 204, 204, 0.8)' },
-            blue: { main: '#8bb3f3', alpha15: 'rgba(139, 179, 243, 0.15)', alpha20: 'rgba(139, 179, 243, 0.2)', alpha80: 'rgba(139, 179, 243, 0.8)' },
-            red: { main: '#ff9e97', alpha15: 'rgba(255, 158, 151, 0.15)', alpha20: 'rgba(255, 158, 151, 0.2)', alpha80: 'rgba(255, 158, 151, 0.8)' },
-            yellow: { main: '#ffe29f', alpha15: 'rgba(255, 226, 159, 0.15)', alpha20: 'rgba(255, 226, 159, 0.2)', alpha80: 'rgba(255, 226, 159, 0.8)' },
-            green: { main: '#8bda99', alpha15: 'rgba(139, 218, 153, 0.15)', alpha20: 'rgba(139, 218, 153, 0.2)', alpha80: 'rgba(139, 218, 153, 0.8)' },
-            pink: { main: '#fbaad7', alpha15: 'rgba(251, 170, 215, 0.15)', alpha20: 'rgba(251, 170, 215, 0.2)', alpha80: 'rgba(251, 170, 215, 0.8)' },
-            purple: { main: '#d6a6ff', alpha15: 'rgba(214, 166, 255, 0.15)', alpha20: 'rgba(214, 166, 255, 0.2)', alpha80: 'rgba(214, 166, 255, 0.8)' },
-            cyan: { main: '#a5e2ea', alpha15: 'rgba(165, 226, 234, 0.15)', alpha20: 'rgba(165, 226, 234, 0.2)', alpha80: 'rgba(165, 226, 234, 0.8)' }
+            grey: '204, 204, 204',
+            blue: '139, 179, 243',
+            red: '255, 158, 151',
+            yellow: '255, 226, 159',
+            green: '139, 218, 153',
+            pink: '251, 170, 215',
+            purple: '214, 166, 255',
+            cyan: '165, 226, 234'
         };
 
-        const colors = colorMap[spaceColor] || colorMap.purple; // Fallback to purple
+        const rgb = colorMap[spaceColor] || colorMap.purple; // Fallback to purple
 
         return `
             :root {
-                --spotlight-accent-color: ${colors.main};
-                --spotlight-accent-color-15: ${colors.alpha15};
-                --spotlight-accent-color-20: ${colors.alpha20};
-                --spotlight-accent-color-80: ${colors.alpha80};
+                --spotlight-accent-color: rgb(${rgb});
+                --spotlight-accent-color-15: rgba(${rgb}, 0.15);
+                --spotlight-accent-color-20: rgba(${rgb}, 0.2);
+                --spotlight-accent-color-80: rgba(${rgb}, 0.8);
             }
         `;
     }
