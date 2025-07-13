@@ -431,6 +431,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
+    } else if (message.action === 'getActiveSpaceColor') {
+        (async () => {
+            try {
+                console.log('[Background] Getting active space color');
+                const spacesResult = await chrome.storage.local.get('spaces');
+                const spaces = spacesResult.spaces || [];
+                
+                // Get the current active tab to determine which space it belongs to
+                const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                
+                if (!activeTab || !activeTab.groupId || activeTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+                    console.log('[Background] No active tab group, using default purple');
+                    sendResponse({ success: true, color: 'purple' });
+                    return;
+                }
+                
+                // Find the space that matches the active tab's group
+                const activeSpace = spaces.find(space => space.id === activeTab.groupId);
+                
+                if (activeSpace && activeSpace.color) {
+                    console.log('[Background] Found active space color:', activeSpace.color);
+                    sendResponse({ success: true, color: activeSpace.color });
+                } else {
+                    console.log('[Background] No space found for group, using default purple');
+                    sendResponse({ success: true, color: 'purple' });
+                }
+            } catch (error) {
+                console.error('[Background] Error getting active space color:', error);
+                sendResponse({ success: false, error: error.message, color: 'purple' });
+            }
+        })();
+        return true; // Async response
     }
     
     return false; // No async response needed
