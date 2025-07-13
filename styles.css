@@ -208,6 +208,12 @@ h3 {
     align-items: center;
 }
 
+.space-name-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .space-name {
     flex-grow: 1;
     background: none;
@@ -219,6 +225,7 @@ h3 {
     border-radius: 4px;
     opacity: 0.95;
     margin-left: 8px;
+    field-sizing: content;
 }
 
 .space-name:focus {
@@ -228,9 +235,14 @@ h3 {
 
 .space-options-container {
     position: relative;
+    display: flex;
+    align-items: center;
 }
 
 .space-options {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
     font-size: 20px;
@@ -247,7 +259,7 @@ h3 {
 .space-options-dropdown {
     position: absolute;
     top: 100%;
-    right: 0;
+    left: 0;
     background-color: #ffffff;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -983,6 +995,9 @@ h3 {
 }
 
 .sidebar-button { /* General style for buttons like archive */
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
     font-size: 20px; /* Adjust icon size */
@@ -1313,4 +1328,13 @@ h3 {
         --chrome-purple-color-dark: #7c668e;
         --chrome-cyan-color-dark: #55858b;
     }
+}
+
+.space-header-spacer {
+    flex: 1;
+}
+
+.space-actions {
+    display: flex;
+    align-items: center;
 }

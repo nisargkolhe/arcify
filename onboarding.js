@@ -9,5 +9,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 targetElement.scrollIntoView({behavior: 'smooth'});
             }
         }
+        
+        // Handle opening extension options
+        if (e.target.id === 'open-options') {
+            e.preventDefault();
+            chrome.runtime.openOptionsPage();
+        }
     });
 }); 

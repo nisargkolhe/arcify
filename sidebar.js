@@ -481,6 +481,16 @@ function createSpaceElement(space) {
 
     // Add to DOM
     spacesList.appendChild(spaceElement);
+
+    // Set up settings button to open extension options
+    const settingsButton = spaceElement.querySelector('#space-settings');
+    if (settingsButton) {
+        settingsButton.addEventListener('click', () => {
+            if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
+                chrome.runtime.openOptionsPage();
+            }
+        });
+    }
 }
 
 async function updateSpaceSwitcher() {
