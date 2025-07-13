@@ -25,11 +25,12 @@ export default defineConfig({
         utils: resolve(__dirname, 'utils.js'),
         localstorage: resolve(__dirname, 'localstorage.js'),
         chromeHelper: resolve(__dirname, 'chromeHelper.js'),
-        icons: resolve(__dirname, 'icons.js')
+        icons: resolve(__dirname, 'icons.js'),
+        'spotlight-overlay': resolve(__dirname, 'spotlight-overlay.js')
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons'];
+          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons', 'spotlight-overlay'];
           if (mainScripts.includes(chunkInfo.name)) {
             return chunkInfo.name === 'sidebar-script' ? 'sidebar.js' : 
                    chunkInfo.name === 'options-script' ? 'options.js' : 

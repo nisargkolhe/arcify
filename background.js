@@ -1,5 +1,11 @@
 import { Utils } from './utils.js';
 
+// Enum for spotlight tab modes
+const SpotlightTabMode = {
+    CURRENT_TAB: 'current-tab',
+    NEW_TAB: 'new-tab'
+};
+
 const AUTO_ARCHIVE_ALARM_NAME = 'autoArchiveTabsAlarm';
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
 
@@ -11,9 +17,9 @@ chrome.sidePanel.setPanelBehavior({
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install' || details.reason === 'update') {
-        chrome.tabs.create({ url: 'onboarding.html', active: true });
-    }
+    // if (details.reason === 'install' || details.reason === 'update') {
+    //     chrome.tabs.create({ url: 'onboarding.html', active: true });
+    // }
     if (chrome.contextMenus) {
         chrome.contextMenus.create({
             id: "openArcify",
@@ -40,14 +46,62 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
 });
 
-chrome.commands.onCommand.addListener(function(command) {
+chrome.commands.onCommand.addListener(async function(command) {
     if (command === "quickPinToggle") {
         console.log("sending");
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "quickPinToggle" });
+    } else if (command === "toggleSpotlight") {
+        console.log("Spotlight (current tab) command received");
+        await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
+    } else if (command === "toggleSpotlightNewTab") {
+        console.log("Spotlight (new tab) command received");
+        await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
     }
 });
 
+// Helper function to inject spotlight script with spotlightTabMode
+async function injectSpotlightScript(spotlightTabMode) {
+    try {
+        // Get the active tab
+        const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+        if (tab) {
+            // First, set the spotlightTabMode and current URL in the content script context
+            await chrome.scripting.executeScript({
+                target: {tabId: tab.id},
+                func: (spotlightTabMode, currentUrl) => {
+                    window.arcifySpotlightTabMode = spotlightTabMode;
+                    window.arcifyCurrentTabUrl = currentUrl;
+                },
+                args: [spotlightTabMode, tab.url]
+            });
+            
+            // Then inject the spotlight overlay script
+            await chrome.scripting.executeScript({
+                target: {tabId: tab.id},
+                files: ['spotlight-overlay.js']
+            });
+            
+            // Notify sidebar about spotlight mode
+            // Needed to highlight the new tab button in the sidebar for new tab spotlight mode.
+            chrome.runtime.sendMessage({
+                action: 'spotlightOpened',
+                mode: spotlightTabMode
+            });
+        }
+    } catch (error) {
+        console.error("Error injecting spotlight script:", error);
+        // Fallback: open side panel if injection fails
+        try {
+            const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+            if (tab) {
+                chrome.sidePanel.open({windowId: tab.windowId});
+            }
+        } catch (fallbackError) {
+            console.error("Fallback to side panel also failed:", fallbackError);
+        }
+    }
+}
 
 // --- Helper: Update Last Activity Timestamp ---
 async function updateTabLastActivity(tabId) {
@@ -260,11 +314,156 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
 
 // Optional: Listen for messages from options page to immediately update alarm
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('[Background] Received message:', message.action);
+    
     if (message.action === 'updateAutoArchiveSettings') {
         console.log("Received message to update auto-archive settings.");
         setupAutoArchiveAlarm();
         sendResponse({ success: true });
+        return false; // Synchronous response
+    } else if (message.action === 'openNewTab') {
+        console.log("Opening new tab with URL:", message.url);
+        chrome.tabs.create({ url: message.url });
+        sendResponse({ success: true });
+        return false; // Synchronous response
+    } else if (message.action === 'switchToTab') {
+        // Handle tab switching for spotlight search results
+        (async () => {
+            try {
+                console.log('[Background] Switching to tab:', message.tabId, 'in window:', message.windowId);
+                await chrome.tabs.update(message.tabId, { active: true });
+                await chrome.windows.update(message.windowId, { focused: true });
+                console.log('[Background] Successfully switched to tab');
+                sendResponse({ success: true });
+            } catch (error) {
+                console.error('[Background] Error switching to tab:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'searchTabs') {
+        // Handle async operation properly
+        (async () => {
+            try {
+                console.log('[Background] Searching tabs with query:', message.query);
+                const tabs = await chrome.tabs.query({});
+                const query = message.query?.toLowerCase() || '';
+                const filteredTabs = tabs.filter(tab => {
+                    if (!tab.title || !tab.url) return false;
+                    if (!query) return true;
+                    return tab.title.toLowerCase().includes(query) || 
+                           tab.url.toLowerCase().includes(query);
+                });
+                console.log('[Background] Found tabs:', filteredTabs.length);
+                sendResponse({ success: true, tabs: filteredTabs });
+            } catch (error) {
+                console.error('[Background] Error searching tabs:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'getRecentTabs') {
+        (async () => {
+            try {
+                console.log('[Background] Getting recent tabs, limit:', message.limit);
+                const tabs = await chrome.tabs.query({});
+                const storage = await chrome.storage.local.get([TAB_ACTIVITY_STORAGE_KEY]);
+                const activityData = storage[TAB_ACTIVITY_STORAGE_KEY] || {};
+                
+                const tabsWithActivity = tabs
+                    .filter(tab => tab.url && tab.title)
+                    .map(tab => ({
+                        ...tab,
+                        lastActivity: activityData[tab.id] || 0
+                    }))
+                    .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
+                    .slice(0, message.limit || 5);
+                    
+                console.log('[Background] Found recent tabs:', tabsWithActivity.length);
+                sendResponse({ success: true, tabs: tabsWithActivity });
+            } catch (error) {
+                console.error('[Background] Error getting recent tabs:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'searchBookmarks') {
+        (async () => {
+            try {
+                console.log('[Background] Searching bookmarks with query:', message.query);
+                const bookmarks = await chrome.bookmarks.search(message.query);
+                const filteredBookmarks = bookmarks.filter(bookmark => bookmark.url);
+                console.log('[Background] Found bookmarks:', filteredBookmarks.length);
+                sendResponse({ success: true, bookmarks: filteredBookmarks });
+            } catch (error) {
+                console.error('[Background] Error searching bookmarks:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'searchHistory') {
+        (async () => {
+            try {
+                console.log('[Background] Searching history with query:', message.query);
+                const historyItems = await chrome.history.search({
+                    text: message.query,
+                    maxResults: 10,
+                    startTime: Date.now() - (7 * 24 * 60 * 60 * 1000) // Last 7 days
+                });
+                console.log('[Background] Found history items:', historyItems.length);
+                sendResponse({ success: true, history: historyItems });
+            } catch (error) {
+                console.error('[Background] Error searching history:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'getTopSites') {
+        (async () => {
+            try {
+                console.log('[Background] Getting top sites');
+                const topSites = await chrome.topSites.get();
+                console.log('[Background] Found top sites:', topSites.length);
+                sendResponse({ success: true, topSites: topSites });
+            } catch (error) {
+                console.error('[Background] Error getting top sites:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'getActiveSpaceColor') {
+        (async () => {
+            try {
+                console.log('[Background] Getting active space color');
+                const spacesResult = await chrome.storage.local.get('spaces');
+                const spaces = spacesResult.spaces || [];
+                
+                // Get the current active tab to determine which space it belongs to
+                const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                
+                if (!activeTab || !activeTab.groupId || activeTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+                    console.log('[Background] No active tab group, using default purple');
+                    sendResponse({ success: true, color: 'purple' });
+                    return;
+                }
+                
+                // Find the space that matches the active tab's group
+                const activeSpace = spaces.find(space => space.id === activeTab.groupId);
+                
+                if (activeSpace && activeSpace.color) {
+                    console.log('[Background] Found active space color:', activeSpace.color);
+                    sendResponse({ success: true, color: activeSpace.color });
+                } else {
+                    console.log('[Background] No space found for group, using default purple');
+                    sendResponse({ success: true, color: 'purple' });
+                }
+            } catch (error) {
+                console.error('[Background] Error getting active space color:', error);
+                sendResponse({ success: false, error: error.message, color: 'purple' });
+            }
+        })();
+        return true; // Async response
     }
-    // Keep the message channel open for asynchronous response if needed
-    // return true;
+    
+    return false; // No async response needed
 });

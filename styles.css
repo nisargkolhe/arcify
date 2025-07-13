@@ -545,9 +545,14 @@ h3 {
     background-color: rgba(255, 255, 255, 0.3);
 }
 
+.new-tab-btn.spotlight-active {
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
 .new-tab-btn span {
     font-size: 20px;
 }
+
 
 .space-switcher {
     display: flex;

@@ -22,12 +22,13 @@ export default defineConfig({
         utils: resolve(__dirname, 'utils.js'),
         localstorage: resolve(__dirname, 'localstorage.js'),
         chromeHelper: resolve(__dirname, 'chromeHelper.js'),
-        icons: resolve(__dirname, 'icons.js')
+        icons: resolve(__dirname, 'icons.js'),
+        'spotlight-overlay': resolve(__dirname, 'spotlight-overlay.js'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
           // Keep original names for main scripts
-          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons'];
+          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons', 'spotlight-overlay'];
           if (mainScripts.includes(chunkInfo.name)) {
             return chunkInfo.name === 'sidebar-script' ? 'sidebar.js' : 
                    chunkInfo.name === 'options-script' ? 'options.js' : 
@@ -66,6 +67,14 @@ export default defineConfig({
         // Copy styles.css
         if (await fs.pathExists('styles.css')) {
           await fs.copy('styles.css', 'dist/styles.css');
+        }
+        
+        // Copy search modules for dynamic import
+        const searchModules = ['search-types.js', 'search-data-provider.js', 'search-engine.js'];
+        for (const module of searchModules) {
+          if (await fs.pathExists(module)) {
+            await fs.copy(module, `dist/${module}`);
+          }
         }
         
         // Copy LICENSE and README if they exist
