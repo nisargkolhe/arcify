@@ -3,6 +3,9 @@
 
 (async function(spotlightTabMode = 'current-tab') {
     
+    // Constants are defined in search-types.js, duplicated here because injected content scripts
+    // cannot import other modules / files.
+    // IMPORTANT: Update these constants when updating them in search-types.js (and vice versa).
     // Result type constants
     const ResultType = {
         URL_SUGGESTION: 'url-suggestion',
