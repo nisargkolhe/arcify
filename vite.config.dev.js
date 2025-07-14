@@ -27,7 +27,7 @@ export default defineConfig({
         localstorage: resolve(__dirname, 'localstorage.js'),
         chromeHelper: resolve(__dirname, 'chromeHelper.js'),
         icons: resolve(__dirname, 'icons.js'),
-        'spotlight-overlay': resolve(__dirname, 'spotlight-overlay.js'),
+        'spotlight-overlay': resolve(__dirname, 'spotlight/overlay.js'),
         'spotlight-popup-script': resolve(__dirname, 'spotlight/popup.js'),
         'spotlight-search-engine': resolve(__dirname, 'spotlight/shared/search-engine.js'),
         'spotlight-search-provider': resolve(__dirname, 'spotlight/shared/search-provider.js'),
@@ -40,6 +40,7 @@ export default defineConfig({
           if (mainScripts.includes(chunkInfo.name)) {
             if (chunkInfo.name === 'sidebar-script') return 'sidebar.js';
             if (chunkInfo.name === 'options-script') return 'options.js';
+            if (chunkInfo.name === 'spotlight-overlay') return 'spotlight/overlay.js';
             if (chunkInfo.name === 'spotlight-popup-script') return 'spotlight/popup.js';
             if (chunkInfo.name === 'spotlight-search-engine') return 'spotlight/shared/search-engine.js';
             if (chunkInfo.name === 'spotlight-search-provider') return 'spotlight/shared/search-provider.js';
