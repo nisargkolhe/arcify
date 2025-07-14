@@ -13,13 +13,7 @@
         TOP_SITE: 'top-site'
     };
 
-    // Spotlight mode constants
-    const SpotlightMode = {
-        CURRENT_TAB: 'current-tab',
-        NEW_TAB: 'new-tab'
-    };
-
-    // Enum for spotlight tab modes (declared inside IIFE to avoid redeclaration)
+    // Spotlight tab mode constants
     const SpotlightTabMode = {
         CURRENT_TAB: 'current-tab',
         NEW_TAB: 'new-tab'
@@ -461,7 +455,7 @@
         }
 
         // Main search method with debouncing
-        search(query, mode = SpotlightMode.CURRENT_TAB) {
+        search(query, mode = SpotlightTabMode.CURRENT_TAB) {
             return new Promise((resolve) => {
                 clearTimeout(this.searchTimeout);
 
@@ -493,7 +487,7 @@
         }
 
         // Immediate search without debouncing
-        async searchImmediate(query, mode = SpotlightMode.CURRENT_TAB) {
+        async searchImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
             try {
                 return await this.performSearch(query, mode);
             } catch (error) {
@@ -529,7 +523,7 @@
                 [ResultType.OPEN_TAB]: {
                     title: result.title,
                     subtitle: result.domain,
-                    action: mode === SpotlightMode.NEW_TAB ? 'Switch to Tab' : '↵'
+                    action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
                 },
                 [ResultType.BOOKMARK]: {
                     title: result.title,
@@ -560,7 +554,7 @@
             try {
                 switch (result.type) {
                     case ResultType.OPEN_TAB:
-                        if (mode === SpotlightMode.NEW_TAB) {
+                        if (mode === SpotlightTabMode.NEW_TAB) {
                             // Send message to background script to switch tabs
                             chrome.runtime.sendMessage({
                                 action: 'switchToTab',
@@ -576,7 +570,7 @@
                     case ResultType.BOOKMARK:
                     case ResultType.HISTORY:
                     case ResultType.TOP_SITE:
-                        if (mode === SpotlightMode.NEW_TAB) {
+                        if (mode === SpotlightTabMode.NEW_TAB) {
                             chrome.runtime.sendMessage({
                                 action: 'openNewTab',
                                 url: result.url
@@ -588,7 +582,7 @@
 
                     case ResultType.SEARCH_QUERY:
                         const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(result.metadata.query)}`;
-                        if (mode === SpotlightMode.NEW_TAB) {
+                        if (mode === SpotlightTabMode.NEW_TAB) {
                             chrome.runtime.sendMessage({
                                 action: 'openNewTab',
                                 url: searchUrl
