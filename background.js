@@ -352,6 +352,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.create({ url: message.url });
         sendResponse({ success: true });
         return false; // Synchronous response
+    } else if (message.action === 'navigateCurrentTab') {
+        // Handle navigation of current tab for popup current-tab mode
+        // Needs message passing to background script because the browser `window` object
+        // is not available in popup. Popup only has access to its own window.
+        (async () => {
+            try {
+                console.log('[Background] Navigating current tab to:', message.url);
+                const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+                if (activeTab) {
+                    await chrome.tabs.update(activeTab.id, { url: message.url });
+                    console.log('[Background] Successfully navigated current tab');
+                    sendResponse({ success: true });
+                } else {
+                    console.error('[Background] No active tab found');
+                    sendResponse({ success: false, error: 'No active tab found' });
+                }
+            } catch (error) {
+                console.error('[Background] Error navigating current tab:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
     } else if (message.action === 'switchToTab') {
         // Handle tab switching for spotlight search results
         (async () => {

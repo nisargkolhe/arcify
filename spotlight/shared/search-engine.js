@@ -121,7 +121,11 @@ export class SearchEngine {
                             windowId: result.metadata.windowId
                         });
                     } else {
-                        window.location.href = result.url;
+                        // For current-tab mode in popup, navigate current tab via background script
+                        chrome.runtime.sendMessage({
+                            action: 'navigateCurrentTab',
+                            url: result.url
+                        });
                     }
                     break;
 
@@ -135,7 +139,11 @@ export class SearchEngine {
                             url: result.url
                         });
                     } else {
-                        window.location.href = result.url;
+                        // For current-tab mode in popup, navigate current tab via background script
+                        chrome.runtime.sendMessage({
+                            action: 'navigateCurrentTab',
+                            url: result.url
+                        });
                     }
                     break;
 
@@ -147,7 +155,11 @@ export class SearchEngine {
                             url: searchUrl
                         });
                     } else {
-                        window.location.href = searchUrl;
+                        // For current-tab mode in popup, navigate current tab via background script
+                        chrome.runtime.sendMessage({
+                            action: 'navigateCurrentTab',
+                            url: searchUrl
+                        });
                     }
                     break;
 
