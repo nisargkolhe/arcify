@@ -1,4 +1,6 @@
 // popup.js - Popup implementation using shared spotlight modules
+// NOTE: This is only used for URLs with restricted script injection (primarily Chrome Extension & Chrome Store links).
+// The primary & most used spotlight implementation is in spotlight/overlay.js
 
 import { SearchEngine } from './shared/search-engine.js';
 import { SpotlightTabMode } from './shared/search-types.js';

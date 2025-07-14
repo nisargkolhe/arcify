@@ -79,7 +79,7 @@ async function injectSpotlightScript(spotlightTabMode) {
             // Then inject the spotlight overlay script
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
-                files: ['spotlight-overlay.js']
+                files: ['spotlight/overlay.js']
             });
             
             // Notify sidebar about spotlight mode
