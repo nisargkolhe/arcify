@@ -1,0 +1,203 @@
+/* Popup-specific spotlight styling - mirrors overlay appearance */
+
+/* Default accent colors for fallback */
+:root {
+    --spotlight-accent-color: rgb(214, 166, 255);
+    --spotlight-accent-color-15: rgba(214, 166, 255, 0.15);
+    --spotlight-accent-color-20: rgba(214, 166, 255, 0.2);
+    --spotlight-accent-color-80: rgba(214, 166, 255, 0.8);
+}
+
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: transparent;
+    margin: 0;
+    padding: 0;
+    width: 600px;
+    min-height: 400px;
+    overflow: hidden;
+}
+
+.arcify-spotlight-container {
+    background: #2D2D2D;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0;
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.arcify-spotlight-input-wrapper {
+    display: flex;
+    align-items: center;
+    padding: 12px 24px 12px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+}
+
+.arcify-spotlight-search-icon {
+    width: 20px;
+    height: 20px;
+    margin-right: 12px;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.arcify-spotlight-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 18px;
+    line-height: 24px;
+    padding: 8px 0;
+    outline: none;
+    font-weight: 400;
+}
+
+.arcify-spotlight-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.arcify-spotlight-input:focus {
+    outline: none;
+}
+
+.arcify-spotlight-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    min-height: 0;
+}
+
+.arcify-spotlight-result-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 24px 12px 20px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+}
+
+.arcify-spotlight-result-item:hover,
+.arcify-spotlight-result-item:focus {
+    background: var(--spotlight-accent-color-15);
+    outline: none;
+}
+
+.arcify-spotlight-result-item.selected {
+    background: var(--spotlight-accent-color-20);
+}
+
+.arcify-spotlight-result-favicon {
+    width: 20px;
+    height: 20px;
+    margin-right: 12px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.arcify-spotlight-result-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.arcify-spotlight-result-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #ffffff;
+    margin: 0 0 2px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.arcify-spotlight-result-url {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.arcify-spotlight-result-action {
+    font-size: 12px;
+    color: var(--spotlight-accent-color-80);
+    margin-left: 12px;
+    flex-shrink: 0;
+}
+
+.arcify-spotlight-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.arcify-spotlight-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+}
+
+/* Scrollbar styling */
+.arcify-spotlight-results::-webkit-scrollbar {
+    width: 6px;
+}
+
+.arcify-spotlight-results::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.arcify-spotlight-results::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.arcify-spotlight-results::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Focus styles */
+.arcify-spotlight-result-item:focus-visible {
+    outline: 2px solid var(--spotlight-accent-color);
+    outline-offset: -2px;
+}
+
+/* Animation for smoother experience */
+.arcify-spotlight-container {
+    animation: spotlightPopupShow 0.15s ease-out;
+}
+
+@keyframes spotlightPopupShow {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
