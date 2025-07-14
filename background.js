@@ -90,15 +90,41 @@ async function injectSpotlightScript(spotlightTabMode) {
             });
         }
     } catch (error) {
-        console.error("Error injecting spotlight script:", error);
-        // Fallback: open side panel if injection fails
+        console.log("Content script injection failed, using popup fallback:", error);
+        // Fallback: open spotlight popup if content script injection fails
+        await openSpotlightPopup(spotlightTabMode);
+    }
+}
+
+// Helper function to open spotlight popup fallback
+async function openSpotlightPopup(spotlightTabMode) {
+    try {
+        // Set popup mode and tab mode in storage for popup to read
+        await chrome.storage.local.set({ 
+            spotlightMode: spotlightTabMode,
+            spotlightPopupActive: true 
+        });
+        
+        // Notify sidebar about spotlight mode
+        chrome.runtime.sendMessage({
+            action: 'spotlightOpened',
+            mode: spotlightTabMode
+        });
+        
+        // Open popup (requires popup to be configured in manifest)
+        await chrome.action.openPopup();
+        
+        console.log("Opened spotlight popup fallback with mode:", spotlightTabMode);
+    } catch (popupError) {
+        console.error("Error opening spotlight popup fallback:", popupError);
+        // Final fallback: open side panel
         try {
             const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
             if (tab) {
                 chrome.sidePanel.open({windowId: tab.windowId});
             }
-        } catch (fallbackError) {
-            console.error("Fallback to side panel also failed:", fallbackError);
+        } catch (sidePanelError) {
+            console.error("All fallbacks failed:", sidePanelError);
         }
     }
 }

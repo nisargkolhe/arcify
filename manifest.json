@@ -22,7 +22,9 @@
   "side_panel": {
     "default_path": "sidebar.html"
   },
-  "action": {},
+  "action": {
+    "default_popup": "spotlight/popup.html"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -33,7 +35,8 @@
         "sidebar.js",
         "onboarding.js",
         "assets/*",
-        "_favicon/*"
+        "_favicon/*",
+        "spotlight/shared/*"
       ],
       "matches": [
         "<all_urls>"

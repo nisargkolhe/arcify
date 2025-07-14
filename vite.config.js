@@ -14,6 +14,7 @@ export default defineConfig({
         sidebar: resolve(__dirname, 'sidebar.html'),
         options: resolve(__dirname, 'options.html'),
         onboarding: resolve(__dirname, 'onboarding.html'),
+        'spotlight-popup': resolve(__dirname, 'spotlight/popup.html'),
         // JavaScript entry points
         background: resolve(__dirname, 'background.js'),
         'sidebar-script': resolve(__dirname, 'sidebar.js'),
@@ -24,22 +25,36 @@ export default defineConfig({
         chromeHelper: resolve(__dirname, 'chromeHelper.js'),
         icons: resolve(__dirname, 'icons.js'),
         'spotlight-overlay': resolve(__dirname, 'spotlight-overlay.js'),
+        'spotlight-popup-script': resolve(__dirname, 'spotlight/popup.js'),
+        'spotlight-search-engine': resolve(__dirname, 'spotlight/shared/search-engine.js'),
+        'spotlight-search-provider': resolve(__dirname, 'spotlight/shared/search-provider.js'),
+        'spotlight-search-types': resolve(__dirname, 'spotlight/shared/search-types.js'),
+        'spotlight-styling': resolve(__dirname, 'spotlight/shared/styling.js'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
           // Keep original names for main scripts
-          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons', 'spotlight-overlay'];
+          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons', 'spotlight-overlay', 'spotlight-popup-script', 'spotlight-search-engine', 'spotlight-search-provider', 'spotlight-search-types', 'spotlight-styling'];
           if (mainScripts.includes(chunkInfo.name)) {
-            return chunkInfo.name === 'sidebar-script' ? 'sidebar.js' : 
-                   chunkInfo.name === 'options-script' ? 'options.js' : 
-                   `${chunkInfo.name}.js`;
+            // Handle special naming for scripts
+            if (chunkInfo.name === 'sidebar-script') return 'sidebar.js';
+            if (chunkInfo.name === 'options-script') return 'options.js';
+            if (chunkInfo.name === 'spotlight-popup-script') return 'spotlight/popup.js';
+            if (chunkInfo.name === 'spotlight-search-engine') return 'spotlight/shared/search-engine.js';
+            if (chunkInfo.name === 'spotlight-search-provider') return 'spotlight/shared/search-provider.js';
+            if (chunkInfo.name === 'spotlight-search-types') return 'spotlight/shared/search-types.js';
+            if (chunkInfo.name === 'spotlight-styling') return 'spotlight/shared/styling.js';
+            return `${chunkInfo.name}.js`;
           }
           return 'assets/[name]-[hash].js';
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
-          // Keep CSS files in root for extension compatibility
+          // Keep CSS files in proper locations for extension compatibility
           if (assetInfo.name?.endsWith('.css')) {
+            if (assetInfo.name?.includes('popup')) {
+              return 'spotlight/popup.css';
+            }
             return '[name][extname]';
           }
           return 'assets/[name]-[hash][extname]';
@@ -69,7 +84,12 @@ export default defineConfig({
           await fs.copy('styles.css', 'dist/styles.css');
         }
         
-        // Copy search modules for dynamic import
+        // Copy spotlight directory structure
+        if (await fs.pathExists('spotlight')) {
+          await fs.copy('spotlight', 'dist/spotlight');
+        }
+        
+        // Copy search modules for dynamic import (legacy)
         const searchModules = ['search-types.js', 'search-data-provider.js', 'search-engine.js'];
         for (const module of searchModules) {
           if (await fs.pathExists(module)) {
