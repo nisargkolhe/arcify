@@ -10,13 +10,7 @@ export const ResultType = {
     TOP_SITE: 'top-site'
 };
 
-// Spotlight mode constants
-export const SpotlightMode = {
-    CURRENT_TAB: 'current-tab',
-    NEW_TAB: 'new-tab'
-};
-
-// Enum for spotlight tab modes
+// Spotlight tab mode constants
 export const SpotlightTabMode = {
     CURRENT_TAB: 'current-tab',
     NEW_TAB: 'new-tab'

@@ -1,7 +1,7 @@
 // search-engine.js - Shared search engine with caching and debouncing for spotlight components
 
 import { SearchDataProvider } from './search-provider.js';
-import { ResultType, SpotlightMode } from './search-types.js';
+import { ResultType, SpotlightTabMode } from './search-types.js';
 
 // Search Engine with caching
 export class SearchEngine {
@@ -14,7 +14,7 @@ export class SearchEngine {
     }
 
     // Main search method with debouncing
-    search(query, mode = SpotlightMode.CURRENT_TAB) {
+    search(query, mode = SpotlightTabMode.CURRENT_TAB) {
         return new Promise((resolve) => {
             clearTimeout(this.searchTimeout);
 
@@ -46,7 +46,7 @@ export class SearchEngine {
     }
 
     // Immediate search without debouncing
-    async searchImmediate(query, mode = SpotlightMode.CURRENT_TAB) {
+    async searchImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
         try {
             return await this.performSearch(query, mode);
         } catch (error) {
@@ -82,7 +82,7 @@ export class SearchEngine {
             [ResultType.OPEN_TAB]: {
                 title: result.title,
                 subtitle: result.domain,
-                action: mode === SpotlightMode.NEW_TAB ? 'Switch to Tab' : '↵'
+                action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
             },
             [ResultType.BOOKMARK]: {
                 title: result.title,
@@ -113,7 +113,7 @@ export class SearchEngine {
         try {
             switch (result.type) {
                 case ResultType.OPEN_TAB:
-                    if (mode === SpotlightMode.NEW_TAB) {
+                    if (mode === SpotlightTabMode.NEW_TAB) {
                         // Send message to background script to switch tabs
                         chrome.runtime.sendMessage({
                             action: 'switchToTab',
@@ -133,7 +133,7 @@ export class SearchEngine {
                 case ResultType.BOOKMARK:
                 case ResultType.HISTORY:
                 case ResultType.TOP_SITE:
-                    if (mode === SpotlightMode.NEW_TAB) {
+                    if (mode === SpotlightTabMode.NEW_TAB) {
                         chrome.runtime.sendMessage({
                             action: 'openNewTab',
                             url: result.url
@@ -149,7 +149,7 @@ export class SearchEngine {
 
                 case ResultType.SEARCH_QUERY:
                     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(result.metadata.query)}`;
-                    if (mode === SpotlightMode.NEW_TAB) {
+                    if (mode === SpotlightTabMode.NEW_TAB) {
                         chrome.runtime.sendMessage({
                             action: 'openNewTab',
                             url: searchUrl
