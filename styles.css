@@ -735,6 +735,36 @@ h3 {
     background-color: rgba(255, 255, 255, 0.2);
 }
 
+/* Folder drag and drop styles */
+.folder.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.folder.drag-over {
+    border: 2px dashed rgba(0, 0, 0, 0.3);
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.tabs-container.folder-drag-over {
+    position: relative;
+}
+
+.tabs-container.folder-drag-over::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 100, 255, 0.1);
+    border: 2px dashed rgba(0, 100, 255, 0.3);
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 10;
+}
+
 .new-tab-input {
     background-color: rgba(255, 255, 255, 0.3);
 }

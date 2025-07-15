@@ -696,6 +696,23 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element
 }
 
+function getDragAfterElementFolder(container, y) {
+    const draggableElements = [...container.querySelectorAll('.folder:not(.dragging)')]
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect()
+        const offset = y - box.top - box.height / 2
+
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child }
+        } else {
+            return closest
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element
+}
+
+
+
 async function setActiveSpace(spaceId, updateTab = true) {
     console.log('Setting active space:', spaceId);
 
@@ -744,6 +761,124 @@ async function setActiveSpace(spaceId, updateTab = true) {
             });
         }
     }
+
+    // Load folder order for the activated space
+    await loadAndApplyFolderOrder(spaceId);
+}
+
+function getFolderName(folderElement) {
+    const folderNameInput = folderElement.querySelector('.folder-name');
+    const folderTitle = folderElement.querySelector('.folder-title');
+    return folderNameInput.value || folderTitle.textContent || 'Untitled';
+}
+
+async function saveFolderOrder(spaceId) {
+    const spaceElement = document.querySelector(`[data-space-id="${spaceId}"]`);
+    if (!spaceElement) return;
+
+    const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+    const folders = pinnedContainer.querySelectorAll('.folder');
+    
+    const folderOrder = Array.from(folders).map(folder => getFolderName(folder));
+
+    const space = spaces.find(s => s.id === parseInt(spaceId));
+    if (space) {
+        space.folderOrder = folderOrder;
+        saveSpaces();
+    }
+}
+
+async function loadAndApplyFolderOrder(spaceId) {
+    const space = spaces.find(s => s.id === parseInt(spaceId));
+    if (!space || !space.folderOrder) return;
+
+    const spaceElement = document.querySelector(`[data-space-id="${spaceId}"]`);
+    if (!spaceElement) return;
+
+    const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+    const folders = Array.from(pinnedContainer.querySelectorAll('.folder'));
+    
+    const folderMap = new Map();
+    folders.forEach(folder => {
+        const folderName = getFolderName(folder);
+        folderMap.set(folderName, folder);
+    });
+
+    const orderedFolders = [];
+    space.folderOrder.forEach(folderName => {
+        const folder = folderMap.get(folderName);
+        if (folder) {
+            orderedFolders.push(folder);
+            folderMap.delete(folderName);
+        }
+    });
+
+    // Add any remaining folders
+    folderMap.forEach(folder => {
+        orderedFolders.push(folder);
+    });
+
+    // Reorder folders in DOM
+    folders.forEach(folder => folder.remove());
+    orderedFolders.forEach(folder => {
+        pinnedContainer.appendChild(folder);
+    });
+}
+
+function setupFolderDragAndDrop(folderElement, spaceId) {
+    folderElement.draggable = true;
+    
+    folderElement.addEventListener('dragstart', (e) => {
+        folderElement.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'folder');
+    });
+
+    folderElement.addEventListener('dragend', (e) => {
+        folderElement.classList.remove('dragging');
+        document.querySelectorAll('.tabs-container').forEach(container => {
+            container.classList.remove('folder-drag-over');
+        });
+        saveFolderOrder(spaceId);
+    });
+}
+
+function setupFolderDragAndDropContainer(pinnedContainer) {
+    pinnedContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const draggingElement = document.querySelector('.dragging');
+        
+        if (draggingElement && draggingElement.classList.contains('folder')) {
+            pinnedContainer.classList.add('folder-drag-over');
+            
+            const afterElement = getDragAfterElementFolder(pinnedContainer, e.clientY);
+            if (afterElement) {
+                pinnedContainer.insertBefore(draggingElement, afterElement);
+            } else {
+                pinnedContainer.appendChild(draggingElement);
+            }
+        }
+    });
+    
+    pinnedContainer.addEventListener('dragleave', (e) => {
+        if (!pinnedContainer.contains(e.relatedTarget)) {
+            pinnedContainer.classList.remove('folder-drag-over');
+        }
+    });
+    
+    pinnedContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        pinnedContainer.classList.remove('folder-drag-over');
+        
+        const draggingElement = document.querySelector('.dragging');
+        if (draggingElement && draggingElement.classList.contains('folder')) {
+            const spaceElement = pinnedContainer.closest('.space');
+            const spaceId = spaceElement.dataset.spaceId;
+            if (spaceId) {
+                saveFolderOrder(spaceId);
+            }
+        }
+    });
 }
 
 async function createSpaceFromInactive(spaceName, tabToMove) {
@@ -847,6 +982,8 @@ async function moveTabToTemp(space, tab) {
 
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
     console.log('Setting up drag and drop handlers...');
+    setupFolderDragAndDropContainer(pinnedContainer);
+    
     [pinnedContainer, tempContainer].forEach(container => {
         container.addEventListener('dragover', e => {
             e.preventDefault();
@@ -999,6 +1136,11 @@ async function createNewFolder(spaceElement) {
 
     // Add the new folder to the pinned container
     pinnedContainer.appendChild(folderElement);
+    
+    // Set up drag and drop for the new folder
+    const spaceId = spaceElement.dataset.spaceId;
+    setupFolderDragAndDrop(folderElement, spaceId);
+    
     folderNameInput.focus();
 }
 
@@ -1093,6 +1235,9 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         placeHolderElement.classList.remove('hidden');
 
                         container.appendChild(folderElement);
+
+                        // Set up drag and drop for loaded folder
+                        setupFolderDragAndDrop(folderElement, space.id);
 
                         // Recursively process the folder's contents
                         await processBookmarkNode(item, folderElement.querySelector('.folder-content'));
