@@ -8,15 +8,15 @@ export class SearchEngine {
     constructor() {
         this.dataProvider = new SearchDataProvider();
         this.cache = new Map();
-        this.searchTimeout = null;
+        this.suggestionsTimeout = null;
         this.DEBOUNCE_DELAY = 150;
         this.CACHE_TTL = 30000;
     }
 
-    // Main search method with debouncing
-    search(query, mode = SpotlightTabMode.CURRENT_TAB) {
+    // Main method to get spotlight suggestions with debouncing and caching
+    getSpotlightSuggestionsUsingCache(query, mode = SpotlightTabMode.CURRENT_TAB) {
         return new Promise((resolve) => {
-            clearTimeout(this.searchTimeout);
+            clearTimeout(this.suggestionsTimeout);
 
             // Check cache first
             const cacheKey = `${query.trim()}:${mode}`;
@@ -26,10 +26,10 @@ export class SearchEngine {
                 return;
             }
 
-            // Debounced search
-            this.searchTimeout = setTimeout(async () => {
+            // Debounced suggestions
+            this.suggestionsTimeout = setTimeout(async () => {
                 try {
-                    const results = await this.performSearch(query, mode);
+                    const results = await this.getSuggestionsImpl(query, mode);
                     
                     this.cache.set(cacheKey, {
                         results,
@@ -45,25 +45,25 @@ export class SearchEngine {
         });
     }
 
-    // Immediate search without debouncing
-    async searchImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
+    // Immediate suggestions without debouncing
+    async getSpotlightSuggestionsImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
         try {
-            return await this.performSearch(query, mode);
+            return await this.getSuggestionsImpl(query, mode);
         } catch (error) {
-            console.error('Immediate search error:', error);
+            console.error('Immediate suggestions error:', error);
             return [];
         }
     }
 
-    // Internal search implementation
-    async performSearch(query, mode) {
+    // Internal suggestions implementation
+    async getSuggestionsImpl(query, mode) {
         const trimmedQuery = query.trim();
         
         if (!trimmedQuery) {
             return await this.dataProvider.getDefaultResults(mode);
         }
 
-        return await this.dataProvider.search(trimmedQuery, mode);
+        return await this.dataProvider.getSpotlightSuggestions(trimmedQuery, mode);
     }
 
     // Format result for display

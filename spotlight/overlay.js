@@ -52,369 +52,40 @@
         }
     }
 
-    // Search Data Provider
-    class SearchDataProvider {
-        constructor() {
-            this.cache = new Map();
-            this.cacheTimeout = 5000;
+    // Utility functions for overlay UI
+    function isURL(text) {
+        // Check if it's already a complete URL
+        try {
+            new URL(text);
+            return true;
+        } catch {}
+
+        // Check for domain-like patterns
+        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
+        if (domainPattern.test(text)) {
+            return true;
         }
 
-        // Main search method
-        async search(query, mode = 'current-tab') {
-            const results = [];
-            const trimmedQuery = query.trim().toLowerCase();
-            
-            console.log('[Spotlight] Starting search with query:', trimmedQuery, 'mode:', mode);
-
-            if (!trimmedQuery) {
-                console.log('[Spotlight] Empty query, getting default results');
-                return this.getDefaultResults(mode);
-            }
-
-            try {
-                console.log('[Spotlight] Fetching results from all sources...');
-                
-                // Get results from different sources with individual error handling
-                let openTabs = [];
-                let bookmarks = [];
-                let history = [];
-                let topSites = [];
-
-                // Get tabs (only in new-tab mode)
-                if (mode === 'new-tab') {
-                    try {
-                        openTabs = await this.getOpenTabs(trimmedQuery);
-                    } catch (error) {
-                        console.error('[Spotlight] Failed to get open tabs:', error);
-                        openTabs = [];
-                    }
-                }
-
-                // Get bookmarks
-                try {
-                    bookmarks = await this.searchBookmarks(trimmedQuery);
-                } catch (error) {
-                    console.error('[Spotlight] Failed to get bookmarks:', error);
-                    bookmarks = [];
-                }
-
-                // Get history
-                try {
-                    history = await this.searchHistory(trimmedQuery);
-                } catch (error) {
-                    console.error('[Spotlight] Failed to get history:', error);
-                    history = [];
-                }
-
-                // Get top sites
-                try {
-                    topSites = await this.getTopSites();
-                } catch (error) {
-                    console.error('[Spotlight] Failed to get top sites:', error);
-                    topSites = [];
-                }
-
-                console.log('[Spotlight] Individual results:');
-                console.log('  - Open tabs:', openTabs.length);
-                console.log('  - Bookmarks:', bookmarks.length);
-                console.log('  - History:', history.length);
-                console.log('  - Top sites:', topSites.length);
-
-                // Add URL/search suggestions
-                if (this.isURL(trimmedQuery)) {
-                    console.log('[Spotlight] Adding URL suggestion for:', trimmedQuery);
-                    results.push(this.generateURLSuggestion(trimmedQuery));
-                } else {
-                    console.log('[Spotlight] Adding search suggestion for:', trimmedQuery);
-                    results.push(this.generateSearchSuggestion(trimmedQuery));
-                }
-
-                // Add other results
-                results.push(...openTabs, ...bookmarks, ...history);
-                
-                // Add top sites that match query
-                const matchingTopSites = topSites.filter(site => 
-                    site.title.toLowerCase().includes(trimmedQuery) ||
-                    site.url.toLowerCase().includes(trimmedQuery)
-                );
-                console.log('[Spotlight] Matching top sites:', matchingTopSites.length);
-                results.push(...matchingTopSites);
-
-                console.log('[Spotlight] Total results before scoring:', results.length);
-                // Score and sort results
-                const finalResults = this.scoreAndSortResults(results, trimmedQuery);
-                console.log('[Spotlight] Final results after scoring:', finalResults.length);
-                return finalResults;
-            } catch (error) {
-                console.error('[Spotlight] Search error:', error);
-                return [this.generateFallbackResult(trimmedQuery)];
-            }
+        // Check for localhost
+        if (text === 'localhost' || text.startsWith('localhost:')) {
+            return true;
         }
 
-        // Get default results when no query
-        async getDefaultResults(mode) {
-            const results = [];
-
-            try {
-                if (mode === 'new-tab') {
-                    // Show recent tabs for new tab mode
-                    const recentTabs = await this.getRecentTabs(5);
-                    results.push(...recentTabs);
-                }
-
-                // Show top sites as suggestions
-                const topSites = await this.getTopSites();
-                results.push(...topSites.slice(0, 4));
-            } catch (error) {
-                console.error('Error getting default results:', error);
-            }
-
-            return results;
-        }
-
-        // Chrome tabs API integration via background script
-        async getOpenTabs(query = '') {
-            try {
-                console.log('[Spotlight] Requesting tabs with query:', query);
-                const response = await chrome.runtime.sendMessage({
-                    action: 'searchTabs',
-                    query: query
-                });
-                
-                console.log('[Spotlight] Tabs response:', response);
-                if (response && response.success) {
-                    const results = response.tabs.map(tab => new SearchResult({
-                        type: ResultType.OPEN_TAB,
-                        title: tab.title,
-                        url: tab.url,
-                        favicon: tab.favIconUrl,
-                        metadata: { tabId: tab.id, windowId: tab.windowId }
-                    }));
-                    console.log('[Spotlight] Created tab results:', results.length);
-                    return results;
-                }
-                console.log('[Spotlight] No valid tabs response');
-                return [];
-            } catch (error) {
-                console.error('[Spotlight] Error querying tabs:', error);
-                return [];
-            }
-        }
-
-        // Get recent tabs by activity via background script
-        async getRecentTabs(limit = 5) {
-            try {
-                console.log('[Spotlight] Requesting recent tabs, limit:', limit);
-                const response = await chrome.runtime.sendMessage({
-                    action: 'getRecentTabs',
-                    limit: limit
-                });
-                
-                console.log('[Spotlight] Recent tabs response:', response);
-                if (response && response.success) {
-                    const results = response.tabs.map(tab => new SearchResult({
-                        type: ResultType.OPEN_TAB,
-                        title: tab.title,
-                        url: tab.url,
-                        favicon: tab.favIconUrl,
-                        metadata: { tabId: tab.id, windowId: tab.windowId }
-                    }));
-                    console.log('[Spotlight] Created recent tab results:', results.length);
-                    return results;
-                }
-                console.log('[Spotlight] No valid recent tabs response');
-                return [];
-            } catch (error) {
-                console.error('[Spotlight] Error getting recent tabs:', error);
-                return [];
-            }
-        }
-
-        // Chrome bookmarks API integration via background script
-        async searchBookmarks(query) {
-            try {
-                console.log('[Spotlight] Requesting bookmarks with query:', query);
-                const response = await chrome.runtime.sendMessage({
-                    action: 'searchBookmarks',
-                    query: query
-                });
-                
-                console.log('[Spotlight] Bookmarks response:', response);
-                if (response && response.success) {
-                    const results = response.bookmarks.map(bookmark => new SearchResult({
-                        type: ResultType.BOOKMARK,
-                        title: bookmark.title,
-                        url: bookmark.url,
-                        metadata: { bookmarkId: bookmark.id }
-                    }));
-                    console.log('[Spotlight] Created bookmark results:', results.length);
-                    return results;
-                }
-                console.log('[Spotlight] No valid bookmarks response');
-                return [];
-            } catch (error) {
-                console.error('[Spotlight] Error searching bookmarks:', error);
-                return [];
-            }
-        }
-
-        // Chrome history API integration via background script
-        async searchHistory(query) {
-            try {
-                console.log('[Spotlight] Requesting history with query:', query);
-                const response = await chrome.runtime.sendMessage({
-                    action: 'searchHistory',
-                    query: query
-                });
-                
-                console.log('[Spotlight] History response:', response);
-                if (response && response.success) {
-                    const results = response.history.map(item => new SearchResult({
-                        type: ResultType.HISTORY,
-                        title: item.title || item.url,
-                        url: item.url,
-                        metadata: { visitCount: item.visitCount, lastVisitTime: item.lastVisitTime }
-                    }));
-                    console.log('[Spotlight] Created history results:', results.length);
-                    return results;
-                }
-                console.log('[Spotlight] No valid history response');
-                return [];
-            } catch (error) {
-                console.error('[Spotlight] Error searching history:', error);
-                return [];
-            }
-        }
-
-        // Chrome topSites API integration via background script
-        async getTopSites() {
-            try {
-                console.log('[Spotlight] Requesting top sites');
-                const response = await chrome.runtime.sendMessage({
-                    action: 'getTopSites'
-                });
-                
-                console.log('[Spotlight] Top sites response:', response);
-                if (response && response.success) {
-                    const results = response.topSites.map(site => new SearchResult({
-                        type: ResultType.TOP_SITE,
-                        title: site.title,
-                        url: site.url
-                    }));
-                    console.log('[Spotlight] Created top sites results:', results.length);
-                    return results;
-                }
-                console.log('[Spotlight] No valid top sites response');
-                return [];
-            } catch (error) {
-                console.error('[Spotlight] Error getting top sites:', error);
-                return [];
-            }
-        }
-
-        // URL detection utility
-        isURL(text) {
-            // Check if it's already a complete URL
-            try {
-                new URL(text);
-                return true;
-            } catch {}
-
-            // Check for domain-like patterns
-            const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
-            if (domainPattern.test(text)) {
-                return true;
-            }
-
-            // Check for localhost
-            if (text === 'localhost' || text.startsWith('localhost:')) {
-                return true;
-            }
-
-            // Check for IP addresses
-            if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
-                const parts = text.split(':')[0].split('.');
-                return parts.every(part => {
-                    const num = parseInt(part, 10);
-                    return num >= 0 && num <= 255;
-                });
-            }
-
-            // Common URL patterns without protocol
-            if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
-                return true;
-            }
-
-            return false;
-        }
-
-        // Generate URL suggestion
-        generateURLSuggestion(input) {
-            const url = input.startsWith('http') ? input : `https://${input}`;
-            return new SearchResult({
-                type: ResultType.URL_SUGGESTION,
-                title: `Navigate to ${url}`,
-                url: url,
-                score: 95
+        // Check for IP addresses
+        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
+            const parts = text.split(':')[0].split('.');
+            return parts.every(part => {
+                const num = parseInt(part, 10);
+                return num >= 0 && num <= 255;
             });
         }
 
-        // Generate search suggestion
-        generateSearchSuggestion(input) {
-            return new SearchResult({
-                type: ResultType.SEARCH_QUERY,
-                title: `Search for "${input}"`,
-                url: '',  // URL not needed since we'll use chrome.search API
-                score: 80,
-                metadata: { query: input }
-            });
+        // Common URL patterns without protocol
+        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
+            return true;
         }
 
-        // Generate fallback result for errors
-        generateFallbackResult(input) {
-            if (this.isURL(input)) {
-                return this.generateURLSuggestion(input);
-            } else {
-                return this.generateSearchSuggestion(input);
-            }
-        }
-
-        // Score and sort results
-        scoreAndSortResults(results, query) {
-            results.forEach(result => {
-                result.score = this.calculateRelevanceScore(result, query);
-            });
-
-            return results
-                .sort((a, b) => b.score - a.score)
-                .slice(0, 8);
-        }
-
-        // Relevance scoring algorithm
-        calculateRelevanceScore(result, query) {
-            let baseScore = 0;
-
-            switch (result.type) {
-                case ResultType.OPEN_TAB: baseScore = 100; break;
-                case ResultType.URL_SUGGESTION: baseScore = 95; break;
-                case ResultType.BOOKMARK: baseScore = 85; break;
-                case ResultType.SEARCH_QUERY: baseScore = 80; break;
-                case ResultType.TOP_SITE: baseScore = 70; break;
-                case ResultType.HISTORY: baseScore = 60; break;
-            }
-
-            const queryLower = query.toLowerCase();
-            const titleLower = result.title.toLowerCase();
-            const urlLower = result.url.toLowerCase();
-
-            if (titleLower === queryLower) baseScore += 20;
-            else if (titleLower.startsWith(queryLower)) baseScore += 15;
-            else if (titleLower.includes(queryLower)) baseScore += 10;
-
-            if (urlLower.includes(queryLower)) baseScore += 5;
-
-            return Math.max(0, baseScore);
-        }
+        return false;
     }
 
     // Function to get accent color CSS based on active space color
@@ -447,158 +118,46 @@
         `;
     }
 
-    // Search Engine with caching
-    class SearchEngine {
-        constructor() {
-            this.dataProvider = new SearchDataProvider();
-            this.cache = new Map();
-            this.searchTimeout = null;
-            this.DEBOUNCE_DELAY = 150;
-            this.CACHE_TTL = 30000;
-        }
-
-        // Main search method with debouncing
-        search(query, mode = SpotlightTabMode.CURRENT_TAB) {
-            return new Promise((resolve) => {
-                clearTimeout(this.searchTimeout);
-
-                // Check cache first
-                const cacheKey = `${query.trim()}:${mode}`;
-                const cached = this.cache.get(cacheKey);
-                if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-                    resolve(cached.results);
-                    return;
-                }
-
-                // Debounced search
-                this.searchTimeout = setTimeout(async () => {
-                    try {
-                        const results = await this.performSearch(query, mode);
-                        
-                        this.cache.set(cacheKey, {
-                            results,
-                            timestamp: Date.now()
-                        });
-
-                        resolve(results);
-                    } catch (error) {
-                        console.error('Search error:', error);
-                        resolve([]);
-                    }
-                }, this.DEBOUNCE_DELAY);
-            });
-        }
-
-        // Immediate search without debouncing
-        async searchImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
-            try {
-                return await this.performSearch(query, mode);
-            } catch (error) {
-                console.error('Immediate search error:', error);
-                return [];
-            }
-        }
-
-        // Internal search implementation
-        async performSearch(query, mode) {
-            const trimmedQuery = query.trim();
-            
-            if (!trimmedQuery) {
-                return await this.dataProvider.getDefaultResults(mode);
-            }
-
-            return await this.dataProvider.search(trimmedQuery, mode);
-        }
-
-        // Format result for display
-        formatResult(result, mode) {
-            const formatters = {
-                [ResultType.URL_SUGGESTION]: {
-                    title: result.title,
-                    subtitle: result.url,
-                    action: '↵'
-                },
-                [ResultType.SEARCH_QUERY]: {
-                    title: result.title,
-                    subtitle: 'Search',
-                    action: '↵'
-                },
-                [ResultType.OPEN_TAB]: {
-                    title: result.title,
-                    subtitle: result.domain,
-                    action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
-                },
-                [ResultType.BOOKMARK]: {
-                    title: result.title,
-                    subtitle: result.domain,
-                    action: '↵'
-                },
-                [ResultType.HISTORY]: {
-                    title: result.title,
-                    subtitle: result.domain,
-                    action: '↵'
-                },
-                [ResultType.TOP_SITE]: {
-                    title: result.title,
-                    subtitle: result.domain,
-                    action: '↵'
-                }
-            };
-
-            return formatters[result.type] || {
+    // Format result for display (moved from SearchEngine)
+    function formatResult(result, mode) {
+        const formatters = {
+            [ResultType.URL_SUGGESTION]: {
                 title: result.title,
                 subtitle: result.url,
                 action: '↵'
-            };
-        }
-
-        // Handle result action
-        async handleResultAction(result, mode) {
-            try {
-                switch (result.type) {
-                    case ResultType.OPEN_TAB:
-                        if (mode === SpotlightTabMode.NEW_TAB) {
-                            // Send message to background script to switch tabs
-                            chrome.runtime.sendMessage({
-                                action: 'switchToTab',
-                                tabId: result.metadata.tabId,
-                                windowId: result.metadata.windowId
-                            });
-                        } else {
-                            window.location.href = result.url;
-                        }
-                        break;
-
-                    case ResultType.URL_SUGGESTION:
-                    case ResultType.BOOKMARK:
-                    case ResultType.HISTORY:
-                    case ResultType.TOP_SITE:
-                        if (mode === SpotlightTabMode.NEW_TAB) {
-                            chrome.runtime.sendMessage({
-                                action: 'openNewTab',
-                                url: result.url
-                            });
-                        } else {
-                            window.location.href = result.url;
-                        }
-                        break;
-
-                    case ResultType.SEARCH_QUERY:
-                        // Use chrome.search API to search with the user's default search engine
-                        chrome.runtime.sendMessage({
-                            action: 'performSearch',
-                            query: result.metadata.query,
-                            mode: mode
-                        });
-                        break;
-
-                    default:
-                        console.warn('Unknown result type:', result.type);
-                }
-            } catch (error) {
-                console.error('Error handling result action:', error);
+            },
+            [ResultType.SEARCH_QUERY]: {
+                title: result.title,
+                subtitle: 'Search',
+                action: '↵'
+            },
+            [ResultType.OPEN_TAB]: {
+                title: result.title,
+                subtitle: result.domain,
+                action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
+            },
+            [ResultType.BOOKMARK]: {
+                title: result.title,
+                subtitle: result.domain,
+                action: '↵'
+            },
+            [ResultType.HISTORY]: {
+                title: result.title,
+                subtitle: result.domain,
+                action: '↵'
+            },
+            [ResultType.TOP_SITE]: {
+                title: result.title,
+                subtitle: result.domain,
+                action: '↵'
             }
-        }
+        };
+
+        return formatters[result.type] || {
+            title: result.title,
+            subtitle: result.url,
+            action: '↵'
+        };
     }
     
     // Handle toggle functionality for existing spotlight
@@ -857,9 +416,66 @@
     const input = dialog.querySelector('.arcify-spotlight-input');
     const resultsContainer = dialog.querySelector('.arcify-spotlight-results');
     
-    // Initialize search engine
-    const searchEngine = new SearchEngine();
+    // Initialize spotlight state
     let currentResults = [];
+    let searchTimeout = null;
+    const DEBOUNCE_DELAY = 150;
+
+    // Search function using message passing to background script
+    async function performSearch(query, mode, immediate = false) {
+        return new Promise((resolve) => {
+            if (!immediate) {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(async () => {
+                    const results = await sendGetSuggestionsMessage(query, mode);
+                    resolve(results);
+                }, DEBOUNCE_DELAY);
+            } else {
+                sendGetSuggestionsMessage(query, mode).then(resolve);
+            }
+        });
+    }
+
+    // Send get suggestions message to background script
+    async function sendGetSuggestionsMessage(query, mode) {
+        try {
+            console.log('[Spotlight] Sending get suggestions request:', query, mode);
+            const response = await chrome.runtime.sendMessage({
+                action: 'getSpotlightSuggestions',
+                query: query.trim(),
+                mode: mode
+            });
+            
+            if (response && response.success) {
+                console.log('[Spotlight] Suggestions received:', response.results.length);
+                return response.results;
+            } else {
+                console.error('[Spotlight] Get suggestions failed:', response?.error);
+                return [];
+            }
+        } catch (error) {
+            console.error('[Spotlight] Get suggestions error:', error);
+            return [];
+        }
+    }
+
+    // Handle result action via message passing
+    async function handleResultActionViaMessage(result, mode) {
+        try {
+            console.log('[Spotlight] Handling result action:', result.type, mode);
+            const response = await chrome.runtime.sendMessage({
+                action: 'spotlightHandleResult',
+                result: result,
+                mode: mode
+            });
+            
+            if (response && !response.success) {
+                console.error('[Spotlight] Result action failed:', response.error);
+            }
+        } catch (error) {
+            console.error('[Spotlight] Error handling result action:', error);
+        }
+    }
 
     // Selection Manager
     class SelectionManager {
@@ -915,7 +531,7 @@
     async function loadInitialResults() {
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            const results = await searchEngine.searchImmediate('', mode);
+            const results = await performSearch('', mode, true);
             displayResults(results);
         } catch (error) {
             console.error('Error loading initial results:', error);
@@ -946,7 +562,7 @@
         // Keep previous results while searching (no loading state to avoid jittery UI)
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            const results = await searchEngine.search(query, mode);
+            const results = await performSearch(query, mode, false);
             displayResults(results);
         } catch (error) {
             console.error('Search error:', error);
@@ -966,7 +582,7 @@
 
         const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
         const html = results.map((result, index) => {
-            const formatted = searchEngine.formatResult(result, mode);
+            const formatted = formatResult(result, mode);
             const isSelected = index === 0;
             
             return `
@@ -1033,7 +649,7 @@
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            await searchEngine.handleResultAction(result, mode);
+            await handleResultActionViaMessage(result, mode);
             closeSpotlight();
         } catch (error) {
             console.error('Error handling result action:', error);
