@@ -76,7 +76,7 @@ export class SearchEngine {
             },
             [ResultType.SEARCH_QUERY]: {
                 title: result.title,
-                subtitle: 'Google Search',
+                subtitle: 'Search',
                 action: '↵'
             },
             [ResultType.OPEN_TAB]: {
@@ -148,19 +148,12 @@ export class SearchEngine {
                     break;
 
                 case ResultType.SEARCH_QUERY:
-                    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(result.metadata.query)}`;
-                    if (mode === SpotlightTabMode.NEW_TAB) {
-                        chrome.runtime.sendMessage({
-                            action: 'openNewTab',
-                            url: searchUrl
-                        });
-                    } else {
-                        // For current-tab mode in popup, navigate current tab via background script
-                        chrome.runtime.sendMessage({
-                            action: 'navigateCurrentTab',
-                            url: searchUrl
-                        });
-                    }
+                    // Use chrome.search API to search with the user's default search engine
+                    chrome.runtime.sendMessage({
+                        action: 'performSearch',
+                        query: result.metadata.query,
+                        mode: mode
+                    });
                     break;
 
                 default:

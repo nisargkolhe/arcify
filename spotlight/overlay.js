@@ -364,7 +364,7 @@
             return new SearchResult({
                 type: ResultType.SEARCH_QUERY,
                 title: `Search for "${input}"`,
-                url: `https://www.google.com/search?q=${encodeURIComponent(input)}`,
+                url: '',  // URL not needed since we'll use chrome.search API
                 score: 80,
                 metadata: { query: input }
             });
@@ -520,7 +520,7 @@
                 },
                 [ResultType.SEARCH_QUERY]: {
                     title: result.title,
-                    subtitle: 'Google Search',
+                    subtitle: 'Search',
                     action: '↵'
                 },
                 [ResultType.OPEN_TAB]: {
@@ -584,15 +584,12 @@
                         break;
 
                     case ResultType.SEARCH_QUERY:
-                        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(result.metadata.query)}`;
-                        if (mode === SpotlightTabMode.NEW_TAB) {
-                            chrome.runtime.sendMessage({
-                                action: 'openNewTab',
-                                url: searchUrl
-                            });
-                        } else {
-                            window.location.href = searchUrl;
-                        }
+                        // Use chrome.search API to search with the user's default search engine
+                        chrome.runtime.sendMessage({
+                            action: 'performSearch',
+                            query: result.metadata.query,
+                            mode: mode
+                        });
                         break;
 
                     default:

@@ -314,7 +314,7 @@ export class SearchDataProvider {
         return new SearchResult({
             type: ResultType.SEARCH_QUERY,
             title: `Search for "${input}"`,
-            url: `https://www.google.com/search?q=${encodeURIComponent(input)}`,
+            url: '',  // URL not needed since we'll use chrome.search API
             score: 80,
             metadata: { query: input }
         });
