@@ -511,6 +511,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
+    } else if (message.action === 'performSearch') {
+        // Handle search using the user's default search engine via chrome.search API
+        (async () => {
+            try {
+                console.log('[Background] Performing search with query:', message.query);
+                console.log('[Background] Search mode:', message.mode);
+                
+                // Determine disposition based on spotlight tab mode
+                const disposition = message.mode === SpotlightTabMode.NEW_TAB ? 'NEW_TAB' : 'CURRENT_TAB';
+                
+                // Use chrome.search API to search with the user's default search engine
+                await chrome.search.query({
+                    text: message.query,
+                    disposition: disposition
+                });
+                
+                console.log('[Background] Search completed successfully');
+                sendResponse({ success: true });
+            } catch (error) {
+                console.error('[Background] Error performing search:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
     }
     
     return false; // No async response needed
