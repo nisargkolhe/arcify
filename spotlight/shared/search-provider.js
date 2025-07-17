@@ -9,8 +9,8 @@ export class SearchDataProvider {
         this.cacheTimeout = 5000;
     }
 
-    // Main search method
-    async search(query, mode = 'current-tab') {
+    // Main method to get spotlight suggestions
+    async getSpotlightSuggestions(query, mode = 'current-tab') {
         const results = [];
         const trimmedQuery = query.trim().toLowerCase();
         
@@ -42,7 +42,7 @@ export class SearchDataProvider {
 
             // Get bookmarks
             try {
-                bookmarks = await this.searchBookmarks(trimmedQuery);
+                bookmarks = await this.getBookmarkSuggestions(trimmedQuery);
             } catch (error) {
                 console.error('[Spotlight] Failed to get bookmarks:', error);
                 bookmarks = [];
@@ -50,7 +50,7 @@ export class SearchDataProvider {
 
             // Get history
             try {
-                history = await this.searchHistory(trimmedQuery);
+                history = await this.getHistorySuggestions(trimmedQuery);
             } catch (error) {
                 console.error('[Spotlight] Failed to get history:', error);
                 history = [];
@@ -181,7 +181,7 @@ export class SearchDataProvider {
     }
 
     // Chrome bookmarks API integration via background script
-    async searchBookmarks(query) {
+    async getBookmarkSuggestions(query) {
         try {
             console.log('[Spotlight] Requesting bookmarks with query:', query);
             const response = await chrome.runtime.sendMessage({
@@ -203,13 +203,13 @@ export class SearchDataProvider {
             console.log('[Spotlight] No valid bookmarks response');
             return [];
         } catch (error) {
-            console.error('[Spotlight] Error searching bookmarks:', error);
+            console.error('[Spotlight] Error getting bookmark suggestions:', error);
             return [];
         }
     }
 
     // Chrome history API integration via background script
-    async searchHistory(query) {
+    async getHistorySuggestions(query) {
         try {
             console.log('[Spotlight] Requesting history with query:', query);
             const response = await chrome.runtime.sendMessage({
@@ -231,7 +231,7 @@ export class SearchDataProvider {
             console.log('[Spotlight] No valid history response');
             return [];
         } catch (error) {
-            console.error('[Spotlight] Error searching history:', error);
+            console.error('[Spotlight] Error getting history suggestions:', error);
             return [];
         }
     }

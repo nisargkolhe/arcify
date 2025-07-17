@@ -535,6 +535,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
+    } else if (message.action === 'getSpotlightSuggestions') {
+        // Handle spotlight suggestions requests from overlay.js
+        (async () => {
+            try {
+                console.log('[Background] Getting spotlight suggestions:', message.query, message.mode);
+                
+                // Import SearchEngine from shared module
+                const { SearchEngine } = await import('./spotlight/shared/search-engine.js');
+                const searchEngine = new SearchEngine();
+                
+                // Get suggestions
+                const results = message.query.trim() 
+                    ? await searchEngine.getSpotlightSuggestionsImmediate(message.query, message.mode)
+                    : await searchEngine.getSpotlightSuggestionsImmediate('', message.mode);
+                
+                console.log('[Background] Spotlight suggestions completed, results:', results.length);
+                sendResponse({ success: true, results: results });
+            } catch (error) {
+                console.error('[Background] Error getting spotlight suggestions:', error);
+                sendResponse({ success: false, error: error.message, results: [] });
+            }
+        })();
+        return true; // Async response
+    } else if (message.action === 'spotlightHandleResult') {
+        // Handle spotlight result actions from overlay.js
+        (async () => {
+            try {
+                console.log('[Background] Handling spotlight result action:', message.result.type, message.mode);
+                
+                // Import SearchEngine from shared module
+                const { SearchEngine } = await import('./spotlight/shared/search-engine.js');
+                const searchEngine = new SearchEngine();
+                
+                // Handle the result action
+                await searchEngine.handleResultAction(message.result, message.mode);
+                
+                console.log('[Background] Spotlight result action completed');
+                sendResponse({ success: true });
+            } catch (error) {
+                console.error('[Background] Error handling spotlight result action:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
     }
     
     return false; // No async response needed

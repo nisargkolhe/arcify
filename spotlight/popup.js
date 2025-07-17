@@ -195,7 +195,7 @@ function setupEventListeners() {
 // Load initial results
 async function loadInitialResults() {
     try {
-        const results = await searchEngine.searchImmediate('', spotlightMode);
+        const results = await searchEngine.getSpotlightSuggestionsImmediate('', spotlightMode);
         displayResults(results);
     } catch (error) {
         console.error('[Popup] Error loading initial results:', error);
@@ -214,7 +214,7 @@ async function handleInput() {
     }
 
     try {
-        const results = await searchEngine.search(query, spotlightMode);
+        const results = await searchEngine.getSpotlightSuggestionsUsingCache(query, spotlightMode);
         displayResults(results);
     } catch (error) {
         console.error('[Popup] Search error:', error);
