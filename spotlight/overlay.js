@@ -230,14 +230,14 @@
             overflow: hidden;
         }
 
-        .arcify-spotlight-input-wrapper {
+        #arcify-spotlight-dialog .arcify-spotlight-input-wrapper {
             display: flex;
             align-items: center;
             padding: 12px 24px 12px 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .arcify-spotlight-search-icon {
+        #arcify-spotlight-dialog .arcify-spotlight-search-icon {
             width: 20px;
             height: 20px;
             margin-right: 12px;
@@ -245,24 +245,54 @@
             flex-shrink: 0;
         }
 
-        .arcify-spotlight-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: #ffffff;
-            font-size: 18px;
-            line-height: 24px;
-            padding: 8px 0;
-            outline: none;
-            font-weight: 400;
+        /* 
+            Specific CSS directives to override styling on specific pages (stackoverflow, chrome docs).
+            Otherwise the spotlight bar has a white background and some other weird UI.
+        */
+        #arcify-spotlight-dialog .arcify-spotlight-input {
+            flex: 1 !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            border: none !important;
+            border-style: none !important;
+            border-width: 0 !important;
+            border-color: transparent !important;
+            color: #ffffff !important;
+            font-size: 18px !important;
+            line-height: 24px !important;
+            padding: 8px 0 !important;
+            margin: 0 !important;
+            outline: none !important;
+            outline-style: none !important;
+            outline-width: 0 !important;
+            font-weight: 400 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            -moz-appearance: none !important;
+            text-indent: 0 !important;
+            text-shadow: none !important;
+            vertical-align: baseline !important;
+            text-decoration: none !important;
+            box-sizing: border-box !important;
         }
 
-        .arcify-spotlight-input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
+        #arcify-spotlight-dialog .arcify-spotlight-input::placeholder {
+            color: rgba(255, 255, 255, 0.5) !important;
+            opacity: 1 !important;
         }
 
-        .arcify-spotlight-input:focus {
-            outline: none;
+        #arcify-spotlight-dialog .arcify-spotlight-input:focus {
+            outline: none !important;
+            outline-style: none !important;
+            outline-width: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            background-color: transparent !important;
         }
 
         .arcify-spotlight-results {
@@ -372,8 +402,8 @@
                 margin: 20px auto;
             }
             
-            .arcify-spotlight-input {
-                font-size: 16px;
+            #arcify-spotlight-dialog .arcify-spotlight-input {
+                font-size: 16px !important;
             }
         }
     `;
