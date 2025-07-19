@@ -1,12 +1,14 @@
 // search-engine.js - Shared search engine with caching and debouncing for spotlight components
 
-import { SearchDataProvider } from './search-provider.js';
 import { ResultType, SpotlightTabMode } from './search-types.js';
 
 // Search Engine with caching
 export class SearchEngine {
-    constructor() {
-        this.dataProvider = new SearchDataProvider();
+    constructor(dataProvider) {
+        if (!dataProvider) {
+            throw new Error('SearchEngine requires a data provider');
+        }
+        this.dataProvider = dataProvider;
         this.cache = new Map();
         this.suggestionsTimeout = null;
         this.DEBOUNCE_DELAY = 150;
@@ -48,9 +50,16 @@ export class SearchEngine {
     // Immediate suggestions without debouncing
     async getSpotlightSuggestionsImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
         try {
-            return await this.getSuggestionsImpl(query, mode);
+            console.log('[SearchEngine] getSpotlightSuggestionsImmediate called');
+            console.log('[SearchEngine] Query:', query, 'Mode:', mode);
+            
+            const results = await this.getSuggestionsImpl(query, mode);
+            console.log('[SearchEngine] getSuggestionsImpl completed, results:', results.length);
+            
+            return results;
         } catch (error) {
-            console.error('Immediate suggestions error:', error);
+            console.error('[SearchEngine] Immediate suggestions error:', error);
+            console.error('[SearchEngine] Error stack:', error.stack);
             return [];
         }
     }
@@ -58,12 +67,13 @@ export class SearchEngine {
     // Internal suggestions implementation
     async getSuggestionsImpl(query, mode) {
         const trimmedQuery = query.trim();
+        console.log('[SearchEngine] getSuggestionsImpl called with trimmed query:', trimmedQuery);
         
-        if (!trimmedQuery) {
-            return await this.dataProvider.getDefaultResults(mode);
-        }
-
-        return await this.dataProvider.getSpotlightSuggestions(trimmedQuery, mode);
+        // Delegate to data provider which has all the business logic
+        console.log('[SearchEngine-DataProvider] Calling getSpotlightSuggestions on data provider');
+        const results = await this.dataProvider.getSpotlightSuggestions(trimmedQuery, mode);
+        console.log('[SearchEngine-DataProvider] getSpotlightSuggestions completed, results:', results.length);
+        return results;
     }
 
     // Format result for display
@@ -111,9 +121,15 @@ export class SearchEngine {
     // Handle result action
     async handleResultAction(result, mode) {
         try {
+            console.log('[SearchEngine] handleResultAction called');
+            console.log('[SearchEngine] Result type:', result.type, 'Mode:', mode);
+            console.log('[SearchEngine] Full result:', result);
+            
             switch (result.type) {
                 case ResultType.OPEN_TAB:
+                    console.log('[SearchEngine] Handling OPEN_TAB result');
                     if (mode === SpotlightTabMode.NEW_TAB) {
+                        console.log('[SearchEngine] NEW_TAB mode - sending switchToTab message');
                         // Send message to background script to switch tabs
                         chrome.runtime.sendMessage({
                             action: 'switchToTab',
@@ -121,6 +137,7 @@ export class SearchEngine {
                             windowId: result.metadata.windowId
                         });
                     } else {
+                        console.log('[SearchEngine] CURRENT_TAB mode - sending navigateCurrentTab message');
                         // For current-tab mode in popup, navigate current tab via background script
                         chrome.runtime.sendMessage({
                             action: 'navigateCurrentTab',
@@ -133,12 +150,15 @@ export class SearchEngine {
                 case ResultType.BOOKMARK:
                 case ResultType.HISTORY:
                 case ResultType.TOP_SITE:
+                    console.log('[SearchEngine] Handling URL/BOOKMARK/HISTORY/TOP_SITE result');
                     if (mode === SpotlightTabMode.NEW_TAB) {
+                        console.log('[SearchEngine] NEW_TAB mode - sending openNewTab message');
                         chrome.runtime.sendMessage({
                             action: 'openNewTab',
                             url: result.url
                         });
                     } else {
+                        console.log('[SearchEngine] CURRENT_TAB mode - sending navigateCurrentTab message');
                         // For current-tab mode in popup, navigate current tab via background script
                         chrome.runtime.sendMessage({
                             action: 'navigateCurrentTab',
@@ -148,6 +168,7 @@ export class SearchEngine {
                     break;
 
                 case ResultType.SEARCH_QUERY:
+                    console.log('[SearchEngine] Handling SEARCH_QUERY result');
                     // Use chrome.search API to search with the user's default search engine
                     chrome.runtime.sendMessage({
                         action: 'performSearch',
@@ -157,10 +178,13 @@ export class SearchEngine {
                     break;
 
                 default:
-                    console.warn('Unknown result type:', result.type);
+                    console.warn('[SearchEngine] Unknown result type:', result.type);
             }
+            
+            console.log('[SearchEngine] handleResultAction completed');
         } catch (error) {
-            console.error('Error handling result action:', error);
+            console.error('[SearchEngine] Error handling result action:', error);
+            console.error('[SearchEngine] Error stack:', error.stack);
         }
     }
 }
