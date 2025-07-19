@@ -3,6 +3,7 @@
 // The primary & most used spotlight implementation is in spotlight/overlay.js
 
 import { SearchEngine } from './shared/search-engine.js';
+import { ContentScriptDataProvider } from './shared/data-providers/content-script-data-provider.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { getAccentColorCSS } from './shared/styling.js';
 
@@ -69,7 +70,7 @@ async function initPopup() {
     const resultsContainer = document.getElementById('spotlightResults');
     
     // Initialize search engine and selection manager
-    searchEngine = new SearchEngine();
+    searchEngine = new SearchEngine(new ContentScriptDataProvider());
     selectionManager = new SelectionManager(resultsContainer);
     
     // Get spotlight mode from storage

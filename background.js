@@ -1,10 +1,15 @@
 import { Utils } from './utils.js';
+import { SearchEngine } from './spotlight/shared/search-engine.js';
+import { BackgroundDataProvider } from './spotlight/shared/data-providers/background-data-provider.js';
 
 // Enum for spotlight tab modes
 const SpotlightTabMode = {
     CURRENT_TAB: 'current-tab',
     NEW_TAB: 'new-tab'
 };
+
+// Create a single SearchEngine instance with BackgroundDataProvider
+const backgroundSearchEngine = new SearchEngine(new BackgroundDataProvider());
 
 const AUTO_ARCHIVE_ALARM_NAME = 'autoArchiveTabsAlarm';
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
@@ -539,22 +544,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle spotlight suggestions requests from overlay.js
         (async () => {
             try {
-                console.log('[Background] Getting spotlight suggestions:', message.query, message.mode);
+                console.log('[Background-Spotlight] Received getSpotlightSuggestions request');
+                console.log('[Background-Spotlight] Query:', message.query, 'Mode:', message.mode);
+                console.log('[Background-Spotlight] Full message:', message);
                 
-                // Import SearchEngine from shared module
-                const { SearchEngine } = await import('./spotlight/shared/search-engine.js');
-                const searchEngine = new SearchEngine();
+                // Use pre-created SearchEngine with BackgroundDataProvider
+                console.log('[Background-SearchEngine] Using background search engine');
                 
-                // Get suggestions
-                const results = message.query.trim() 
-                    ? await searchEngine.getSpotlightSuggestionsImmediate(message.query, message.mode)
-                    : await searchEngine.getSpotlightSuggestionsImmediate('', message.mode);
+                const query = message.query.trim();
+                console.log('[Background-SearchEngine] Processing query:', query, 'mode:', message.mode);
                 
-                console.log('[Background] Spotlight suggestions completed, results:', results.length);
-                sendResponse({ success: true, results: results });
+                // Get suggestions using the background search engine
+                const results = query
+                    ? await backgroundSearchEngine.getSpotlightSuggestionsImmediate(query, message.mode)
+                    : await backgroundSearchEngine.getSpotlightSuggestionsImmediate('', message.mode);
+                
+                console.log('[Background-SearchEngine] Background suggestions completed');
+                console.log('[Background-SearchEngine] Results received:', results.length);
+                console.log('[Background-SearchEngine] First few results:', results.slice(0, 3));
+                
+                const response = { success: true, results: results };
+                console.log('[Background-Response] Sending success response with', results.length, 'results');
+                sendResponse(response);
             } catch (error) {
-                console.error('[Background] Error getting spotlight suggestions:', error);
-                sendResponse({ success: false, error: error.message, results: [] });
+                console.error('[Background-Spotlight] Error getting spotlight suggestions:', error);
+                console.error('[Background-Spotlight] Error stack:', error.stack);
+                const errorResponse = { success: false, error: error.message, results: [] };
+                console.log('[Background-Response] Sending error response:', errorResponse);
+                sendResponse(errorResponse);
             }
         })();
         return true; // Async response
@@ -562,20 +579,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle spotlight result actions from overlay.js
         (async () => {
             try {
-                console.log('[Background] Handling spotlight result action:', message.result.type, message.mode);
+                console.log('[Background-Spotlight] Received spotlightHandleResult request');
+                console.log('[Background-Spotlight] Result type:', message.result.type, 'Mode:', message.mode);
+                console.log('[Background-Spotlight] Full result:', message.result);
                 
-                // Import SearchEngine from shared module
-                const { SearchEngine } = await import('./spotlight/shared/search-engine.js');
-                const searchEngine = new SearchEngine();
+                // Use pre-created SearchEngine with BackgroundDataProvider
+                console.log('[Background-SearchEngine] Using background search engine for result handling');
                 
                 // Handle the result action
-                await searchEngine.handleResultAction(message.result, message.mode);
+                console.log('[Background-SearchEngine] Calling handleResultAction');
+                await backgroundSearchEngine.handleResultAction(message.result, message.mode);
                 
-                console.log('[Background] Spotlight result action completed');
-                sendResponse({ success: true });
+                console.log('[Background-SearchEngine] handleResultAction completed successfully');
+                const response = { success: true };
+                console.log('[Background-Response] Sending success response for result action');
+                sendResponse(response);
             } catch (error) {
-                console.error('[Background] Error handling spotlight result action:', error);
-                sendResponse({ success: false, error: error.message });
+                console.error('[Background-Spotlight] Error handling spotlight result action:', error);
+                console.error('[Background-Spotlight] Error stack:', error.stack);
+                const errorResponse = { success: false, error: error.message };
+                console.log('[Background-Response] Sending error response for result action:', errorResponse);
+                sendResponse(errorResponse);
             }
         })();
         return true; // Async response

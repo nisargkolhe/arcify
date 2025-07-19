@@ -469,22 +469,28 @@
     // Send get suggestions message to background script
     async function sendGetSuggestionsMessage(query, mode) {
         try {
-            console.log('[Spotlight] Sending get suggestions request:', query, mode);
-            const response = await chrome.runtime.sendMessage({
+            console.log('[Spotlight-Overlay-Message] Sending get suggestions request:', { query, mode });
+            const message = {
                 action: 'getSpotlightSuggestions',
                 query: query.trim(),
                 mode: mode
-            });
+            };
+            console.log('[Spotlight-Overlay-Message] Message payload:', message);
+            
+            const response = await chrome.runtime.sendMessage(message);
+            console.log('[Spotlight-Overlay-Message] Raw response received:', response);
             
             if (response && response.success) {
-                console.log('[Spotlight] Suggestions received:', response.results.length);
+                console.log('[Spotlight-Overlay-Message] Suggestions received successfully:', response.results.length, 'results');
+                console.log('[Spotlight-Overlay-Message] First few results:', response.results.slice(0, 3));
                 return response.results;
             } else {
-                console.error('[Spotlight] Get suggestions failed:', response?.error);
+                console.error('[Spotlight-Overlay-Message] Get suggestions failed:', response?.error);
+                console.error('[Spotlight-Overlay-Message] Full response:', response);
                 return [];
             }
         } catch (error) {
-            console.error('[Spotlight] Get suggestions error:', error);
+            console.error('[Spotlight-Overlay-Message] Get suggestions error:', error);
             return [];
         }
     }
@@ -492,18 +498,24 @@
     // Handle result action via message passing
     async function handleResultActionViaMessage(result, mode) {
         try {
-            console.log('[Spotlight] Handling result action:', result.type, mode);
-            const response = await chrome.runtime.sendMessage({
+            console.log('[Spotlight-Overlay-Message] Handling result action:', { type: result.type, mode, url: result.url });
+            const message = {
                 action: 'spotlightHandleResult',
                 result: result,
                 mode: mode
-            });
+            };
+            console.log('[Spotlight-Overlay-Message] Result action message:', message);
+            
+            const response = await chrome.runtime.sendMessage(message);
+            console.log('[Spotlight-Overlay-Message] Result action response:', response);
             
             if (response && !response.success) {
-                console.error('[Spotlight] Result action failed:', response.error);
+                console.error('[Spotlight-Overlay-Message] Result action failed:', response.error);
+            } else {
+                console.log('[Spotlight-Overlay-Message] Result action completed successfully');
             }
         } catch (error) {
-            console.error('[Spotlight] Error handling result action:', error);
+            console.error('[Spotlight-Overlay-Message] Error handling result action:', error);
         }
     }
 
@@ -560,11 +572,14 @@
     // Load initial results
     async function loadInitialResults() {
         try {
+            console.log('[Spotlight-Overlay] Loading initial results');
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
+            console.log('[Spotlight-Overlay] Mode for initial results:', mode);
             const results = await performSearch('', mode, true);
+            console.log('[Spotlight-Overlay] Initial results received:', results.length);
             displayResults(results);
         } catch (error) {
-            console.error('Error loading initial results:', error);
+            console.error('[Spotlight-Overlay] Error loading initial results:', error);
             displayEmptyState();
         }
     }
@@ -583,8 +598,10 @@
     // Handle input changes
     async function handleInput() {
         const query = input.value.trim();
+        console.log('[Spotlight-Overlay-Input] Input changed, query:', query);
         
         if (!query) {
+            console.log('[Spotlight-Overlay-Input] Empty query, loading initial results');
             loadInitialResults();
             return;
         }
@@ -592,28 +609,41 @@
         // Keep previous results while searching (no loading state to avoid jittery UI)
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
+            console.log('[Spotlight-Overlay-Input] Performing search with mode:', mode);
             const results = await performSearch(query, mode, false);
+            console.log('[Spotlight-Overlay-Input] Search results received:', results.length);
             displayResults(results);
         } catch (error) {
-            console.error('Search error:', error);
+            console.error('[Spotlight-Overlay-Input] Search error:', error);
             displayEmptyState();
         }
     }
 
     // Display search results
     function displayResults(results) {
+        console.log('[Spotlight-Overlay-UI] displayResults called with:', results.length, 'results');
+        console.log('[Spotlight-Overlay-UI] First result:', results[0]);
+        
         currentResults = results;
         selectionManager.updateResults(results);
 
         if (!results || results.length === 0) {
+            console.log('[Spotlight-Overlay-UI] No results, displaying empty state');
             displayEmptyState();
             return;
         }
 
         const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
+        console.log('[Spotlight-Overlay-UI] Formatting results for mode:', mode);
+        
         const html = results.map((result, index) => {
             const formatted = formatResult(result, mode);
             const isSelected = index === 0;
+            console.log('[Spotlight-Overlay-UI] Formatting result', index, ':', { 
+                type: result.type, 
+                title: formatted.title, 
+                subtitle: formatted.subtitle 
+            });
             
             return `
                 <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
@@ -631,7 +661,9 @@
             `;
         }).join('');
 
+        console.log('[Spotlight-Overlay-UI] Setting innerHTML with', html.length, 'characters');
         resultsContainer.innerHTML = html;
+        console.log('[Spotlight-Overlay-UI] Results container updated, child count:', resultsContainer.children.length);
     }
 
     // Get favicon URL with fallback
@@ -654,9 +686,11 @@
 
     // Display empty state
     function displayEmptyState() {
+        console.log('[Spotlight-Overlay-UI] Displaying empty state');
         resultsContainer.innerHTML = '<div class="arcify-spotlight-empty">Start typing to search tabs, bookmarks, and history</div>';
         currentResults = [];
         selectionManager.updateResults([]);
+        console.log('[Spotlight-Overlay-UI] Empty state set, container HTML:', resultsContainer.innerHTML);
     }
 
     // Escape HTML utility
@@ -675,58 +709,77 @@
 
     // Handle result selection
     async function handleResultAction(result) {
-        if (!result) return;
+        console.log('[Spotlight-Overlay-Selection] handleResultAction called with result:', result);
+        
+        if (!result) {
+            console.log('[Spotlight-Overlay-Selection] No result provided, returning');
+            return;
+        }
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
+            console.log('[Spotlight-Overlay-Selection] Handling result action with mode:', mode);
             await handleResultActionViaMessage(result, mode);
+            console.log('[Spotlight-Overlay-Selection] Result action completed, closing spotlight');
             closeSpotlight();
         } catch (error) {
-            console.error('Error handling result action:', error);
+            console.error('[Spotlight-Overlay-Selection] Error handling result action:', error);
         }
     }
 
     // Keyboard navigation
     input.addEventListener('keydown', (e) => {
+        console.log('[Spotlight-Overlay-Input] Keydown event:', e.key, 'activeElement:', document.activeElement);
+        
         if (!dialog.contains(document.activeElement)) {
+            console.log('[Spotlight-Overlay-Input] Active element not in dialog, ignoring');
             return;
         }
 
         switch (e.key) {
             case 'ArrowDown':
+                console.log('[Spotlight-Overlay-Input] Arrow down pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveSelection('down');
                 break;
 
             case 'ArrowUp':
+                console.log('[Spotlight-Overlay-Input] Arrow up pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveSelection('up');
                 break;
 
             case 'Home':
+                console.log('[Spotlight-Overlay-Input] Home pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveToFirst();
                 break;
 
             case 'End':
+                console.log('[Spotlight-Overlay-Input] End pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveToLast();
                 break;
 
             case 'Enter':
+                console.log('[Spotlight-Overlay-Input] Enter pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 const selected = selectionManager.getSelectedResult();
+                console.log('[Spotlight-Overlay-Input] Selected result:', selected);
                 if (selected) {
                     handleResultAction(selected);
+                } else {
+                    console.log('[Spotlight-Overlay-Input] No result selected');
                 }
                 break;
 
             case 'Escape':
+                console.log('[Spotlight-Overlay-Input] Escape pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 closeSpotlight();
@@ -736,18 +789,26 @@
 
     // Handle clicks on results
     resultsContainer.addEventListener('click', (e) => {
+        console.log('[Spotlight-Overlay-Selection] Results container clicked');
         const item = e.target.closest('.arcify-spotlight-result-item');
         if (item) {
             const index = parseInt(item.dataset.index);
+            console.log('[Spotlight-Overlay-Selection] Clicked item index:', index);
             const result = currentResults[index];
+            console.log('[Spotlight-Overlay-Selection] Clicked result:', result);
             if (result) {
                 handleResultAction(result);
+            } else {
+                console.log('[Spotlight-Overlay-Selection] No result found at index:', index);
             }
+        } else {
+            console.log('[Spotlight-Overlay-Selection] No result item clicked');
         }
     });
 
     // Close spotlight function
     function closeSpotlight() {
+        console.log('[Spotlight-Overlay] Closing spotlight');
         dialog.close();
         
         chrome.runtime.sendMessage({
@@ -756,6 +817,7 @@
         
         setTimeout(() => {
             if (dialog.parentNode) {
+                console.log('[Spotlight-Overlay] Removing dialog from DOM');
                 dialog.parentNode.removeChild(dialog);
                 styleSheet.parentNode.removeChild(styleSheet);
                 window.arcifySpotlightInjected = false;
@@ -773,9 +835,11 @@
     dialog.addEventListener('close', closeSpotlight);
 
     // Show dialog and focus input
+    console.log('[Spotlight-Overlay] Showing dialog and focusing input');
     dialog.showModal();
     
     setTimeout(() => {
+        console.log('[Spotlight-Overlay] Focusing input field');
         input.focus();
         input.select();
         input.scrollLeft = 0;
