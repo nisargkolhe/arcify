@@ -498,24 +498,50 @@
     // Handle result action via message passing
     async function handleResultActionViaMessage(result, mode) {
         try {
-            console.log('[Spotlight-Overlay-Message] Handling result action:', { type: result.type, mode, url: result.url });
+            console.log('[Spotlight-Overlay-Message] ===== STARTING RESULT ACTION =====');
+            console.log('[Spotlight-Overlay-Message] Handling result action:', { 
+                type: result.type, 
+                mode, 
+                url: result.url,
+                title: result.title,
+                fullResult: result 
+            });
             const message = {
                 action: 'spotlightHandleResult',
                 result: result,
                 mode: mode
             };
-            console.log('[Spotlight-Overlay-Message] Result action message:', message);
+            console.log('[Spotlight-Overlay-Message] Sending message to background script:', JSON.stringify(message, null, 2));
             
+            const startTime = Date.now();
             const response = await chrome.runtime.sendMessage(message);
-            console.log('[Spotlight-Overlay-Message] Result action response:', response);
+            const endTime = Date.now();
             
-            if (response && !response.success) {
-                console.error('[Spotlight-Overlay-Message] Result action failed:', response.error);
-            } else {
-                console.log('[Spotlight-Overlay-Message] Result action completed successfully');
+            console.log('[Spotlight-Overlay-Message] Response received in', endTime - startTime, 'ms');
+            console.log('[Spotlight-Overlay-Message] Full response object:', JSON.stringify(response, null, 2));
+            
+            if (!response) {
+                console.error('[Spotlight-Overlay-Message] ❌ No response received from background script');
+                return;
             }
+            
+            if (response.success === false) {
+                console.error('[Spotlight-Overlay-Message] ❌ Background script reported failure:', response.error);
+                console.error('[Spotlight-Overlay-Message] Full error response:', response);
+            } else if (response.success === true) {
+                console.log('[Spotlight-Overlay-Message] ✅ Background script reported success');
+            } else {
+                console.warn('[Spotlight-Overlay-Message] ⚠️ Response missing success field:', response);
+            }
+            
+            console.log('[Spotlight-Overlay-Message] ===== RESULT ACTION COMPLETED =====');
         } catch (error) {
-            console.error('[Spotlight-Overlay-Message] Error handling result action:', error);
+            console.error('[Spotlight-Overlay-Message] ❌ Exception during result action:', error);
+            console.error('[Spotlight-Overlay-Message] Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
         }
     }
 
@@ -651,7 +677,7 @@
                     <img class="arcify-spotlight-result-favicon" 
                          src="${getFaviconUrl(result)}" 
                          alt="favicon"
-                         onerror="this.src='data:image/svg+xml,${encodeURIComponent('<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\"><circle cx=\\"11\\" cy=\\"11\\" r=\\"8\\"></circle><path d=\\"m21 21-4.35-4.35\\"></path></svg>')}'">
+                         data-fallback-icon="true">
                     <div class="arcify-spotlight-result-content">
                         <div class="arcify-spotlight-result-title">${escapeHtml(formatted.title)}</div>
                         <div class="arcify-spotlight-result-url">${escapeHtml(formatted.subtitle)}</div>
@@ -663,6 +689,15 @@
 
         console.log('[Spotlight-Overlay-UI] Setting innerHTML with', html.length, 'characters');
         resultsContainer.innerHTML = html;
+        
+        // Add error handling for favicon images (CSP compliant)
+        const faviconImages = resultsContainer.querySelectorAll('.arcify-spotlight-result-favicon[data-fallback-icon="true"]');
+        faviconImages.forEach(img => {
+            img.addEventListener('error', function() {
+                this.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
+            });
+        });
+        
         console.log('[Spotlight-Overlay-UI] Results container updated, child count:', resultsContainer.children.length);
     }
 
@@ -709,22 +744,41 @@
 
     // Handle result selection
     async function handleResultAction(result) {
-        console.log('[Spotlight-Overlay-Selection] handleResultAction called with result:', result);
+        console.log('[Spotlight-Overlay-Selection] ========== HANDLE RESULT ACTION START ==========');
+        console.log('[Spotlight-Overlay-Selection] handleResultAction called with result:', {
+            type: result?.type,
+            title: result?.title,
+            url: result?.url,
+            domain: result?.domain,
+            fullResult: result
+        });
         
         if (!result) {
-            console.log('[Spotlight-Overlay-Selection] No result provided, returning');
+            console.error('[Spotlight-Overlay-Selection] ❌ No result provided, returning early');
             return;
         }
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            console.log('[Spotlight-Overlay-Selection] Handling result action with mode:', mode);
+            console.log('[Spotlight-Overlay-Selection] Resolved mode:', mode, 'from spotlightTabMode:', spotlightTabMode);
+            
+            console.log('[Spotlight-Overlay-Selection] About to call handleResultActionViaMessage...');
             await handleResultActionViaMessage(result, mode);
-            console.log('[Spotlight-Overlay-Selection] Result action completed, closing spotlight');
+            console.log('[Spotlight-Overlay-Selection] ✅ handleResultActionViaMessage completed successfully');
+            
+            console.log('[Spotlight-Overlay-Selection] About to close spotlight...');
             closeSpotlight();
+            console.log('[Spotlight-Overlay-Selection] ✅ Spotlight closed');
         } catch (error) {
-            console.error('[Spotlight-Overlay-Selection] Error handling result action:', error);
+            console.error('[Spotlight-Overlay-Selection] ❌ Exception in handleResultAction:', error);
+            console.error('[Spotlight-Overlay-Selection] Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
         }
+        
+        console.log('[Spotlight-Overlay-Selection] ========== HANDLE RESULT ACTION END ==========');
     }
 
     // Keyboard navigation

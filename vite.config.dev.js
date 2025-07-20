@@ -23,23 +23,17 @@ export default defineConfig({
         'sidebar-script': resolve(__dirname, 'sidebar.js'),
         'options-script': resolve(__dirname, 'options.js'),
         'onboarding-script': resolve(__dirname, 'onboarding.js'),
-        utils: resolve(__dirname, 'utils.js'),
-        localstorage: resolve(__dirname, 'localstorage.js'),
-        chromeHelper: resolve(__dirname, 'chromeHelper.js'),
-        icons: resolve(__dirname, 'icons.js'),
         'spotlight-overlay': resolve(__dirname, 'spotlight/overlay.js'),
         'spotlight-popup-script': resolve(__dirname, 'spotlight/popup.js'),
-        'spotlight-styling': resolve(__dirname, 'spotlight/shared/styling.js'),
       },
       output: {
         entryFileNames: (chunkInfo) => {
-          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'utils', 'localstorage', 'chromeHelper', 'icons', 'spotlight-overlay', 'spotlight-popup-script', 'spotlight-styling'];
+          const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'spotlight-overlay', 'spotlight-popup-script'];
           if (mainScripts.includes(chunkInfo.name)) {
             if (chunkInfo.name === 'sidebar-script') return 'sidebar.js';
             if (chunkInfo.name === 'options-script') return 'options.js';
             if (chunkInfo.name === 'spotlight-overlay') return 'spotlight/overlay.js';
             if (chunkInfo.name === 'spotlight-popup-script') return 'spotlight/popup.js';
-            if (chunkInfo.name === 'spotlight-styling') return 'spotlight/shared/styling.js';
             return `${chunkInfo.name}.js`;
           }
           return '[name].js';
