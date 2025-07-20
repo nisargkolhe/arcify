@@ -532,9 +532,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
                 const query = message.query.trim();
                 
-                // Get suggestions using the background search engine
+                // Get suggestions using the background search engine with debouncing
                 const results = query
-                    ? await backgroundSearchEngine.getSpotlightSuggestionsImmediate(query, message.mode)
+                    ? await backgroundSearchEngine.getSpotlightSuggestionsUsingCache(query, message.mode)
                     : await backgroundSearchEngine.getSpotlightSuggestionsImmediate('', message.mode);
                 
                 sendResponse({ success: true, results: results });
