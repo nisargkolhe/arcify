@@ -15,7 +15,7 @@ export class SpotlightUtils {
         }
 
         // Check for domain-like patterns
-        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\\.[a-zA-Z]{2,})$/;
+        const domainPattern = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/;
         if (domainPattern.test(text)) {
             return true;
         }
@@ -49,7 +49,6 @@ export class SpotlightUtils {
         if (!trimmedQuery) {
             return null;
         }
-
         if (SpotlightUtils.isURL(trimmedQuery)) {
             // Create URL suggestion
             const url = trimmedQuery.startsWith('http') ? trimmedQuery : `https://${trimmedQuery}`;
