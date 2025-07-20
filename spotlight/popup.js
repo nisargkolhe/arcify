@@ -244,7 +244,7 @@ function displayResults(results) {
                 <img class="arcify-spotlight-result-favicon" 
                      src="${getFaviconUrl(result)}" 
                      alt="favicon"
-                     onerror="this.src='data:image/svg+xml,${encodeURIComponent('<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\"><circle cx=\\"11\\" cy=\\"11\\" r=\\"8\\"></circle><path d=\\"m21 21-4.35-4.35\\"></path></svg>')}'">
+                     data-fallback-icon="true">
                 <div class="arcify-spotlight-result-content">
                     <div class="arcify-spotlight-result-title">${escapeHtml(formatted.title)}</div>
                     <div class="arcify-spotlight-result-url">${escapeHtml(formatted.subtitle)}</div>
@@ -255,6 +255,14 @@ function displayResults(results) {
     }).join('');
 
     resultsContainer.innerHTML = html;
+    
+    // Add error handling for favicon images (CSP compliant)
+    const faviconImages = resultsContainer.querySelectorAll('.arcify-spotlight-result-favicon[data-fallback-icon="true"]');
+    faviconImages.forEach(img => {
+        img.addEventListener('error', function() {
+            this.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
+        });
+    });
 }
 
 // Get favicon URL with fallback
@@ -285,21 +293,52 @@ function displayEmptyState() {
 
 // Handle result selection
 async function handleResultAction(result) {
-    if (!result) return;
+    console.log('[Popup] ========== HANDLE RESULT ACTION START ==========');
+    console.log('[Popup] handleResultAction called with result:', {
+        type: result?.type,
+        title: result?.title,
+        url: result?.url,
+        domain: result?.domain,
+        metadata: result?.metadata,
+        fullResult: result
+    });
+
+    if (!result) {
+        console.error('[Popup] ❌ No result provided, returning early');
+        return;
+    }
 
     try {
+        console.log('[Popup] About to call searchEngine.handleResultAction...');
+        console.log('[Popup] Spotlight mode:', spotlightMode);
+        
+        const startTime = Date.now();
         await searchEngine.handleResultAction(result, spotlightMode);
+        const endTime = Date.now();
+        
+        console.log('[Popup] ✅ searchEngine.handleResultAction completed successfully in', endTime - startTime, 'ms');
         
         // Notify background that spotlight closed
+        console.log('[Popup] Sending spotlightClosed notification...');
         chrome.runtime.sendMessage({
             action: 'spotlightClosed'
         });
+        console.log('[Popup] ✅ spotlightClosed notification sent');
         
         // Close popup
+        console.log('[Popup] Closing popup window...');
         window.close();
+        console.log('[Popup] ✅ Popup close initiated');
     } catch (error) {
-        console.error('[Popup] Error handling result action:', error);
+        console.error('[Popup] ❌ Exception in handleResultAction:', error);
+        console.error('[Popup] Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
     }
+    
+    console.log('[Popup] ========== HANDLE RESULT ACTION END ==========');
 }
 
 // Escape HTML utility

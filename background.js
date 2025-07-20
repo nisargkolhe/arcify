@@ -579,26 +579,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle spotlight result actions from overlay.js
         (async () => {
             try {
+                console.log('[Background-Spotlight] ===== SPOTLIGHT HANDLE RESULT START =====');
                 console.log('[Background-Spotlight] Received spotlightHandleResult request');
-                console.log('[Background-Spotlight] Result type:', message.result.type, 'Mode:', message.mode);
-                console.log('[Background-Spotlight] Full result:', message.result);
+                console.log('[Background-Spotlight] Result type:', message.result?.type);
+                console.log('[Background-Spotlight] Mode:', message.mode);
+                console.log('[Background-Spotlight] Result URL:', message.result?.url);
+                console.log('[Background-Spotlight] Result title:', message.result?.title);
+                console.log('[Background-Spotlight] Full message object:', JSON.stringify(message, null, 2));
+                
+                // Validate inputs
+                if (!message.result) {
+                    throw new Error('No result provided in message');
+                }
+                if (!message.result.type) {
+                    throw new Error('Result missing type field');
+                }
+                if (!message.mode) {
+                    throw new Error('No mode provided in message');
+                }
                 
                 // Use pre-created SearchEngine with BackgroundDataProvider
                 console.log('[Background-SearchEngine] Using background search engine for result handling');
+                console.log('[Background-SearchEngine] SearchEngine instance:', backgroundSearchEngine);
                 
                 // Handle the result action
-                console.log('[Background-SearchEngine] Calling handleResultAction');
+                console.log('[Background-SearchEngine] About to call handleResultAction...');
+                const startTime = Date.now();
                 await backgroundSearchEngine.handleResultAction(message.result, message.mode);
+                const endTime = Date.now();
                 
-                console.log('[Background-SearchEngine] handleResultAction completed successfully');
+                console.log('[Background-SearchEngine] ✅ handleResultAction completed successfully in', endTime - startTime, 'ms');
                 const response = { success: true };
                 console.log('[Background-Response] Sending success response for result action');
+                console.log('[Background-Spotlight] ===== SPOTLIGHT HANDLE RESULT SUCCESS =====');
                 sendResponse(response);
             } catch (error) {
-                console.error('[Background-Spotlight] Error handling spotlight result action:', error);
+                console.error('[Background-Spotlight] ❌ Error handling spotlight result action:', error);
+                console.error('[Background-Spotlight] Error name:', error.name);
+                console.error('[Background-Spotlight] Error message:', error.message);
                 console.error('[Background-Spotlight] Error stack:', error.stack);
                 const errorResponse = { success: false, error: error.message };
                 console.log('[Background-Response] Sending error response for result action:', errorResponse);
+                console.log('[Background-Spotlight] ===== SPOTLIGHT HANDLE RESULT ERROR =====');
                 sendResponse(errorResponse);
             }
         })();
