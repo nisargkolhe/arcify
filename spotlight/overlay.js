@@ -22,71 +22,6 @@
         NEW_TAB: 'new-tab'
     };
 
-    // Search Result class
-    class SearchResult {
-        constructor({
-            type,
-            title,
-            url,
-            favicon = null,
-            score = 0,
-            metadata = {}
-        }) {
-            this.type = type;
-            this.title = title;
-            this.url = url;
-            this.favicon = favicon;
-            this.score = score;
-            this.metadata = metadata;
-            this.domain = this.extractDomain(url);
-        }
-
-        extractDomain(url) {
-            try {
-                if (!url) return '';
-                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-                return urlObj.hostname;
-            } catch {
-                return url;
-            }
-        }
-    }
-
-    // Utility functions for overlay UI
-    function isURL(text) {
-        // Check if it's already a complete URL
-        try {
-            new URL(text);
-            return true;
-        } catch {}
-
-        // Check for domain-like patterns
-        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
-        if (domainPattern.test(text)) {
-            return true;
-        }
-
-        // Check for localhost
-        if (text === 'localhost' || text.startsWith('localhost:')) {
-            return true;
-        }
-
-        // Check for IP addresses
-        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
-            const parts = text.split(':')[0].split('.');
-            return parts.every(part => {
-                const num = parseInt(part, 10);
-                return num >= 0 && num <= 255;
-            });
-        }
-
-        // Common URL patterns without protocol
-        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
-            return true;
-        }
-
-        return false;
-    }
 
     // Function to get accent color CSS based on active space color
     function getAccentColorCSS(spaceColor) {
@@ -190,10 +125,9 @@
         });
         if (colorResponse && colorResponse.success && colorResponse.color) {
             activeSpaceColor = colorResponse.color;
-            console.log('[Spotlight] Using active space color:', activeSpaceColor);
         }
     } catch (error) {
-        console.log('[Spotlight] Failed to get active space color, using default:', error);
+        console.error('[Spotlight] Failed to get active space color:', error);
     }
 
     // CSS styles with dynamic accent color
@@ -469,28 +403,22 @@
     // Send get suggestions message to background script
     async function sendGetSuggestionsMessage(query, mode) {
         try {
-            console.log('[Spotlight-Overlay-Message] Sending get suggestions request:', { query, mode });
             const message = {
                 action: 'getSpotlightSuggestions',
                 query: query.trim(),
                 mode: mode
             };
-            console.log('[Spotlight-Overlay-Message] Message payload:', message);
             
             const response = await chrome.runtime.sendMessage(message);
-            console.log('[Spotlight-Overlay-Message] Raw response received:', response);
             
             if (response && response.success) {
-                console.log('[Spotlight-Overlay-Message] Suggestions received successfully:', response.results.length, 'results');
-                console.log('[Spotlight-Overlay-Message] First few results:', response.results.slice(0, 3));
                 return response.results;
             } else {
-                console.error('[Spotlight-Overlay-Message] Get suggestions failed:', response?.error);
-                console.error('[Spotlight-Overlay-Message] Full response:', response);
+                console.error('[Spotlight] Get suggestions failed:', response?.error);
                 return [];
             }
         } catch (error) {
-            console.error('[Spotlight-Overlay-Message] Get suggestions error:', error);
+            console.error('[Spotlight] Get suggestions error:', error);
             return [];
         }
     }
@@ -498,50 +426,19 @@
     // Handle result action via message passing
     async function handleResultActionViaMessage(result, mode) {
         try {
-            console.log('[Spotlight-Overlay-Message] ===== STARTING RESULT ACTION =====');
-            console.log('[Spotlight-Overlay-Message] Handling result action:', { 
-                type: result.type, 
-                mode, 
-                url: result.url,
-                title: result.title,
-                fullResult: result 
-            });
             const message = {
                 action: 'spotlightHandleResult',
                 result: result,
                 mode: mode
             };
-            console.log('[Spotlight-Overlay-Message] Sending message to background script:', JSON.stringify(message, null, 2));
             
-            const startTime = Date.now();
             const response = await chrome.runtime.sendMessage(message);
-            const endTime = Date.now();
             
-            console.log('[Spotlight-Overlay-Message] Response received in', endTime - startTime, 'ms');
-            console.log('[Spotlight-Overlay-Message] Full response object:', JSON.stringify(response, null, 2));
-            
-            if (!response) {
-                console.error('[Spotlight-Overlay-Message] ❌ No response received from background script');
-                return;
+            if (!response || response.success === false) {
+                console.error('[Spotlight] Result action failed:', response?.error || 'No response');
             }
-            
-            if (response.success === false) {
-                console.error('[Spotlight-Overlay-Message] ❌ Background script reported failure:', response.error);
-                console.error('[Spotlight-Overlay-Message] Full error response:', response);
-            } else if (response.success === true) {
-                console.log('[Spotlight-Overlay-Message] ✅ Background script reported success');
-            } else {
-                console.warn('[Spotlight-Overlay-Message] ⚠️ Response missing success field:', response);
-            }
-            
-            console.log('[Spotlight-Overlay-Message] ===== RESULT ACTION COMPLETED =====');
         } catch (error) {
-            console.error('[Spotlight-Overlay-Message] ❌ Exception during result action:', error);
-            console.error('[Spotlight-Overlay-Message] Error details:', {
-                name: error.name,
-                message: error.message,
-                stack: error.stack
-            });
+            console.error('[Spotlight] Error handling result action:', error);
         }
     }
 
@@ -598,14 +495,11 @@
     // Load initial results
     async function loadInitialResults() {
         try {
-            console.log('[Spotlight-Overlay] Loading initial results');
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            console.log('[Spotlight-Overlay] Mode for initial results:', mode);
             const results = await performSearch('', mode, true);
-            console.log('[Spotlight-Overlay] Initial results received:', results.length);
             displayResults(results);
         } catch (error) {
-            console.error('[Spotlight-Overlay] Error loading initial results:', error);
+            console.error('[Spotlight] Error loading initial results:', error);
             displayEmptyState();
         }
     }
@@ -624,52 +518,37 @@
     // Handle input changes
     async function handleInput() {
         const query = input.value.trim();
-        console.log('[Spotlight-Overlay-Input] Input changed, query:', query);
         
         if (!query) {
-            console.log('[Spotlight-Overlay-Input] Empty query, loading initial results');
             loadInitialResults();
             return;
         }
 
-        // Keep previous results while searching (no loading state to avoid jittery UI)
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            console.log('[Spotlight-Overlay-Input] Performing search with mode:', mode);
             const results = await performSearch(query, mode, false);
-            console.log('[Spotlight-Overlay-Input] Search results received:', results.length);
             displayResults(results);
         } catch (error) {
-            console.error('[Spotlight-Overlay-Input] Search error:', error);
+            console.error('[Spotlight] Search error:', error);
             displayEmptyState();
         }
     }
 
     // Display search results
     function displayResults(results) {
-        console.log('[Spotlight-Overlay-UI] displayResults called with:', results.length, 'results');
-        console.log('[Spotlight-Overlay-UI] First result:', results[0]);
-        
         currentResults = results;
         selectionManager.updateResults(results);
 
         if (!results || results.length === 0) {
-            console.log('[Spotlight-Overlay-UI] No results, displaying empty state');
             displayEmptyState();
             return;
         }
 
         const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-        console.log('[Spotlight-Overlay-UI] Formatting results for mode:', mode);
         
         const html = results.map((result, index) => {
             const formatted = formatResult(result, mode);
             const isSelected = index === 0;
-            console.log('[Spotlight-Overlay-UI] Formatting result', index, ':', { 
-                type: result.type, 
-                title: formatted.title, 
-                subtitle: formatted.subtitle 
-            });
             
             return `
                 <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
@@ -687,7 +566,6 @@
             `;
         }).join('');
 
-        console.log('[Spotlight-Overlay-UI] Setting innerHTML with', html.length, 'characters');
         resultsContainer.innerHTML = html;
         
         // Add error handling for favicon images (CSP compliant)
@@ -697,8 +575,6 @@
                 this.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
             });
         });
-        
-        console.log('[Spotlight-Overlay-UI] Results container updated, child count:', resultsContainer.children.length);
     }
 
     // Get favicon URL with fallback
@@ -721,11 +597,9 @@
 
     // Display empty state
     function displayEmptyState() {
-        console.log('[Spotlight-Overlay-UI] Displaying empty state');
         resultsContainer.innerHTML = '<div class="arcify-spotlight-empty">Start typing to search tabs, bookmarks, and history</div>';
         currentResults = [];
         selectionManager.updateResults([]);
-        console.log('[Spotlight-Overlay-UI] Empty state set, container HTML:', resultsContainer.innerHTML);
     }
 
     // Escape HTML utility
@@ -744,96 +618,61 @@
 
     // Handle result selection
     async function handleResultAction(result) {
-        console.log('[Spotlight-Overlay-Selection] ========== HANDLE RESULT ACTION START ==========');
-        console.log('[Spotlight-Overlay-Selection] handleResultAction called with result:', {
-            type: result?.type,
-            title: result?.title,
-            url: result?.url,
-            domain: result?.domain,
-            fullResult: result
-        });
-        
         if (!result) {
-            console.error('[Spotlight-Overlay-Selection] ❌ No result provided, returning early');
+            console.error('[Spotlight] No result provided');
             return;
         }
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            console.log('[Spotlight-Overlay-Selection] Resolved mode:', mode, 'from spotlightTabMode:', spotlightTabMode);
-            
-            console.log('[Spotlight-Overlay-Selection] About to call handleResultActionViaMessage...');
             await handleResultActionViaMessage(result, mode);
-            console.log('[Spotlight-Overlay-Selection] ✅ handleResultActionViaMessage completed successfully');
-            
-            console.log('[Spotlight-Overlay-Selection] About to close spotlight...');
             closeSpotlight();
-            console.log('[Spotlight-Overlay-Selection] ✅ Spotlight closed');
         } catch (error) {
-            console.error('[Spotlight-Overlay-Selection] ❌ Exception in handleResultAction:', error);
-            console.error('[Spotlight-Overlay-Selection] Error details:', {
-                name: error.name,
-                message: error.message,
-                stack: error.stack
-            });
+            console.error('[Spotlight] Error in result action:', error);
         }
-        
-        console.log('[Spotlight-Overlay-Selection] ========== HANDLE RESULT ACTION END ==========');
     }
 
     // Keyboard navigation
     input.addEventListener('keydown', (e) => {
-        console.log('[Spotlight-Overlay-Input] Keydown event:', e.key, 'activeElement:', document.activeElement);
-        
         if (!dialog.contains(document.activeElement)) {
-            console.log('[Spotlight-Overlay-Input] Active element not in dialog, ignoring');
             return;
         }
 
         switch (e.key) {
             case 'ArrowDown':
-                console.log('[Spotlight-Overlay-Input] Arrow down pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveSelection('down');
                 break;
 
             case 'ArrowUp':
-                console.log('[Spotlight-Overlay-Input] Arrow up pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveSelection('up');
                 break;
 
             case 'Home':
-                console.log('[Spotlight-Overlay-Input] Home pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveToFirst();
                 break;
 
             case 'End':
-                console.log('[Spotlight-Overlay-Input] End pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 selectionManager.moveToLast();
                 break;
 
             case 'Enter':
-                console.log('[Spotlight-Overlay-Input] Enter pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 const selected = selectionManager.getSelectedResult();
-                console.log('[Spotlight-Overlay-Input] Selected result:', selected);
                 if (selected) {
                     handleResultAction(selected);
-                } else {
-                    console.log('[Spotlight-Overlay-Input] No result selected');
                 }
                 break;
 
             case 'Escape':
-                console.log('[Spotlight-Overlay-Input] Escape pressed');
                 e.preventDefault();
                 e.stopPropagation();
                 closeSpotlight();
@@ -843,26 +682,18 @@
 
     // Handle clicks on results
     resultsContainer.addEventListener('click', (e) => {
-        console.log('[Spotlight-Overlay-Selection] Results container clicked');
         const item = e.target.closest('.arcify-spotlight-result-item');
         if (item) {
             const index = parseInt(item.dataset.index);
-            console.log('[Spotlight-Overlay-Selection] Clicked item index:', index);
             const result = currentResults[index];
-            console.log('[Spotlight-Overlay-Selection] Clicked result:', result);
             if (result) {
                 handleResultAction(result);
-            } else {
-                console.log('[Spotlight-Overlay-Selection] No result found at index:', index);
             }
-        } else {
-            console.log('[Spotlight-Overlay-Selection] No result item clicked');
         }
     });
 
     // Close spotlight function
     function closeSpotlight() {
-        console.log('[Spotlight-Overlay] Closing spotlight');
         dialog.close();
         
         chrome.runtime.sendMessage({
@@ -871,7 +702,6 @@
         
         setTimeout(() => {
             if (dialog.parentNode) {
-                console.log('[Spotlight-Overlay] Removing dialog from DOM');
                 dialog.parentNode.removeChild(dialog);
                 styleSheet.parentNode.removeChild(styleSheet);
                 window.arcifySpotlightInjected = false;
@@ -889,11 +719,9 @@
     dialog.addEventListener('close', closeSpotlight);
 
     // Show dialog and focus input
-    console.log('[Spotlight-Overlay] Showing dialog and focusing input');
     dialog.showModal();
     
     setTimeout(() => {
-        console.log('[Spotlight-Overlay] Focusing input field');
         input.focus();
         input.select();
         input.scrollLeft = 0;

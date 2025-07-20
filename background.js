@@ -53,14 +53,13 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
 chrome.commands.onCommand.addListener(async function(command) {
     if (command === "quickPinToggle") {
-        console.log("sending");
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "quickPinToggle" });
     } else if (command === "toggleSpotlight") {
-        console.log("Spotlight (current tab) command received");
+        console.log("[Background] Spotlight (current tab) command received");
         await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
     } else if (command === "toggleSpotlightNewTab") {
-        console.log("Spotlight (new tab) command received");
+        console.log("[Background] Spotlight (new tab) command received");
         await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
     }
 });
@@ -353,7 +352,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
         return false; // Synchronous response
     } else if (message.action === 'openNewTab') {
-        console.log("Opening new tab with URL:", message.url);
         chrome.tabs.create({ url: message.url });
         sendResponse({ success: true });
         return false; // Synchronous response
@@ -363,11 +361,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // is not available in popup. Popup only has access to its own window.
         (async () => {
             try {
-                console.log('[Background] Navigating current tab to:', message.url);
                 const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
                 if (activeTab) {
                     await chrome.tabs.update(activeTab.id, { url: message.url });
-                    console.log('[Background] Successfully navigated current tab');
                     sendResponse({ success: true });
                 } else {
                     console.error('[Background] No active tab found');
@@ -383,10 +379,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle tab switching for spotlight search results
         (async () => {
             try {
-                console.log('[Background] Switching to tab:', message.tabId, 'in window:', message.windowId);
                 await chrome.tabs.update(message.tabId, { active: true });
                 await chrome.windows.update(message.windowId, { focused: true });
-                console.log('[Background] Successfully switched to tab');
                 sendResponse({ success: true });
             } catch (error) {
                 console.error('[Background] Error switching to tab:', error);
@@ -398,7 +392,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle async operation properly
         (async () => {
             try {
-                console.log('[Background] Searching tabs with query:', message.query);
                 const tabs = await chrome.tabs.query({});
                 const query = message.query?.toLowerCase() || '';
                 const filteredTabs = tabs.filter(tab => {
@@ -407,7 +400,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     return tab.title.toLowerCase().includes(query) || 
                            tab.url.toLowerCase().includes(query);
                 });
-                console.log('[Background] Found tabs:', filteredTabs.length);
                 sendResponse({ success: true, tabs: filteredTabs });
             } catch (error) {
                 console.error('[Background] Error searching tabs:', error);
@@ -418,7 +410,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'getRecentTabs') {
         (async () => {
             try {
-                console.log('[Background] Getting recent tabs, limit:', message.limit);
                 const tabs = await chrome.tabs.query({});
                 const storage = await chrome.storage.local.get([TAB_ACTIVITY_STORAGE_KEY]);
                 const activityData = storage[TAB_ACTIVITY_STORAGE_KEY] || {};
@@ -432,7 +423,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
                     .slice(0, message.limit || 5);
                     
-                console.log('[Background] Found recent tabs:', tabsWithActivity.length);
                 sendResponse({ success: true, tabs: tabsWithActivity });
             } catch (error) {
                 console.error('[Background] Error getting recent tabs:', error);
@@ -443,10 +433,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'searchBookmarks') {
         (async () => {
             try {
-                console.log('[Background] Searching bookmarks with query:', message.query);
                 const bookmarks = await chrome.bookmarks.search(message.query);
                 const filteredBookmarks = bookmarks.filter(bookmark => bookmark.url);
-                console.log('[Background] Found bookmarks:', filteredBookmarks.length);
                 sendResponse({ success: true, bookmarks: filteredBookmarks });
             } catch (error) {
                 console.error('[Background] Error searching bookmarks:', error);
@@ -457,13 +445,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'searchHistory') {
         (async () => {
             try {
-                console.log('[Background] Searching history with query:', message.query);
                 const historyItems = await chrome.history.search({
                     text: message.query,
                     maxResults: 10,
                     startTime: Date.now() - (7 * 24 * 60 * 60 * 1000) // Last 7 days
                 });
-                console.log('[Background] Found history items:', historyItems.length);
                 sendResponse({ success: true, history: historyItems });
             } catch (error) {
                 console.error('[Background] Error searching history:', error);
@@ -544,34 +530,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle spotlight suggestions requests from overlay.js
         (async () => {
             try {
-                console.log('[Background-Spotlight] Received getSpotlightSuggestions request');
-                console.log('[Background-Spotlight] Query:', message.query, 'Mode:', message.mode);
-                console.log('[Background-Spotlight] Full message:', message);
-                
-                // Use pre-created SearchEngine with BackgroundDataProvider
-                console.log('[Background-SearchEngine] Using background search engine');
-                
                 const query = message.query.trim();
-                console.log('[Background-SearchEngine] Processing query:', query, 'mode:', message.mode);
                 
                 // Get suggestions using the background search engine
                 const results = query
                     ? await backgroundSearchEngine.getSpotlightSuggestionsImmediate(query, message.mode)
                     : await backgroundSearchEngine.getSpotlightSuggestionsImmediate('', message.mode);
                 
-                console.log('[Background-SearchEngine] Background suggestions completed');
-                console.log('[Background-SearchEngine] Results received:', results.length);
-                console.log('[Background-SearchEngine] First few results:', results.slice(0, 3));
-                
-                const response = { success: true, results: results };
-                console.log('[Background-Response] Sending success response with', results.length, 'results');
-                sendResponse(response);
+                sendResponse({ success: true, results: results });
             } catch (error) {
-                console.error('[Background-Spotlight] Error getting spotlight suggestions:', error);
-                console.error('[Background-Spotlight] Error stack:', error.stack);
-                const errorResponse = { success: false, error: error.message, results: [] };
-                console.log('[Background-Response] Sending error response:', errorResponse);
-                sendResponse(errorResponse);
+                console.error('[Background] Error getting spotlight suggestions:', error);
+                sendResponse({ success: false, error: error.message, results: [] });
             }
         })();
         return true; // Async response
@@ -579,49 +548,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle spotlight result actions from overlay.js
         (async () => {
             try {
-                console.log('[Background-Spotlight] ===== SPOTLIGHT HANDLE RESULT START =====');
-                console.log('[Background-Spotlight] Received spotlightHandleResult request');
-                console.log('[Background-Spotlight] Result type:', message.result?.type);
-                console.log('[Background-Spotlight] Mode:', message.mode);
-                console.log('[Background-Spotlight] Result URL:', message.result?.url);
-                console.log('[Background-Spotlight] Result title:', message.result?.title);
-                console.log('[Background-Spotlight] Full message object:', JSON.stringify(message, null, 2));
-                
                 // Validate inputs
-                if (!message.result) {
-                    throw new Error('No result provided in message');
+                if (!message.result || !message.result.type || !message.mode) {
+                    throw new Error('Invalid spotlight result message');
                 }
-                if (!message.result.type) {
-                    throw new Error('Result missing type field');
-                }
-                if (!message.mode) {
-                    throw new Error('No mode provided in message');
-                }
-                
-                // Use pre-created SearchEngine with BackgroundDataProvider
-                console.log('[Background-SearchEngine] Using background search engine for result handling');
-                console.log('[Background-SearchEngine] SearchEngine instance:', backgroundSearchEngine);
                 
                 // Handle the result action
-                console.log('[Background-SearchEngine] About to call handleResultAction...');
-                const startTime = Date.now();
                 await backgroundSearchEngine.handleResultAction(message.result, message.mode);
-                const endTime = Date.now();
-                
-                console.log('[Background-SearchEngine] ✅ handleResultAction completed successfully in', endTime - startTime, 'ms');
-                const response = { success: true };
-                console.log('[Background-Response] Sending success response for result action');
-                console.log('[Background-Spotlight] ===== SPOTLIGHT HANDLE RESULT SUCCESS =====');
-                sendResponse(response);
+                sendResponse({ success: true });
             } catch (error) {
-                console.error('[Background-Spotlight] ❌ Error handling spotlight result action:', error);
-                console.error('[Background-Spotlight] Error name:', error.name);
-                console.error('[Background-Spotlight] Error message:', error.message);
-                console.error('[Background-Spotlight] Error stack:', error.stack);
-                const errorResponse = { success: false, error: error.message };
-                console.log('[Background-Response] Sending error response for result action:', errorResponse);
-                console.log('[Background-Spotlight] ===== SPOTLIGHT HANDLE RESULT ERROR =====');
-                sendResponse(errorResponse);
+                console.error('[Background] Error handling spotlight result:', error);
+                sendResponse({ success: false, error: error.message });
             }
         })();
         return true; // Async response
