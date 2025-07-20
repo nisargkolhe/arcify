@@ -102,14 +102,8 @@ export class BaseDataProvider {
             console.log('[SearchProvider]   - History:', history.length);
             console.log('[SearchProvider]   - Top sites:', topSites.length);
 
-            // Add URL/search suggestions
-            if (this.isURL(trimmedQuery)) {
-                console.log('[SearchProvider] Adding URL suggestion for:', trimmedQuery);
-                results.push(this.generateURLSuggestion(trimmedQuery));
-            } else {
-                console.log('[SearchProvider] Adding search suggestion for:', trimmedQuery);
-                results.push(this.generateSearchSuggestion(trimmedQuery));
-            }
+            // Skip URL/search suggestions - these are handled by instant suggestions in the UI
+            console.log('[SearchProvider] Skipping URL/search suggestions (handled by instant suggestions)');
 
             // Add other results
             console.log('[SearchProvider] Adding results to final array');
@@ -361,10 +355,10 @@ export class BaseDataProvider {
         let baseScore = 0;
 
         switch (result.type) {
-            case ResultType.OPEN_TAB: baseScore = 100; break;
+            case ResultType.SEARCH_QUERY: baseScore = 100; break;  // Search query now has highest priority
             case ResultType.URL_SUGGESTION: baseScore = 95; break;
+            case ResultType.OPEN_TAB: baseScore = 90; break;       // Open tabs moved down
             case ResultType.BOOKMARK: baseScore = 85; break;
-            case ResultType.SEARCH_QUERY: baseScore = 80; break;
             case ResultType.TOP_SITE: baseScore = 70; break;
             case ResultType.HISTORY: baseScore = 60; break;
         }

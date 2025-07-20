@@ -7,9 +7,68 @@ import { ContentScriptDataProvider } from './shared/data-providers/content-scrip
 import { SpotlightTabMode } from './shared/search-types.js';
 import { getAccentColorCSS } from './shared/styling.js';
 
+// Utility function to detect URLs
+function isURL(text) {
+    try {
+        new URL(text);
+        return true;
+    } catch {}
+
+    const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
+    if (domainPattern.test(text)) return true;
+
+    if (text === 'localhost' || text.startsWith('localhost:')) return true;
+
+    if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
+        const parts = text.split(':')[0].split('.');
+        return parts.every(part => {
+            const num = parseInt(part, 10);
+            return num >= 0 && num <= 255;
+        });
+    }
+
+    if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
+        return true;
+    }
+
+    return false;
+}
+
+// Generate instant first suggestion based on current input
+function generateInstantSuggestion(query) {
+    const trimmedQuery = query.trim();
+    
+    if (!trimmedQuery) return null;
+
+    if (isURL(trimmedQuery)) {
+        const url = trimmedQuery.startsWith('http') ? trimmedQuery : `https://${trimmedQuery}`;
+        return {
+            type: 'url-suggestion',
+            title: trimmedQuery,
+            url: url,
+            score: 1000,
+            metadata: {},
+            domain: '',
+            favicon: null
+        };
+    } else {
+        return {
+            type: 'search-query',
+            title: `Search for "${trimmedQuery}"`,
+            url: '',
+            score: 1000,
+            metadata: { query: trimmedQuery },
+            domain: '',
+            favicon: null
+        };
+    }
+}
+
 // Global state
 let searchEngine;
 let currentResults = [];
+let instantSuggestion = null; // The real-time first suggestion
+let asyncSuggestions = []; // Debounced suggestions
 let spotlightMode = 'current-tab';
 let selectionManager;
 
@@ -129,11 +188,13 @@ function setupEventListeners() {
     const input = document.getElementById('spotlightInput');
     const resultsContainer = document.getElementById('spotlightResults');
     
-    // Handle input changes with debouncing
-    let inputTimeout;
+    // Input event handlers
     input.addEventListener('input', () => {
-        clearTimeout(inputTimeout);
-        inputTimeout = setTimeout(handleInput, 150);
+        // Update instant suggestion immediately (zero latency)
+        handleInstantInput();
+        
+        // Trigger async search (SearchEngine handles debouncing via message)
+        handleAsyncSearch();
     });
     
     // Handle keyboard navigation
@@ -196,47 +257,94 @@ function setupEventListeners() {
 // Load initial results
 async function loadInitialResults() {
     try {
+        // Clear instant suggestion when loading initial results
+        instantSuggestion = null;
+        
         const results = await searchEngine.getSpotlightSuggestionsImmediate('', spotlightMode);
-        displayResults(results);
+        asyncSuggestions = results || [];
+        updateDisplay();
     } catch (error) {
         console.error('[Popup] Error loading initial results:', error);
+        instantSuggestion = null;
+        asyncSuggestions = [];
         displayEmptyState();
     }
 }
 
-// Handle input changes
-async function handleInput() {
+// Handle instant suggestion update (no debouncing)
+function handleInstantInput() {
     const input = document.getElementById('spotlightInput');
     const query = input.value.trim();
     
     if (!query) {
+        instantSuggestion = null;
         loadInitialResults();
+        return;
+    }
+
+    // Generate instant suggestion based on current input
+    instantSuggestion = generateInstantSuggestion(query);
+    updateDisplay();
+}
+
+// Handle async search (debounced)
+async function handleAsyncSearch() {
+    const input = document.getElementById('spotlightInput');
+    const query = input.value.trim();
+    
+    if (!query) {
+        asyncSuggestions = [];
+        updateDisplay();
         return;
     }
 
     try {
         const results = await searchEngine.getSpotlightSuggestionsUsingCache(query, spotlightMode);
-        displayResults(results);
+        asyncSuggestions = results || [];
+        updateDisplay();
     } catch (error) {
         console.error('[Popup] Search error:', error);
-        displayEmptyState();
+        asyncSuggestions = [];
+        updateDisplay();
     }
 }
 
-// Display search results
-function displayResults(results) {
-    const resultsContainer = document.getElementById('spotlightResults');
-    currentResults = results;
-    selectionManager.updateResults(results);
+// Legacy function for compatibility
+async function handleInput() {
+    handleInstantInput(); // Update instant suggestion immediately
+    handleAsyncSearch(); // Trigger debounced async search
+}
 
-    if (!results || results.length === 0) {
+// Display search results
+// Combine instant and async suggestions
+function combineResults() {
+    const combined = [];
+    
+    // Add instant suggestion first (if exists)
+    if (instantSuggestion) {
+        combined.push(instantSuggestion);
+    }
+    
+    // Add async suggestions
+    combined.push(...asyncSuggestions);
+    
+    return combined;
+}
+
+// Update the display with combined results
+function updateDisplay() {
+    const resultsContainer = document.getElementById('spotlightResults');
+    currentResults = combineResults();
+    selectionManager.updateResults(currentResults);
+
+    if (currentResults.length === 0) {
         displayEmptyState();
         return;
     }
 
-    const html = results.map((result, index) => {
+    const html = currentResults.map((result, index) => {
         const formatted = searchEngine.formatResult(result, spotlightMode);
-        const isSelected = index === 0;
+        const isSelected = index === 0; // First result (instant suggestion) is always selected by default
         
         return `
             <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
@@ -265,6 +373,12 @@ function displayResults(results) {
     });
 }
 
+// Legacy function for compatibility (now redirects to updateDisplay)
+function displayResults(results) {
+    asyncSuggestions = results || [];
+    updateDisplay();
+}
+
 // Get favicon URL with fallback
 function getFaviconUrl(result) {
     if (result.favicon && result.favicon.startsWith('http')) {
@@ -288,6 +402,8 @@ function displayEmptyState() {
     const resultsContainer = document.getElementById('spotlightResults');
     resultsContainer.innerHTML = '<div class="arcify-spotlight-empty">Start typing to search tabs, bookmarks, and history</div>';
     currentResults = [];
+    instantSuggestion = null;
+    asyncSuggestions = [];
     selectionManager.updateResults([]);
 }
 

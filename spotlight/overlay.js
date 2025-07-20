@@ -23,6 +23,76 @@
     };
 
 
+    // Utility function to detect URLs
+    function isURL(text) {
+        // Check if it's already a complete URL
+        try {
+            new URL(text);
+            return true;
+        } catch {}
+
+        // Check for domain-like patterns
+        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
+        if (domainPattern.test(text)) {
+            return true;
+        }
+
+        // Check for localhost
+        if (text === 'localhost' || text.startsWith('localhost:')) {
+            return true;
+        }
+
+        // Check for IP addresses
+        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
+            const parts = text.split(':')[0].split('.');
+            return parts.every(part => {
+                const num = parseInt(part, 10);
+                return num >= 0 && num <= 255;
+            });
+        }
+
+        // Common URL patterns without protocol
+        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // Generate instant first suggestion based on current input
+    function generateInstantSuggestion(query) {
+        const trimmedQuery = query.trim();
+        
+        if (!trimmedQuery) {
+            return null;
+        }
+
+        if (isURL(trimmedQuery)) {
+            // Create URL suggestion
+            const url = trimmedQuery.startsWith('http') ? trimmedQuery : `https://${trimmedQuery}`;
+            return {
+                type: ResultType.URL_SUGGESTION,
+                title: trimmedQuery,
+                url: url,
+                score: 1000, // Highest priority
+                metadata: {},
+                domain: '',
+                favicon: null
+            };
+        } else {
+            // Create search suggestion  
+            return {
+                type: ResultType.SEARCH_QUERY,
+                title: `Search for "${trimmedQuery}"`,
+                url: '',
+                score: 1000, // Highest priority
+                metadata: { query: trimmedQuery },
+                domain: '',
+                favicon: null
+            };
+        }
+    }
+
     // Function to get accent color CSS based on active space color
     function getAccentColorCSS(spaceColor) {
         // RGB values for each color name (matching --chrome-*-color variables in styles.css)
@@ -382,23 +452,8 @@
     
     // Initialize spotlight state
     let currentResults = [];
-    let searchTimeout = null;
-    const DEBOUNCE_DELAY = 150;
-
-    // Search function using message passing to background script
-    async function performSearch(query, mode, immediate = false) {
-        return new Promise((resolve) => {
-            if (!immediate) {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(async () => {
-                    const results = await sendGetSuggestionsMessage(query, mode);
-                    resolve(results);
-                }, DEBOUNCE_DELAY);
-            } else {
-                sendGetSuggestionsMessage(query, mode).then(resolve);
-            }
-        });
-    }
+    let instantSuggestion = null; // The real-time first suggestion
+    let asyncSuggestions = []; // Debounced suggestions from background
 
     // Send get suggestions message to background script
     async function sendGetSuggestionsMessage(query, mode) {
@@ -495,11 +550,17 @@
     // Load initial results
     async function loadInitialResults() {
         try {
+            // Clear instant suggestion when loading initial results
+            instantSuggestion = null;
+            
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            const results = await performSearch('', mode, true);
-            displayResults(results);
+            const results = await sendGetSuggestionsMessage('', mode);
+            asyncSuggestions = results || [];
+            updateDisplay();
         } catch (error) {
             console.error('[Spotlight] Error loading initial results:', error);
+            instantSuggestion = null;
+            asyncSuggestions = [];
             displayEmptyState();
         }
     }
@@ -515,40 +576,79 @@
         loadInitialResults();
     }
 
-    // Handle input changes
-    async function handleInput() {
+    // Handle instant suggestion update (no debouncing)
+    function handleInstantInput() {
         const query = input.value.trim();
         
         if (!query) {
+            instantSuggestion = null;
             loadInitialResults();
+            return;
+        }
+
+        // Generate instant suggestion based on current input
+        instantSuggestion = generateInstantSuggestion(query);
+        updateDisplay();
+    }
+
+    // Handle async search (debounced)
+    async function handleAsyncSearch() {
+        const query = input.value.trim();
+        
+        if (!query) {
+            asyncSuggestions = [];
+            updateDisplay();
             return;
         }
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            const results = await performSearch(query, mode, false);
-            displayResults(results);
+            const results = await sendGetSuggestionsMessage(query, mode);
+            asyncSuggestions = results || [];
+            updateDisplay();
         } catch (error) {
             console.error('[Spotlight] Search error:', error);
-            displayEmptyState();
+            asyncSuggestions = [];
+            updateDisplay();
         }
     }
 
-    // Display search results
-    function displayResults(results) {
-        currentResults = results;
-        selectionManager.updateResults(results);
+    // Legacy function for compatibility
+    async function handleInput() {
+        handleInstantInput(); // Update instant suggestion immediately
+        handleAsyncSearch(); // Trigger debounced async search
+    }
 
-        if (!results || results.length === 0) {
+    // Combine instant and async suggestions
+    function combineResults() {
+        const combined = [];
+        
+        // Add instant suggestion first (if exists)
+        if (instantSuggestion) {
+            combined.push(instantSuggestion);
+        }
+        
+        // Add async suggestions
+        combined.push(...asyncSuggestions);
+        
+        return combined;
+    }
+
+    // Update the display with combined results
+    function updateDisplay() {
+        currentResults = combineResults();
+        selectionManager.updateResults(currentResults);
+
+        if (currentResults.length === 0) {
             displayEmptyState();
             return;
         }
 
         const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
         
-        const html = results.map((result, index) => {
+        const html = currentResults.map((result, index) => {
             const formatted = formatResult(result, mode);
-            const isSelected = index === 0;
+            const isSelected = index === 0; // First result (instant suggestion) is always selected by default
             
             return `
                 <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
@@ -577,6 +677,12 @@
         });
     }
 
+    // Legacy function for compatibility (now redirects to updateDisplay)
+    function displayResults(results) {
+        asyncSuggestions = results || [];
+        updateDisplay();
+    }
+
     // Get favicon URL with fallback
     function getFaviconUrl(result) {
         if (result.favicon && result.favicon.startsWith('http')) {
@@ -599,6 +705,8 @@
     function displayEmptyState() {
         resultsContainer.innerHTML = '<div class="arcify-spotlight-empty">Start typing to search tabs, bookmarks, and history</div>';
         currentResults = [];
+        instantSuggestion = null;
+        asyncSuggestions = [];
         selectionManager.updateResults([]);
     }
 
@@ -609,11 +717,13 @@
         return div.innerHTML;
     }
 
-    // Debounced input handler
-    let inputTimeout;
+    // Input event handlers
     input.addEventListener('input', () => {
-        clearTimeout(inputTimeout);
-        inputTimeout = setTimeout(handleInput, 150);
+        // Update instant suggestion immediately (zero latency)
+        handleInstantInput();
+        
+        // Trigger async search (SearchEngine handles debouncing via message)
+        handleAsyncSearch();
     });
 
     // Handle result selection
