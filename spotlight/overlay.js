@@ -206,6 +206,12 @@
         ${accentColorDefinitions}
         
         #arcify-spotlight-dialog {
+            margin: 0;
+            position: fixed;
+            /* Not fully centered but this looks better than 50vh */
+            top: calc(35vh);
+            left: 50%;
+            transform: translateX(-50%);
             border: none;
             padding: 0;
             background: transparent;
@@ -300,9 +306,16 @@
         }
 
         .arcify-spotlight-results {
-            max-height: 400px;
+            max-height: 270px;
             overflow-y: auto;
             padding: 8px 0;
+            scroll-behavior: smooth;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+        }
+
+        .arcify-spotlight-results::-webkit-scrollbar {
+            display: none; /* Chrome, Safari and Opera */
         }
 
         .arcify-spotlight-result-item {
@@ -392,11 +405,11 @@
         @keyframes arcify-spotlight-show {
             from {
                 opacity: 0;
-                transform: scale(0.95) translateY(-10px);
+                transform: translateX(-50%) scale(0.95);
             }
             to {
                 opacity: 1;
-                transform: scale(1) translateY(0);
+                transform: translateX(-50%) scale(1);
             }
         }
 
@@ -542,6 +555,14 @@
             items.forEach((item, index) => {
                 item.classList.toggle('selected', index === this.selectedIndex);
             });
+            
+            // Auto-scroll selected item into view
+            if (items[this.selectedIndex]) {
+                items[this.selectedIndex].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
+                });
+            }
         }
     }
 
