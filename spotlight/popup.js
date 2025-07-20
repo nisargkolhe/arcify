@@ -293,52 +293,24 @@ function displayEmptyState() {
 
 // Handle result selection
 async function handleResultAction(result) {
-    console.log('[Popup] ========== HANDLE RESULT ACTION START ==========');
-    console.log('[Popup] handleResultAction called with result:', {
-        type: result?.type,
-        title: result?.title,
-        url: result?.url,
-        domain: result?.domain,
-        metadata: result?.metadata,
-        fullResult: result
-    });
-
     if (!result) {
-        console.error('[Popup] ❌ No result provided, returning early');
+        console.error('[Popup] No result provided');
         return;
     }
 
     try {
-        console.log('[Popup] About to call searchEngine.handleResultAction...');
-        console.log('[Popup] Spotlight mode:', spotlightMode);
-        
-        const startTime = Date.now();
         await searchEngine.handleResultAction(result, spotlightMode);
-        const endTime = Date.now();
-        
-        console.log('[Popup] ✅ searchEngine.handleResultAction completed successfully in', endTime - startTime, 'ms');
         
         // Notify background that spotlight closed
-        console.log('[Popup] Sending spotlightClosed notification...');
         chrome.runtime.sendMessage({
             action: 'spotlightClosed'
         });
-        console.log('[Popup] ✅ spotlightClosed notification sent');
         
         // Close popup
-        console.log('[Popup] Closing popup window...');
         window.close();
-        console.log('[Popup] ✅ Popup close initiated');
     } catch (error) {
-        console.error('[Popup] ❌ Exception in handleResultAction:', error);
-        console.error('[Popup] Error details:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
+        console.error('[Popup] Error in result action:', error);
     }
-    
-    console.log('[Popup] ========== HANDLE RESULT ACTION END ==========');
 }
 
 // Escape HTML utility
