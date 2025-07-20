@@ -117,6 +117,14 @@ class SelectionManager {
         items.forEach((item, index) => {
             item.classList.toggle('selected', index === this.selectedIndex);
         });
+        
+        // Auto-scroll selected item into view
+        if (items[this.selectedIndex]) {
+            items[this.selectedIndex].scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest'
+            });
+        }
     }
 }
 
