@@ -185,6 +185,17 @@ async function initPopup() {
     // Set up event listeners
     setupEventListeners();
     
+    // Notify background that spotlight opened (popup mode)
+    chrome.runtime.sendMessage({ action: 'spotlightOpened' });
+    
+    // Listen for global close messages from background script
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message.action === 'closeSpotlight') {
+            chrome.runtime.sendMessage({ action: 'spotlightClosed' });
+            window.close();
+        }
+    });
+    
     // Clear the popup active flag after a short delay
     setTimeout(() => {
         chrome.storage.local.remove(['spotlightPopupActive']);
@@ -244,6 +255,7 @@ function setupEventListeners() {
             case 'Escape':
                 e.preventDefault();
                 e.stopPropagation();
+                chrome.runtime.sendMessage({ action: 'spotlightClosed' });
                 window.close();
                 break;
         }

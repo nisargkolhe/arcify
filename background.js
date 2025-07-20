@@ -64,9 +64,35 @@ chrome.commands.onCommand.addListener(async function(command) {
     }
 });
 
+// Track tabs that have spotlight open for efficient closing.
+// Mainly used to close spotlight overlays in all tabs when it's
+// closed in 1 / user switches to another tab with overlay open.
+const spotlightOpenTabs = new Set();
+
+// Close spotlight in tracked tabs only
+async function closeSpotlightInTrackedTabs() {
+    try {
+        const closePromises = Array.from(spotlightOpenTabs).map(tabId => 
+            chrome.tabs.sendMessage(tabId, { action: 'closeSpotlight' }).catch(() => {
+                // Remove from tracking if tab no longer exists or script not loaded
+                spotlightOpenTabs.delete(tabId);
+            })
+        );
+        await Promise.all(closePromises);
+        console.log(`[Background] Closed spotlight in ${spotlightOpenTabs.size} tracked tabs`);
+        // Clear the set after closing
+        spotlightOpenTabs.clear();
+    } catch (error) {
+        console.error('[Background] Error closing spotlight in tracked tabs:', error);
+    }
+}
+
 // Helper function to inject spotlight script with spotlightTabMode
 async function injectSpotlightScript(spotlightTabMode) {
     try {
+        // First, close any existing spotlights in tracked tabs
+        await closeSpotlightInTrackedTabs();
+        
         // Get the active tab
         const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
         if (tab) {
@@ -103,6 +129,9 @@ async function injectSpotlightScript(spotlightTabMode) {
 // Helper function to open spotlight popup fallback
 async function openSpotlightPopup(spotlightTabMode) {
     try {
+        // First, close any existing spotlights in tracked tabs
+        await closeSpotlightInTrackedTabs();
+        
         // Set popup mode and tab mode in storage for popup to read
         await chrome.storage.local.set({ 
             spotlightMode: spotlightTabMode,
@@ -324,6 +353,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.log(`Tab activated: ${activeInfo.tabId}`);
     await updateTabLastActivity(activeInfo.tabId);
+    
+    // Close any open spotlights when switching tabs
+    await closeSpotlightInTrackedTabs();
 });
 
 // Track tab updates (e.g., audible status changes)
@@ -340,6 +372,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
     console.log(`Tab removed: ${tabId}`);
     await removeTabLastActivity(tabId);
+    
+    // Clean up spotlight tracking for closed tab
+    if (spotlightOpenTabs.has(tabId)) {
+        spotlightOpenTabs.delete(tabId);
+        console.log(`[Background] Removed closed tab ${tabId} from spotlight tracking`);
+    }
 });
 
 // Optional: Listen for messages from options page to immediately update alarm
@@ -562,6 +600,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
+    } else if (message.action === 'spotlightOpened') {
+        // Track when spotlight opens in a tab
+        if (sender.tab && sender.tab.id) {
+            spotlightOpenTabs.add(sender.tab.id);
+            console.log(`[Background] Spotlight opened in tab ${sender.tab.id}, tracking ${spotlightOpenTabs.size} tabs`);
+        }
+        return false;
+    } else if (message.action === 'spotlightClosed') {
+        // Track when spotlight closes in a tab
+        if (sender.tab && sender.tab.id) {
+            spotlightOpenTabs.delete(sender.tab.id);
+            console.log(`[Background] Spotlight closed in tab ${sender.tab.id}, tracking ${spotlightOpenTabs.size} tabs`);
+        }
+        return false;
     }
     
     return false; // No async response needed
