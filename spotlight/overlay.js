@@ -172,6 +172,10 @@
             existingDialog.close();
         } else {
             existingDialog.showModal();
+            
+            // Notify background that spotlight opened in this tab
+            chrome.runtime.sendMessage({ action: 'spotlightOpened' });
+            
             const input = existingDialog.querySelector('.arcify-spotlight-input');
             if (input) {
                 setTimeout(() => {
@@ -849,8 +853,21 @@
 
     dialog.addEventListener('close', closeSpotlight);
 
+    // Listen for global close messages from background script
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message.action === 'closeSpotlight') {
+            const existingDialog = document.getElementById('arcify-spotlight-dialog');
+            if (existingDialog && existingDialog.open) {
+                closeSpotlight();
+            }
+        }
+    });
+
     // Show dialog and focus input
     dialog.showModal();
+    
+    // Notify background that spotlight opened in this tab
+    chrome.runtime.sendMessage({ action: 'spotlightOpened' });
     
     setTimeout(() => {
         input.focus();
