@@ -1,169 +1,13 @@
 // spotlight-overlay-fixed.js - Self-contained spotlight with embedded search
 // Privacy-safe content script injected on-demand only
+// Now uses shared utilities via build-time bundling
+
+import { SpotlightUtils } from './shared/ui-utilities.js';
+import { SelectionManager } from './shared/selection-manager.js';
+import { SpotlightMessageClient } from './shared/message-client.js';
+import { SpotlightTabMode } from './shared/search-types.js';
 
 (async function(spotlightTabMode = 'current-tab') {
-    
-    // Constants are defined in search-types.js, duplicated here because injected content scripts
-    // cannot import other modules / files.
-    // IMPORTANT: Update these constants when updating them in search-types.js (and vice versa).
-    // Result type constants
-    const ResultType = {
-        URL_SUGGESTION: 'url-suggestion',
-        SEARCH_QUERY: 'search-query',
-        OPEN_TAB: 'open-tab',
-        BOOKMARK: 'bookmark',
-        HISTORY: 'history',
-        TOP_SITE: 'top-site'
-    };
-
-    // Spotlight tab mode constants
-    const SpotlightTabMode = {
-        CURRENT_TAB: 'current-tab',
-        NEW_TAB: 'new-tab'
-    };
-
-
-    // Utility function to detect URLs
-    function isURL(text) {
-        // Check if it's already a complete URL
-        try {
-            new URL(text);
-            return true;
-        } catch {}
-
-        // Check for domain-like patterns
-        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
-        if (domainPattern.test(text)) {
-            return true;
-        }
-
-        // Check for localhost
-        if (text === 'localhost' || text.startsWith('localhost:')) {
-            return true;
-        }
-
-        // Check for IP addresses
-        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
-            const parts = text.split(':')[0].split('.');
-            return parts.every(part => {
-                const num = parseInt(part, 10);
-                return num >= 0 && num <= 255;
-            });
-        }
-
-        // Common URL patterns without protocol
-        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    // Generate instant first suggestion based on current input
-    function generateInstantSuggestion(query) {
-        const trimmedQuery = query.trim();
-        
-        if (!trimmedQuery) {
-            return null;
-        }
-
-        if (isURL(trimmedQuery)) {
-            // Create URL suggestion
-            const url = trimmedQuery.startsWith('http') ? trimmedQuery : `https://${trimmedQuery}`;
-            return {
-                type: ResultType.URL_SUGGESTION,
-                title: trimmedQuery,
-                url: url,
-                score: 1000, // Highest priority
-                metadata: {},
-                domain: '',
-                favicon: null
-            };
-        } else {
-            // Create search suggestion  
-            return {
-                type: ResultType.SEARCH_QUERY,
-                title: `Search for "${trimmedQuery}"`,
-                url: '',
-                score: 1000, // Highest priority
-                metadata: { query: trimmedQuery },
-                domain: '',
-                favicon: null
-            };
-        }
-    }
-
-    // Function to get accent color CSS based on active space color
-    function getAccentColorCSS(spaceColor) {
-        // RGB values for each color name (matching --chrome-*-color variables in styles.css)
-        // We need this mapping to create rgba() variants with different opacities
-        // Can't directly reuse the constants in styles.css due to two reasons:
-        //   1. Color constants are in hexcode, cannot use this value in rgba
-        //   2. CSS is not directly available in content scripts
-        const colorMap = {
-            grey: '204, 204, 204',
-            blue: '139, 179, 243',
-            red: '255, 158, 151',
-            yellow: '255, 226, 159',
-            green: '139, 218, 153',
-            pink: '251, 170, 215',
-            purple: '214, 166, 255',
-            cyan: '165, 226, 234'
-        };
-
-        const rgb = colorMap[spaceColor] || colorMap.purple; // Fallback to purple
-
-        return `
-            :root {
-                --spotlight-accent-color: rgb(${rgb});
-                --spotlight-accent-color-15: rgba(${rgb}, 0.15);
-                --spotlight-accent-color-20: rgba(${rgb}, 0.2);
-                --spotlight-accent-color-80: rgba(${rgb}, 0.8);
-            }
-        `;
-    }
-
-    // Format result for display (moved from SearchEngine)
-    function formatResult(result, mode) {
-        const formatters = {
-            [ResultType.URL_SUGGESTION]: {
-                title: result.title,
-                subtitle: result.url,
-                action: '↵'
-            },
-            [ResultType.SEARCH_QUERY]: {
-                title: result.title,
-                subtitle: 'Search',
-                action: '↵'
-            },
-            [ResultType.OPEN_TAB]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
-            },
-            [ResultType.BOOKMARK]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: '↵'
-            },
-            [ResultType.HISTORY]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: '↵'
-            },
-            [ResultType.TOP_SITE]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: '↵'
-            }
-        };
-
-        return formatters[result.type] || {
-            title: result.title,
-            subtitle: result.url,
-            action: '↵'
-        };
-    }
     
     // Handle toggle functionality for existing spotlight
     const existingDialog = document.getElementById('arcify-spotlight-dialog');
@@ -174,7 +18,7 @@
             existingDialog.showModal();
             
             // Notify background that spotlight opened in this tab
-            chrome.runtime.sendMessage({ action: 'spotlightOpened' });
+            SpotlightMessageClient.notifyOpened();
             
             const input = existingDialog.querySelector('.arcify-spotlight-input');
             if (input) {
@@ -194,18 +38,13 @@
     // Get active space color
     let activeSpaceColor = 'purple'; // Default fallback
     try {
-        const colorResponse = await chrome.runtime.sendMessage({
-            action: 'getActiveSpaceColor'
-        });
-        if (colorResponse && colorResponse.success && colorResponse.color) {
-            activeSpaceColor = colorResponse.color;
-        }
+        activeSpaceColor = await SpotlightMessageClient.getActiveSpaceColor();
     } catch (error) {
         console.error('[Spotlight] Failed to get active space color:', error);
     }
 
     // CSS styles with dynamic accent color
-    const accentColorDefinitions = getAccentColorCSS(activeSpaceColor);
+    const accentColorDefinitions = SpotlightUtils.getAccentColorCSS(activeSpaceColor);
     const spotlightCSS = `
         ${accentColorDefinitions}
         
@@ -472,103 +311,16 @@
     let instantSuggestion = null; // The real-time first suggestion
     let asyncSuggestions = []; // Debounced suggestions from background
 
-    // Send get suggestions message to background script
+    // Send get suggestions message to background script using shared client
     async function sendGetSuggestionsMessage(query, mode) {
-        try {
-            const message = {
-                action: 'getSpotlightSuggestions',
-                query: query.trim(),
-                mode: mode
-            };
-            
-            const response = await chrome.runtime.sendMessage(message);
-            
-            if (response && response.success) {
-                return response.results;
-            } else {
-                console.error('[Spotlight] Get suggestions failed:', response?.error);
-                return [];
-            }
-        } catch (error) {
-            console.error('[Spotlight] Get suggestions error:', error);
-            return [];
-        }
+        return await SpotlightMessageClient.getSuggestions(query, mode);
     }
 
-    // Handle result action via message passing
+    // Handle result action via message passing using shared client
     async function handleResultActionViaMessage(result, mode) {
-        try {
-            const message = {
-                action: 'spotlightHandleResult',
-                result: result,
-                mode: mode
-            };
-            
-            const response = await chrome.runtime.sendMessage(message);
-            
-            if (!response || response.success === false) {
-                console.error('[Spotlight] Result action failed:', response?.error || 'No response');
-            }
-        } catch (error) {
-            console.error('[Spotlight] Error handling result action:', error);
-        }
+        return await SpotlightMessageClient.handleResult(result, mode);
     }
 
-    // Selection Manager
-    class SelectionManager {
-        constructor(container) {
-            this.container = container;
-            this.selectedIndex = 0;
-            this.results = [];
-        }
-
-        updateResults(newResults) {
-            this.results = newResults;
-            this.selectedIndex = 0;
-            this.updateVisualSelection();
-        }
-
-        moveSelection(direction) {
-            const maxIndex = this.results.length - 1;
-            
-            if (direction === 'down') {
-                this.selectedIndex = Math.min(this.selectedIndex + 1, maxIndex);
-            } else if (direction === 'up') {
-                this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
-            }
-            
-            this.updateVisualSelection();
-        }
-
-        moveToFirst() {
-            this.selectedIndex = 0;
-            this.updateVisualSelection();
-        }
-
-        moveToLast() {
-            this.selectedIndex = Math.max(0, this.results.length - 1);
-            this.updateVisualSelection();
-        }
-
-        getSelectedResult() {
-            return this.results[this.selectedIndex] || null;
-        }
-
-        updateVisualSelection() {
-            const items = this.container.querySelectorAll('.arcify-spotlight-result-item');
-            items.forEach((item, index) => {
-                item.classList.toggle('selected', index === this.selectedIndex);
-            });
-            
-            // Auto-scroll selected item into view
-            if (items[this.selectedIndex]) {
-                items[this.selectedIndex].scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'nearest'
-                });
-            }
-        }
-    }
 
     const selectionManager = new SelectionManager(resultsContainer);
 
@@ -612,7 +364,7 @@
         }
 
         // Generate instant suggestion based on current input
-        instantSuggestion = generateInstantSuggestion(query);
+        instantSuggestion = SpotlightUtils.generateInstantSuggestion(query);
         updateDisplay();
     }
 
@@ -672,34 +424,29 @@
         const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
         
         const html = currentResults.map((result, index) => {
-            const formatted = formatResult(result, mode);
+            const formatted = SpotlightUtils.formatResult(result, mode);
             const isSelected = index === 0; // First result (instant suggestion) is always selected by default
             
             return `
                 <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
                         data-index="${index}">
                     <img class="arcify-spotlight-result-favicon" 
-                         src="${getFaviconUrl(result)}" 
+                         src="${SpotlightUtils.getFaviconUrl(result)}" 
                          alt="favicon"
                          data-fallback-icon="true">
                     <div class="arcify-spotlight-result-content">
-                        <div class="arcify-spotlight-result-title">${escapeHtml(formatted.title)}</div>
-                        <div class="arcify-spotlight-result-url">${escapeHtml(formatted.subtitle)}</div>
+                        <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}</div>
+                        <div class="arcify-spotlight-result-url">${SpotlightUtils.escapeHtml(formatted.subtitle)}</div>
                     </div>
-                    <div class="arcify-spotlight-result-action">${escapeHtml(formatted.action)}</div>
+                    <div class="arcify-spotlight-result-action">${SpotlightUtils.escapeHtml(formatted.action)}</div>
                 </button>
             `;
         }).join('');
 
         resultsContainer.innerHTML = html;
         
-        // Add error handling for favicon images (CSP compliant)
-        const faviconImages = resultsContainer.querySelectorAll('.arcify-spotlight-result-favicon[data-fallback-icon="true"]');
-        faviconImages.forEach(img => {
-            img.addEventListener('error', function() {
-                this.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
-            });
-        });
+        // Add error handling for favicon images using shared utility
+        SpotlightUtils.setupFaviconErrorHandling(resultsContainer);
     }
 
     // Legacy function for compatibility (now redirects to updateDisplay)
@@ -708,23 +455,6 @@
         updateDisplay();
     }
 
-    // Get favicon URL with fallback
-    function getFaviconUrl(result) {
-        if (result.favicon && result.favicon.startsWith('http')) {
-            return result.favicon;
-        }
-        
-        if (result.url) {
-            try {
-                const url = new URL(result.url.startsWith('http') ? result.url : `https://${result.url}`);
-                return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
-            } catch {
-                // Fallback for invalid URLs
-            }
-        }
-
-        return `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
-    }
 
     // Display empty state
     function displayEmptyState() {
@@ -735,12 +465,6 @@
         selectionManager.updateResults([]);
     }
 
-    // Escape HTML utility
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
 
     // Input event handlers
     input.addEventListener('input', () => {
@@ -831,9 +555,7 @@
     function closeSpotlight() {
         dialog.close();
         
-        chrome.runtime.sendMessage({
-            action: 'spotlightClosed'
-        });
+        SpotlightMessageClient.notifyClosed();
         
         setTimeout(() => {
             if (dialog.parentNode) {
@@ -854,12 +576,10 @@
     dialog.addEventListener('close', closeSpotlight);
 
     // Listen for global close messages from background script
-    chrome.runtime.onMessage.addListener((message) => {
-        if (message.action === 'closeSpotlight') {
-            const existingDialog = document.getElementById('arcify-spotlight-dialog');
-            if (existingDialog && existingDialog.open) {
-                closeSpotlight();
-            }
+    SpotlightMessageClient.setupGlobalCloseListener(() => {
+        const existingDialog = document.getElementById('arcify-spotlight-dialog');
+        if (existingDialog && existingDialog.open) {
+            closeSpotlight();
         }
     });
 
@@ -867,7 +587,7 @@
     dialog.showModal();
     
     // Notify background that spotlight opened in this tab
-    chrome.runtime.sendMessage({ action: 'spotlightOpened' });
+    SpotlightMessageClient.notifyOpened();
     
     setTimeout(() => {
         input.focus();
