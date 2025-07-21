@@ -237,6 +237,25 @@ export class SpotlightUtils {
         `;
     }
 
+    // Check if two results are duplicates based on URL (for deduplication)
+    static areResultsDuplicate(result1, result2) {
+        if (!result1 || !result2) return false;
+        
+        // Compare normalized URLs for URL-based results
+        if (result1.url && result2.url) {
+            const url1 = result1.url.toLowerCase().replace(/\/+$/, ''); // Remove trailing slashes
+            const url2 = result2.url.toLowerCase().replace(/\/+$/, '');
+            return url1 === url2;
+        }
+        
+        // Compare titles for search queries
+        if (result1.type === 'search-query' && result2.type === 'search-query') {
+            return result1.title === result2.title;
+        }
+        
+        return false;
+    }
+
     // Setup favicon error handling (consolidated pattern from overlay.js and popup.js)
     static setupFaviconErrorHandling(container) {
         const faviconImages = container.querySelectorAll('.arcify-spotlight-result-favicon[data-fallback-icon="true"]');

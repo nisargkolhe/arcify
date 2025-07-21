@@ -229,7 +229,26 @@ async function handleAsyncSearch() {
 
 
 // Display search results
-// Combine instant and async suggestions
+// Check if two results are duplicates based on URL
+function areResultsDuplicate(result1, result2) {
+    if (!result1 || !result2) return false;
+    
+    // Compare normalized URLs for URL-based results
+    if (result1.url && result2.url) {
+        const url1 = result1.url.toLowerCase().replace(/\/+$/, ''); // Remove trailing slashes
+        const url2 = result2.url.toLowerCase().replace(/\/+$/, '');
+        return url1 === url2;
+    }
+    
+    // Compare titles for search queries
+    if (result1.type === 'search-query' && result2.type === 'search-query') {
+        return result1.title === result2.title;
+    }
+    
+    return false;
+}
+
+// Combine instant and async suggestions with deduplication
 function combineResults() {
     const combined = [];
     
@@ -238,8 +257,13 @@ function combineResults() {
         combined.push(instantSuggestion);
     }
     
-    // Add async suggestions
-    combined.push(...asyncSuggestions);
+    // Add async suggestions, filtering out duplicates of the instant suggestion
+    for (const asyncResult of asyncSuggestions) {
+        const isDuplicate = instantSuggestion && areResultsDuplicate(instantSuggestion, asyncResult);
+        if (!isDuplicate) {
+            combined.push(asyncResult);
+        }
+    }
     
     return combined;
 }

@@ -403,7 +403,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
     }
 
 
-    // Combine instant and async suggestions
+    // Combine instant and async suggestions with deduplication
     function combineResults() {
         const combined = [];
         
@@ -412,8 +412,13 @@ import { SpotlightTabMode } from './shared/search-types.js';
             combined.push(instantSuggestion);
         }
         
-        // Add async suggestions
-        combined.push(...asyncSuggestions);
+        // Add async suggestions, filtering out duplicates of the instant suggestion
+        for (const asyncResult of asyncSuggestions) {
+            const isDuplicate = instantSuggestion && SpotlightUtils.areResultsDuplicate(instantSuggestion, asyncResult);
+            if (!isDuplicate) {
+                combined.push(asyncResult);
+            }
+        }
         
         return combined;
     }
