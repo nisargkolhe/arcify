@@ -13,6 +13,7 @@
  */
 
 import { ResultType, SpotlightTabMode } from './search-types.js';
+import { websiteNameExtractor } from './website-name-extractor.js';
 
 export class SpotlightUtils {
     // Helper to properly prefix URLs with protocol
@@ -47,7 +48,7 @@ export class SpotlightUtils {
         }
 
         // Check for IP addresses
-        if (/^(\\d{1,3}\\.){3}\\d{1,3}(:\\d+)?$/.test(text)) {
+        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
             const parts = text.split(':')[0].split('.');
             return parts.every(part => {
                 const num = parseInt(part, 10);
@@ -56,7 +57,7 @@ export class SpotlightUtils {
         }
 
         // Common URL patterns without protocol
-        if (/^[a-zA-Z0-9-]+\\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([/\\?#].*)?$/.test(text)) {
+        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([/\?#].*)?$/.test(text)) {
             return true;
         }
 
@@ -73,12 +74,13 @@ export class SpotlightUtils {
         if (SpotlightUtils.isURL(trimmedQuery)) {
             // Create URL suggestion
             const url = SpotlightUtils.normalizeURL(trimmedQuery);
+            const websiteName = SpotlightUtils.extractWebsiteName(url);
             return {
                 type: ResultType.URL_SUGGESTION,
-                title: trimmedQuery,
+                title: websiteName,
                 url: url,
                 score: 1000, // Highest priority
-                metadata: {},
+                metadata: { originalInput: trimmedQuery },
                 domain: '',
                 favicon: null
             };
@@ -103,10 +105,51 @@ export class SpotlightUtils {
         return div.innerHTML;
     }
 
+    // Extract website name from URL for better display
+    static extractWebsiteName(url) {
+        try {
+            return websiteNameExtractor.extractWebsiteName(url);
+        } catch (error) {
+            console.error('[SpotlightUtils] Error extracting website name:', error);
+            // Fallback to basic hostname parsing
+            try {
+                const normalizedUrl = SpotlightUtils.normalizeURL(url);
+                const urlObj = new URL(normalizedUrl);
+                let hostname = urlObj.hostname;
+                
+                // Remove www. prefix for cleaner display
+                if (hostname.startsWith('www.')) {
+                    hostname = hostname.substring(4);
+                }
+                
+                // Capitalize first letter for better presentation
+                return hostname.charAt(0).toUpperCase() + hostname.slice(1);
+            } catch {
+                // Final fallback to original URL
+                return url;
+            }
+        }
+    }
+
     // Get favicon URL with fallback (consolidated from overlay.js and popup.js)
     static getFaviconUrl(result) {
         if (result.favicon && result.favicon.startsWith('http')) {
             return result.favicon;
+        }
+        
+        // Special handling for autocomplete suggestions
+        if (result.type === ResultType.AUTOCOMPLETE_SUGGESTION) {
+            if (result.metadata?.isUrl && result.url) {
+                // For URL autocomplete suggestions, get the website favicon
+                try {
+                    const url = new URL(SpotlightUtils.normalizeURL(result.url));
+                    return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
+                } catch {
+                    // Fallback to search icon if URL parsing fails
+                }
+            }
+            // For search autocomplete suggestions, use search icon
+            return `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
         }
         
         if (result.url) {
@@ -136,7 +179,7 @@ export class SpotlightUtils {
             },
             [ResultType.AUTOCOMPLETE_SUGGESTION]: {
                 title: result.title,
-                subtitle: 'Autocomplete',
+                subtitle: result.metadata?.isUrl ? result.url : 'Search',
                 action: '↵'
             },
             [ResultType.OPEN_TAB]: {

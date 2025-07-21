@@ -98,4 +98,23 @@ export class ContentScriptDataProvider extends BaseDataProvider {
             return [];
         }
     }
+
+    async getAutocompleteData(query) {
+        try {
+            const message = {
+                action: 'getAutocomplete',
+                query: query
+            };
+            
+            const response = await chrome.runtime.sendMessage(message);
+            
+            if (response && response.success) {
+                return response.suggestions;
+            }
+            return [];
+        } catch (error) {
+            console.error('[ContentScriptDataProvider] Error getting autocomplete suggestions:', error);
+            return [];
+        }
+    }
 }

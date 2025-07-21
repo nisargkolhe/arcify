@@ -1,10 +1,16 @@
 // background-data-provider.js - Direct Chrome API implementation for background scripts
 
 import { BaseDataProvider } from './base-data-provider.js';
+import { AutocompleteProvider } from './autocomplete-provider.js';
 
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity';
 
 export class BackgroundDataProvider extends BaseDataProvider {
+    constructor() {
+        super();
+        this.autocompleteProvider = new AutocompleteProvider();
+    }
+    
     // Only implement the small data fetchers using direct Chrome APIs
     
     async getOpenTabsData(query = '') {
@@ -79,6 +85,15 @@ export class BackgroundDataProvider extends BaseDataProvider {
             return topSites;
         } catch (error) {
             console.error('[BackgroundDataProvider] Error getting top sites:', error);
+            return [];
+        }
+    }
+
+    async getAutocompleteData(query) {
+        try {
+            return await this.autocompleteProvider.getAutocompleteSuggestions(query);
+        } catch (error) {
+            console.error('[BackgroundDataProvider] Error getting autocomplete data:', error);
             return [];
         }
     }

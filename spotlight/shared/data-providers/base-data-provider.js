@@ -28,6 +28,10 @@ export class BaseDataProvider {
     async getTopSitesData() { 
         throw new Error('getTopSitesData must be implemented by subclass'); 
     }
+    
+    async getAutocompleteData(query) { 
+        throw new Error('getAutocompleteData must be implemented by subclass'); 
+    }
 
     // FULL IMPLEMENTATIONS (shared business logic)
 
@@ -46,6 +50,7 @@ export class BaseDataProvider {
             let bookmarks = [];
             let history = [];
             let topSites = [];
+            let autocomplete = [];
 
             // Get tabs (only in new-tab mode)
             if (mode === 'new-tab') {
@@ -81,9 +86,17 @@ export class BaseDataProvider {
                 topSites = [];
             }
 
+            // Get autocomplete suggestions
+            try {
+                autocomplete = await this.getAutocompleteSuggestions(trimmedQuery);
+            } catch (error) {
+                console.error('[SearchProvider] Failed to get autocomplete:', error);
+                autocomplete = [];
+            }
+
             // Skip URL/search suggestions - these are handled by instant suggestions in the UI
             // Add other results
-            results.push(...openTabs, ...bookmarks, ...history);
+            results.push(...openTabs, ...bookmarks, ...history, ...autocomplete);
             
             // Add top sites that match query
             const matchingTopSites = topSites.filter(site => 
@@ -214,6 +227,17 @@ export class BaseDataProvider {
         }
     }
 
+    // Autocomplete suggestions integration
+    async getAutocompleteSuggestions(query) {
+        try {
+            const autocompleteData = await this.getAutocompleteData(query);
+            return autocompleteData; // AutocompleteProvider already returns SearchResult objects
+        } catch (error) {
+            console.error('[SearchProvider-Autocomplete] Error getting autocomplete suggestions:', error);
+            return [];
+        }
+    }
+
     // URL detection utility
     isURL(text) {
         // Check if it's already a complete URL
@@ -302,6 +326,7 @@ export class BaseDataProvider {
         switch (result.type) {
             case ResultType.SEARCH_QUERY: baseScore = 100; break;  // Search query now has highest priority
             case ResultType.URL_SUGGESTION: baseScore = 95; break;
+            case ResultType.AUTOCOMPLETE_SUGGESTION: baseScore = 88; break;  // High priority but below URL suggestions
             case ResultType.OPEN_TAB: baseScore = 90; break;       // Open tabs moved down
             case ResultType.BOOKMARK: baseScore = 85; break;
             case ResultType.TOP_SITE: baseScore = 70; break;

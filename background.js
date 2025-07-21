@@ -500,6 +500,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
+    } else if (message.action === 'getAutocomplete') {
+        (async () => {
+            try {
+                const dataProvider = backgroundSearchEngine.dataProvider;
+                const suggestions = await dataProvider.getAutocompleteData(message.query);
+                sendResponse({ success: true, suggestions: suggestions });
+            } catch (error) {
+                console.error('[Background] Error getting autocomplete suggestions:', error);
+                sendResponse({ success: false, error: error.message, suggestions: [] });
+            }
+        })();
+        return true; // Async response
     } else if (message.action === 'getActiveSpaceColor') {
         (async () => {
             try {
