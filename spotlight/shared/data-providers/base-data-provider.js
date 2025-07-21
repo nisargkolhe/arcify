@@ -252,7 +252,8 @@ export class BaseDataProvider {
 
     // Generate URL suggestion
     generateURLSuggestion(input) {
-        const url = input.startsWith('http') ? input : `https://${input}`;
+        // Import helper from ui-utilities for URL normalization
+        const url = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(input) ? input : `https://${input}`;
         return new SearchResult({
             type: ResultType.URL_SUGGESTION,
             title: `Navigate to ${url}`,

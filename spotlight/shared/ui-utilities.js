@@ -4,6 +4,16 @@
 import { ResultType, SpotlightTabMode } from './search-types.js';
 
 export class SpotlightUtils {
+    // Helper to properly prefix URLs with protocol
+    static normalizeURL(url) {
+        // Return as-is if it already has a protocol (http, https, chrome, etc.)
+        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {
+            return url;
+        }
+        // Default to https for URLs without protocol
+        return `https://${url}`;
+    }
+
     // URL detection utility (consolidated from multiple files)
     static isURL(text) {
         // Check if it's already a complete URL
@@ -51,7 +61,7 @@ export class SpotlightUtils {
         }
         if (SpotlightUtils.isURL(trimmedQuery)) {
             // Create URL suggestion
-            const url = trimmedQuery.startsWith('http') ? trimmedQuery : `https://${trimmedQuery}`;
+            const url = SpotlightUtils.normalizeURL(trimmedQuery);
             return {
                 type: ResultType.URL_SUGGESTION,
                 title: trimmedQuery,
@@ -90,7 +100,7 @@ export class SpotlightUtils {
         
         if (result.url) {
             try {
-                const url = new URL(result.url.startsWith('http') ? result.url : `https://${result.url}`);
+                const url = new URL(SpotlightUtils.normalizeURL(result.url));
                 return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
             } catch {
                 // Fallback for invalid URLs
