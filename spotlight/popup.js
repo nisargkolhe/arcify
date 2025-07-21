@@ -1,6 +1,17 @@
-// popup.js - Popup implementation using shared spotlight modules
-// NOTE: This is only used for URLs with restricted script injection (primarily Chrome Extension & Chrome Store links).
-// The primary & most used spotlight implementation is in spotlight/overlay.js
+/**
+ * Spotlight Popup - Fallback implementation for restricted URLs
+ * 
+ * Purpose: Popup-based spotlight when content script injection fails (chrome://, extension pages)
+ * Key Functions: Same search functionality as overlay but in popup window context
+ * Architecture: Extension popup with ES6 modules and shared spotlight components
+ * 
+ * Critical Notes:
+ * - Automatic fallback when overlay injection fails on restricted URLs
+ * - Shares same search functionality and UI components as overlay version
+ * - Has popup-specific URL prefill implementation (queries active tab directly)
+ * - Popup context has different security permissions than content script
+ * - Primary implementation remains overlay.js - this is used <5% of the time
+ */
 
 import { SearchEngine } from './shared/search-engine.js';
 import { ContentScriptDataProvider } from './shared/data-providers/content-script-data-provider.js';

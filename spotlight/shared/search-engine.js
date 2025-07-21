@@ -1,4 +1,16 @@
-// search-engine.js - Shared search engine with caching and debouncing for spotlight components
+/**
+ * Search Engine - Core search orchestration with caching and debouncing
+ * 
+ * Purpose: Orchestrates search across multiple data sources with performance optimizations
+ * Key Functions: Search result aggregation, caching, debouncing, result formatting, action handling
+ * Architecture: Dependency injection pattern - takes data provider in constructor for context flexibility
+ * 
+ * Critical Notes:
+ * - Uses dependency injection to work in both background (direct API) and content script (message) contexts
+ * - Implements 30-second caching and 150ms debouncing for performance
+ * - Handles result actions (navigation, tab switching) with tab ID optimization
+ * - Single SearchEngine instance per context, shared across overlay/popup implementations
+ */
 
 import { ResultType, SpotlightTabMode } from './search-types.js';
 
@@ -82,6 +94,11 @@ export class SearchEngine {
             [ResultType.SEARCH_QUERY]: {
                 title: result.title,
                 subtitle: 'Search',
+                action: '↵'
+            },
+            [ResultType.AUTOCOMPLETE_SUGGESTION]: {
+                title: result.title,
+                subtitle: 'Autocomplete',
                 action: '↵'
             },
             [ResultType.OPEN_TAB]: {
@@ -169,6 +186,7 @@ export class SearchEngine {
                     break;
 
                 case ResultType.URL_SUGGESTION:
+                case ResultType.AUTOCOMPLETE_SUGGESTION:
                 case ResultType.BOOKMARK:
                 case ResultType.HISTORY:
                 case ResultType.TOP_SITE:

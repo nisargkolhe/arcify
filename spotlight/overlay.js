@@ -1,6 +1,17 @@
-// spotlight-overlay-fixed.js - Self-contained spotlight with embedded search
-// Privacy-safe content script injected on-demand only
-// Now uses shared utilities via build-time bundling
+/**
+ * Spotlight Overlay - Content script implementation of command bar interface
+ * 
+ * Purpose: Primary spotlight implementation injected into web pages as content script
+ * Key Functions: Real-time search across tabs/bookmarks/history, instant suggestions, keyboard navigation
+ * Architecture: Self-contained IIFE bundle with embedded UI and shared spotlight modules
+ * 
+ * Critical Notes:
+ * - Injected by background script with automatic popup fallback for restricted URLs
+ * - Bundled as single file via Vite for content script compatibility (no ES6 imports)
+ * - Only injected on-demand for privacy - no persistent content script presence
+ * - Uses modal dialog with backdrop blur for non-intrusive overlay experience
+ * - Handles URL prefill, tab ID injection, and optimized navigation for current-tab mode
+ */
 
 import { SpotlightUtils } from './shared/ui-utilities.js';
 import { SelectionManager } from './shared/selection-manager.js';
