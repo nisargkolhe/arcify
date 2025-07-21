@@ -176,6 +176,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
             display: flex;
             align-items: center;
             padding: 12px 24px 12px 20px;
+            min-height: 44px;
             cursor: pointer;
             transition: background-color 0.15s ease;
             border: none;
@@ -207,6 +208,10 @@ import { SpotlightTabMode } from './shared/search-types.js';
         .arcify-spotlight-result-content {
             flex: 1;
             min-width: 0;
+            min-height: 32px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .arcify-spotlight-result-title {
@@ -226,6 +231,10 @@ import { SpotlightTabMode } from './shared/search-types.js';
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .arcify-spotlight-result-url:empty {
+            display: none;
         }
 
         .arcify-spotlight-result-action {

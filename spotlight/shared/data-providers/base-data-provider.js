@@ -3,6 +3,7 @@
 import { SearchResult, ResultType } from '../search-types.js';
 import { findMatchingDomains } from '../popular-sites.js';
 import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
+import { SpotlightUtils } from '../ui-utilities.js';
 
 export class BaseDataProvider {
     constructor() {
@@ -97,19 +98,23 @@ export class BaseDataProvider {
             }
 
             // Skip URL/search suggestions - these are handled by instant suggestions in the UI
-            // Add other results
-            results.push(...openTabs, ...bookmarks, ...history, ...autocomplete);
+            // Collect all results first
+            const allResults = [];
+            allResults.push(...openTabs, ...bookmarks, ...history, ...autocomplete);
             
             // Add top sites that match query (with fuzzy domain matching)
             const matchingTopSites = this.findMatchingTopSites(topSites, trimmedQuery);
-            results.push(...matchingTopSites);
+            allResults.push(...matchingTopSites);
             
             // Add fuzzy domain matches from popular sites
             const fuzzyDomainMatches = this.getFuzzyDomainMatches(trimmedQuery);
-            results.push(...fuzzyDomainMatches);
+            allResults.push(...fuzzyDomainMatches);
+
+            // Apply comprehensive deduplication across all sources
+            const deduplicatedResults = this.deduplicateResults(allResults);
 
             // Score and sort results
-            const finalResults = this.scoreAndSortResults(results, trimmedQuery);
+            const finalResults = this.scoreAndSortResults(deduplicatedResults, trimmedQuery);
             return finalResults;
         } catch (error) {
             console.error('[SearchProvider] Search error:', error);
@@ -136,7 +141,8 @@ export class BaseDataProvider {
             console.error('[SearchProvider] Error getting default results:', error);
         }
 
-        return results;
+        // Apply deduplication to default results as well
+        return this.deduplicateResults(results);
     }
 
     // Chrome tabs API integration
@@ -414,5 +420,94 @@ export class BaseDataProvider {
                 }
             });
         });
+    }
+
+    // Comprehensive deduplication across all result sources
+    deduplicateResults(results) {
+        const seen = new Map();
+        const deduplicated = [];
+
+        for (const result of results) {
+            // Generate a deduplication key based on URL or title
+            let key = '';
+            if (result.url) {
+                // Normalize URL for consistent deduplication
+                key = this.normalizeUrlForDeduplication(result.url);
+            } else if (result.type === 'search-query') {
+                // For search queries, use the title as key
+                key = `search:${result.title}`;
+            } else {
+                // Fallback to title for other types
+                key = result.title || '';
+            }
+
+            if (!key) {
+                // Skip results without identifiable keys
+                continue;
+            }
+
+            const existing = seen.get(key);
+            if (!existing) {
+                // First occurrence - keep it
+                seen.set(key, result);
+                deduplicated.push(result);
+            } else {
+                // Duplicate found - keep the one with higher score/priority
+                const existingPriority = this.getResultPriority(existing);
+                const currentPriority = this.getResultPriority(result);
+                
+                if (currentPriority > existingPriority) {
+                    // Replace with higher priority result
+                    const index = deduplicated.indexOf(existing);
+                    if (index !== -1) {
+                        deduplicated[index] = result;
+                        seen.set(key, result);
+                    }
+                }
+                // Otherwise keep the existing one (no action needed)
+            }
+        }
+
+        return deduplicated;
+    }
+
+    // Normalize URL for consistent deduplication
+    normalizeUrlForDeduplication(url) {
+        if (!url) return '';
+        
+        let normalizedUrl = url.toLowerCase();
+        
+        // Remove trailing slashes
+        normalizedUrl = normalizedUrl.replace(/\/+$/, '');
+        
+        // Remove protocol prefixes for comparison (http/https shouldn't matter)
+        normalizedUrl = normalizedUrl.replace(/^https?:\/\//, '');
+        
+        // Remove www. prefix for comparison
+        normalizedUrl = normalizedUrl.replace(/^www\./, '');
+        
+        return normalizedUrl;
+    }
+
+    // Get result priority for deduplication (higher = better)
+    getResultPriority(result) {
+        // Use the same priority order as BASE_SCORES for consistency
+        const typePriorities = {
+            'open-tab': BASE_SCORES.OPEN_TAB,
+            'bookmark': BASE_SCORES.BOOKMARK,
+            'history': BASE_SCORES.HISTORY,
+            'top-site': result.metadata?.fuzzyMatch ? 
+                BASE_SCORES.FUZZY_MATCH_START : BASE_SCORES.TOP_SITE,
+            'autocomplete-suggestion': BASE_SCORES.AUTOCOMPLETE_SUGGESTION,
+            'search-query': BASE_SCORES.SEARCH_QUERY,
+            'url-suggestion': BASE_SCORES.URL_SUGGESTION
+        };
+
+        const basePriority = typePriorities[result.type] || 0;
+        
+        // Add any additional score the result might have
+        const additionalScore = result.score || 0;
+        
+        return basePriority + additionalScore;
     }
 }
