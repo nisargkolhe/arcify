@@ -1,6 +1,8 @@
 // base-data-provider.js - Abstract base class with shared business logic
 
 import { SearchResult, ResultType } from '../search-types.js';
+import { findMatchingDomains } from '../popular-sites.js';
+import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
 
 export class BaseDataProvider {
     constructor() {
@@ -98,12 +100,13 @@ export class BaseDataProvider {
             // Add other results
             results.push(...openTabs, ...bookmarks, ...history, ...autocomplete);
             
-            // Add top sites that match query
-            const matchingTopSites = topSites.filter(site => 
-                site.title.toLowerCase().includes(trimmedQuery) ||
-                site.url.toLowerCase().includes(trimmedQuery)
-            );
+            // Add top sites that match query (with fuzzy domain matching)
+            const matchingTopSites = this.findMatchingTopSites(topSites, trimmedQuery);
             results.push(...matchingTopSites);
+            
+            // Add fuzzy domain matches from popular sites
+            const fuzzyDomainMatches = this.getFuzzyDomainMatches(trimmedQuery);
+            results.push(...fuzzyDomainMatches);
 
             // Score and sort results
             const finalResults = this.scoreAndSortResults(results, trimmedQuery);
@@ -321,28 +324,95 @@ export class BaseDataProvider {
 
     // Relevance scoring algorithm
     calculateRelevanceScore(result, query) {
+        // If this is a fuzzy match, use its pre-calculated score
+        if (result.metadata?.fuzzyMatch) {
+            return result.score;
+        }
+        
         let baseScore = 0;
 
         switch (result.type) {
-            case ResultType.SEARCH_QUERY: baseScore = 100; break;  // Search query now has highest priority
-            case ResultType.URL_SUGGESTION: baseScore = 95; break;
-            case ResultType.AUTOCOMPLETE_SUGGESTION: baseScore = 88; break;  // High priority but below URL suggestions
-            case ResultType.OPEN_TAB: baseScore = 90; break;       // Open tabs moved down
-            case ResultType.BOOKMARK: baseScore = 85; break;
-            case ResultType.TOP_SITE: baseScore = 70; break;
-            case ResultType.HISTORY: baseScore = 60; break;
+            case ResultType.SEARCH_QUERY: baseScore = BASE_SCORES.SEARCH_QUERY; break;
+            case ResultType.URL_SUGGESTION: baseScore = BASE_SCORES.URL_SUGGESTION; break;
+            case ResultType.OPEN_TAB: baseScore = BASE_SCORES.OPEN_TAB; break;
+            case ResultType.BOOKMARK: baseScore = BASE_SCORES.BOOKMARK; break;
+            case ResultType.HISTORY: baseScore = BASE_SCORES.HISTORY; break;
+            case ResultType.TOP_SITE: baseScore = BASE_SCORES.TOP_SITE; break;
+            case ResultType.AUTOCOMPLETE_SUGGESTION: baseScore = BASE_SCORES.AUTOCOMPLETE_SUGGESTION; break;
         }
 
         const queryLower = query.toLowerCase();
         const titleLower = result.title.toLowerCase();
         const urlLower = result.url.toLowerCase();
 
-        if (titleLower === queryLower) baseScore += 20;
-        else if (titleLower.startsWith(queryLower)) baseScore += 15;
-        else if (titleLower.includes(queryLower)) baseScore += 10;
+        if (titleLower === queryLower) baseScore += SCORE_BONUSES.EXACT_TITLE_MATCH;
+        else if (titleLower.startsWith(queryLower)) baseScore += SCORE_BONUSES.TITLE_STARTS_WITH;
+        else if (titleLower.includes(queryLower)) baseScore += SCORE_BONUSES.TITLE_CONTAINS;
 
-        if (urlLower.includes(queryLower)) baseScore += 5;
+        if (urlLower.includes(queryLower)) baseScore += SCORE_BONUSES.URL_CONTAINS;
 
         return Math.max(0, baseScore);
+    }
+
+    // Enhanced top sites matching with fuzzy domain matching
+    findMatchingTopSites(topSites, query) {
+        const queryLower = query.toLowerCase();
+        
+        return topSites.filter(site => {
+            const titleLower = site.title.toLowerCase();
+            const urlLower = site.url.toLowerCase();
+            
+            // Exact matches
+            if (titleLower.includes(queryLower) || urlLower.includes(queryLower)) {
+                return true;
+            }
+            
+            // Extract domain from URL for fuzzy matching
+            try {
+                const url = new URL(site.url);
+                let hostname = url.hostname.toLowerCase();
+                
+                // Remove www. prefix
+                if (hostname.startsWith('www.')) {
+                    hostname = hostname.substring(4);
+                }
+                
+                // Check if query matches start of domain name
+                const domainParts = hostname.split('.');
+                const mainDomain = domainParts[0]; // e.g., "squarespace" from "squarespace.com"
+                
+                // Fuzzy matching: query is start of domain name
+                if (mainDomain.startsWith(queryLower)) {
+                    return true;
+                }
+                
+            } catch (error) {
+                // Ignore URL parsing errors
+            }
+            
+            return false;
+        });
+    }
+
+    // Get fuzzy domain matches from popular sites
+    getFuzzyDomainMatches(query) {
+        const matches = findMatchingDomains(query, 5); // Limit to top 5 matches
+        
+        return matches.map(match => {
+            // Calculate fuzzy match score using centralized scoring function
+            const fuzzyScore = getFuzzyMatchScore(match.matchType, match.domain.length, query.length);
+            
+            return new SearchResult({
+                type: ResultType.TOP_SITE,
+                title: match.displayName,
+                url: `https://${match.domain}`,
+                score: fuzzyScore,
+                metadata: { 
+                    fuzzyMatch: true,
+                    matchType: match.matchType,
+                    originalQuery: query
+                }
+            });
+        });
     }
 }

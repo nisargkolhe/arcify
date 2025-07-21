@@ -14,6 +14,7 @@
 
 import { ResultType, SpotlightTabMode } from './search-types.js';
 import { websiteNameExtractor } from './website-name-extractor.js';
+import { BASE_SCORES } from './scoring-constants.js';
 
 export class SpotlightUtils {
     // Helper to properly prefix URLs with protocol
@@ -79,7 +80,7 @@ export class SpotlightUtils {
                 type: ResultType.URL_SUGGESTION,
                 title: websiteName,
                 url: url,
-                score: 1000, // Highest priority
+                score: BASE_SCORES.INSTANT_URL_SUGGESTION, // Use centralized scoring
                 metadata: { originalInput: trimmedQuery },
                 domain: '',
                 favicon: null
@@ -90,7 +91,7 @@ export class SpotlightUtils {
                 type: ResultType.SEARCH_QUERY,
                 title: `Search for "${trimmedQuery}"`,
                 url: '',
-                score: 1000, // Highest priority
+                score: BASE_SCORES.INSTANT_SEARCH_QUERY, // Use centralized scoring
                 metadata: { query: trimmedQuery },
                 domain: '',
                 favicon: null
@@ -264,5 +265,21 @@ export class SpotlightUtils {
                 this.src = SpotlightUtils.getFaviconUrl({ url: null, favicon: null });
             });
         });
+    }
+
+    // DEBUG: Format debug info for result items (easy to remove)
+    static formatDebugInfo(result) {
+        // Set to false to disable debug info
+        const DEBUG_ENABLED = false;
+        
+        if (!DEBUG_ENABLED) {
+            return '';
+        }
+        
+        const score = result.score || 0;
+        const type = result.type || 'unknown';
+        const fuzzyMatch = result.metadata?.fuzzyMatch ? ' (fuzzy)' : '';
+        
+        return `<span style="color: #888; font-size: 10px; margin-left: 8px;">[${type}:${score}${fuzzyMatch}]</span>`;
     }
 }

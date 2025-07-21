@@ -12,67 +12,12 @@
  * - No Chrome API dependencies for maximum compatibility
  */
 
+import { POPULAR_SITES } from './popular-sites.js';
+
 export class WebsiteNameExtractor {
     constructor() {
         // Simplified - no caching needed for synchronous operations
     }
-
-    // Curated mapping for popular websites (Tier 1)
-    static POPULAR_SITES = {
-        'google.com': 'Google',
-        'github.com': 'GitHub',
-        'youtube.com': 'YouTube',
-        'facebook.com': 'Facebook',
-        'meta.com': 'Meta',
-        'amazon.com': 'Amazon',
-        'netflix.com': 'Netflix',
-        'apple.com': 'Apple',
-        'microsoft.com': 'Microsoft',
-        'twitter.com': 'Twitter',
-        'x.com': 'X',
-        'linkedin.com': 'LinkedIn',
-        'instagram.com': 'Instagram',
-        'tiktok.com': 'TikTok',
-        'spotify.com': 'Spotify',
-        'reddit.com': 'Reddit',
-        'wikipedia.org': 'Wikipedia',
-        'stackoverflow.com': 'Stack Overflow',
-        'discord.com': 'Discord',
-        'slack.com': 'Slack',
-        'zoom.us': 'Zoom',
-        'dropbox.com': 'Dropbox',
-        'notion.so': 'Notion',
-        'figma.com': 'Figma',
-        'canva.com': 'Canva',
-        'adobe.com': 'Adobe',
-        'atlassian.com': 'Atlassian',
-        'salesforce.com': 'Salesforce',
-        'shopify.com': 'Shopify',
-        'stripe.com': 'Stripe',
-        'paypal.com': 'PayPal',
-        'venmo.com': 'Venmo',
-        'airbnb.com': 'Airbnb',
-        'uber.com': 'Uber',
-        'lyft.com': 'Lyft',
-        'pinterest.com': 'Pinterest',
-        'tumblr.com': 'Tumblr',
-        'medium.com': 'Medium',
-        'substack.com': 'Substack',
-        'gmail.com': 'Gmail',
-        'outlook.com': 'Outlook',
-        'yahoo.com': 'Yahoo',
-        'bing.com': 'Bing',
-        'duckduckgo.com': 'DuckDuckGo',
-        'chatgpt.com': 'ChatGPT',
-        'openai.com': 'OpenAI',
-        'anthropic.com': 'Anthropic',
-        'claude.ai': 'Claude',
-        'copilot.microsoft.com': 'Copilot',
-        'bard.google.com': 'Bard',
-        'vercel.com': 'Vercel',
-        'netlify.com': 'Netlify',
-        'heroku.com': 'Heroku'
-    };
 
     // Main extraction method with 2-tier fallback (simplified, synchronous)
     extractWebsiteName(url) {
@@ -116,7 +61,7 @@ export class WebsiteNameExtractor {
 
     // Tier 1: Get name from curated mapping
     getCuratedName(hostname) {
-        return WebsiteNameExtractor.POPULAR_SITES[hostname] || null;
+        return POPULAR_SITES[hostname] || null;
     }
 
 
