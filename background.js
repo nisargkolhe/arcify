@@ -96,14 +96,15 @@ async function injectSpotlightScript(spotlightTabMode) {
         // Get the active tab
         const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
         if (tab) {
-            // First, set the spotlightTabMode and current URL in the content script context
+            // First, set the spotlightTabMode, current URL, and tab ID in the content script context
             await chrome.scripting.executeScript({
                 target: {tabId: tab.id},
-                func: (spotlightTabMode, currentUrl) => {
+                func: (spotlightTabMode, currentUrl, tabId) => {
                     window.arcifySpotlightTabMode = spotlightTabMode;
                     window.arcifyCurrentTabUrl = currentUrl;
+                    window.arcifyCurrentTabId = tabId;
                 },
-                args: [spotlightTabMode, tab.url]
+                args: [spotlightTabMode, tab.url, tab.id]
             });
             
             // Then inject the spotlight overlay script
@@ -591,8 +592,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     throw new Error('Invalid spotlight result message');
                 }
                 
-                // Handle the result action
-                await backgroundSearchEngine.handleResultAction(message.result, message.mode);
+                // Handle the result action (pass tabId if provided for optimization)
+                await backgroundSearchEngine.handleResultAction(message.result, message.mode, message.tabId);
                 sendResponse({ success: true });
             } catch (error) {
                 console.error('[Background] Error handling spotlight result:', error);

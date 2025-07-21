@@ -122,7 +122,7 @@ export class SearchEngine {
     }
 
     // Handle result action
-    async handleResultAction(result, mode) {
+    async handleResultAction(result, mode, currentTabId = null) {
         try {
             switch (result.type) {
                 case ResultType.OPEN_TAB:
@@ -152,11 +152,17 @@ export class SearchEngine {
                         }
                         
                         if (this.isBackgroundContext) {
-                            const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
-                            if (activeTab) {
-                                await chrome.tabs.update(activeTab.id, { url: result.url });
+                            if (currentTabId) {
+                                // Use provided tab ID for faster navigation
+                                await chrome.tabs.update(currentTabId, { url: result.url });
                             } else {
-                                throw new Error('No active tab found');
+                                // Fallback to query
+                                const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+                                if (activeTab) {
+                                    await chrome.tabs.update(activeTab.id, { url: result.url });
+                                } else {
+                                    throw new Error('No active tab found');
+                                }
                             }
                         } else {
                             const response = await chrome.runtime.sendMessage({
@@ -192,11 +198,17 @@ export class SearchEngine {
                         }
                     } else {
                         if (this.isBackgroundContext) {
-                            const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
-                            if (activeTab) {
-                                await chrome.tabs.update(activeTab.id, { url: result.url });
+                            if (currentTabId) {
+                                // Use provided tab ID for faster navigation
+                                await chrome.tabs.update(currentTabId, { url: result.url });
                             } else {
-                                throw new Error('No active tab found');
+                                // Fallback to query
+                                const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+                                if (activeTab) {
+                                    await chrome.tabs.update(activeTab.id, { url: result.url });
+                                } else {
+                                    throw new Error('No active tab found');
+                                }
                             }
                         } else {
                             const response = await chrome.runtime.sendMessage({
