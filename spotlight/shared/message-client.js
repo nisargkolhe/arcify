@@ -31,7 +31,8 @@ export class SpotlightMessageClient {
             const message = {
                 action: 'spotlightHandleResult',
                 result: result,
-                mode: mode
+                mode: mode,
+                tabId: window.arcifyCurrentTabId || null  // Include tab ID for optimization
             };
             
             const response = await chrome.runtime.sendMessage(message);
@@ -46,6 +47,7 @@ export class SpotlightMessageClient {
             return false;
         }
     }
+
 
     // Get active space color from background
     static async getActiveSpaceColor() {
@@ -112,6 +114,7 @@ export class SpotlightMessageClient {
             return false;
         }
     }
+
 
     // Open new tab
     static async openNewTab(url) {

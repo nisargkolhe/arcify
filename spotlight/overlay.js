@@ -8,6 +8,9 @@ import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 
 (async function(spotlightTabMode = 'current-tab') {
+    console.log('[Spotlight] IIFE called with spotlightTabMode:', spotlightTabMode);
+    console.log('[Spotlight] window.arcifySpotlightTabMode:', window.arcifySpotlightTabMode);
+    console.log('[Spotlight] window.arcifyCurrentTabUrl:', window.arcifyCurrentTabUrl);
     
     // Handle toggle functionality for existing spotlight
     const existingDialog = document.getElementById('arcify-spotlight-dialog');
@@ -316,7 +319,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
         return await SpotlightMessageClient.getSuggestions(query, mode);
     }
 
-    // Handle result action via message passing using shared client
+    // Handle result action via message passing using shared client (with tab ID optimization)
     async function handleResultActionViaMessage(result, mode) {
         return await SpotlightMessageClient.handleResult(result, mode);
     }
@@ -343,12 +346,20 @@ import { SpotlightTabMode } from './shared/search-types.js';
     }
 
     // Pre-fill URL in current-tab mode
+    console.log('[Spotlight] Checking URL prefill conditions:');
+    console.log('[Spotlight] spotlightTabMode:', spotlightTabMode);
+    console.log('[Spotlight] SpotlightTabMode.CURRENT_TAB:', SpotlightTabMode.CURRENT_TAB);
+    console.log('[Spotlight] window.arcifyCurrentTabUrl:', window.arcifyCurrentTabUrl);
+    
     if (spotlightTabMode === SpotlightTabMode.CURRENT_TAB && window.arcifyCurrentTabUrl) {
+        console.log('[Spotlight] Pre-filling input with URL:', window.arcifyCurrentTabUrl);
         input.value = window.arcifyCurrentTabUrl;
         setTimeout(() => {
-            handleInput();
+            handleInstantInput();
+            handleAsyncSearch();
         }, 10);
     } else {
+        console.log('[Spotlight] Not pre-filling URL, loading initial results');
         // Load initial results
         loadInitialResults();
     }
@@ -390,11 +401,6 @@ import { SpotlightTabMode } from './shared/search-types.js';
         }
     }
 
-    // Legacy function for compatibility
-    async function handleInput() {
-        handleInstantInput(); // Update instant suggestion immediately
-        handleAsyncSearch(); // Trigger debounced async search
-    }
 
     // Combine instant and async suggestions
     function combineResults() {
@@ -449,11 +455,6 @@ import { SpotlightTabMode } from './shared/search-types.js';
         SpotlightUtils.setupFaviconErrorHandling(resultsContainer);
     }
 
-    // Legacy function for compatibility (now redirects to updateDisplay)
-    function displayResults(results) {
-        asyncSuggestions = results || [];
-        updateDisplay();
-    }
 
 
     // Display empty state
@@ -484,8 +485,12 @@ import { SpotlightTabMode } from './shared/search-types.js';
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            await handleResultActionViaMessage(result, mode);
+            
+            // Add immediate visual feedback - close spotlight immediately for faster perceived performance
             closeSpotlight();
+            
+            // Navigate in background
+            await handleResultActionViaMessage(result, mode);
         } catch (error) {
             console.error('[Spotlight] Error in result action:', error);
         }
