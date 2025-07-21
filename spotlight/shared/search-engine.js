@@ -53,12 +53,7 @@ export class SearchEngine {
     // Immediate suggestions without debouncing
     async getSpotlightSuggestionsImmediate(query, mode = SpotlightTabMode.CURRENT_TAB) {
         try {
-            console.log('[SearchEngine] getSpotlightSuggestionsImmediate called');
-            console.log('[SearchEngine] Query:', query, 'Mode:', mode);
-            
             const results = await this.getSuggestionsImpl(query, mode);
-            console.log('[SearchEngine] getSuggestionsImpl completed, results:', results.length);
-            
             return results;
         } catch (error) {
             console.error('[SearchEngine] Immediate suggestions error:', error);
@@ -70,12 +65,9 @@ export class SearchEngine {
     // Internal suggestions implementation
     async getSuggestionsImpl(query, mode) {
         const trimmedQuery = query.trim();
-        console.log('[SearchEngine] getSuggestionsImpl called with trimmed query:', trimmedQuery);
         
         // Delegate to data provider which has all the business logic
-        console.log('[SearchEngine-DataProvider] Calling getSpotlightSuggestions on data provider');
         const results = await this.dataProvider.getSpotlightSuggestions(trimmedQuery, mode);
-        console.log('[SearchEngine-DataProvider] getSpotlightSuggestions completed, results:', results.length);
         return results;
     }
 
