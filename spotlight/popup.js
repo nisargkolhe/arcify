@@ -102,8 +102,8 @@ function setupEventListeners() {
     
     // Handle keyboard navigation
     input.addEventListener('keydown', (e) => {
-        // Use shared selection manager for navigation
-        if (selectionManager.handleKeyDown(e)) {
+        // Use shared selection manager for navigation (skip container check for popup)
+        if (selectionManager.handleKeyDown(e, true)) {
             return; // Event was handled by selection manager
         }
         

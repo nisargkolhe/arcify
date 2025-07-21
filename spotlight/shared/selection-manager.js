@@ -56,8 +56,8 @@ export class SelectionManager {
     }
 
     // Enhanced keyboard navigation (can be extended with more features)
-    handleKeyDown(event) {
-        if (!this.container.contains(document.activeElement)) {
+    handleKeyDown(event, skipContainerCheck = false) {
+        if (!skipContainerCheck && !this.container.contains(document.activeElement)) {
             return false; // Not handling this event
         }
 
