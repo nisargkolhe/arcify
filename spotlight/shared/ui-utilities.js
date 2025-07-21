@@ -175,12 +175,12 @@ export class SpotlightUtils {
             },
             [ResultType.SEARCH_QUERY]: {
                 title: result.title,
-                subtitle: 'Search',
+                subtitle: '',
                 action: '↵'
             },
             [ResultType.AUTOCOMPLETE_SUGGESTION]: {
                 title: result.title,
-                subtitle: result.metadata?.isUrl ? result.url : 'Search',
+                subtitle: result.metadata?.isUrl ? result.url : '',
                 action: '↵'
             },
             [ResultType.OPEN_TAB]: {
@@ -269,7 +269,7 @@ export class SpotlightUtils {
 
     // DEBUG: Format debug info for result items (easy to remove)
     static formatDebugInfo(result) {
-        // Set to false to disable debug info
+        // Use environment variable for debug mode (false by default, true for dev builds)
         const DEBUG_ENABLED = false;
         
         if (!DEBUG_ENABLED) {
