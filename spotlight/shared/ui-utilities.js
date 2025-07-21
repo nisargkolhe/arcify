@@ -1,5 +1,16 @@
-// ui-utilities.js - Shared utility functions for spotlight components
-// Consolidates duplicate functions from overlay.js, popup.js, and base-data-provider.js
+/**
+ * UI Utilities - Shared spotlight UI functions and formatting
+ * 
+ * Purpose: Provides consistent UI utilities, result formatting, and display helpers for spotlight components
+ * Key Functions: URL detection/normalization, instant suggestions, result formatting, favicon handling, accent colors
+ * Architecture: Static utility class with pure functions for UI operations
+ * 
+ * Critical Notes:
+ * - Consolidates duplicate code from overlay.js, popup.js, and data providers
+ * - Handles complex URL detection including chrome:// protocols and localhost
+ * - Provides dynamic accent color CSS generation matching active space colors
+ * - Central location for all spotlight display logic and formatting
+ */
 
 import { ResultType, SpotlightTabMode } from './search-types.js';
 
@@ -121,6 +132,11 @@ export class SpotlightUtils {
             [ResultType.SEARCH_QUERY]: {
                 title: result.title,
                 subtitle: 'Search',
+                action: '↵'
+            },
+            [ResultType.AUTOCOMPLETE_SUGGESTION]: {
+                title: result.title,
+                subtitle: 'Autocomplete',
                 action: '↵'
             },
             [ResultType.OPEN_TAB]: {

@@ -1,3 +1,17 @@
+/**
+ * DOMManager - Sidebar DOM manipulation and UI component management
+ * 
+ * Purpose: Handles dynamic DOM creation, updates, and event handling for sidebar interface
+ * Key Functions: Space/tab DOM rendering, context menus, input dialogs, drag-and-drop visual feedback
+ * Architecture: Collection of utility functions for DOM manipulation and UI state management
+ * 
+ * Critical Notes:
+ * - Separates DOM manipulation logic from business logic in sidebar.js
+ * - Handles complex UI interactions like drag-and-drop visual feedback
+ * - Manages context menus and modal dialogs for user interactions
+ * - Provides reusable UI components for consistent user experience
+ */
+
 import { Utils } from './utils.js';
 import { RESTORE_ICON } from './icons.js';
 

@@ -1,3 +1,18 @@
+/**
+ * Sidebar - Main extension UI and tab/space management
+ * 
+ * Purpose: Implements Arc-like vertical tab organization with spaces (Chrome tab groups)
+ * Key Functions: Space creation/management, tab organization, drag-and-drop, archived tabs, spotlight integration
+ * Architecture: Side panel UI that syncs with Chrome's native tab groups API
+ * 
+ * Critical Notes:
+ * - Primary user interface for tab and space management
+ * - Real-time sync with Chrome tab groups and active tab changes
+ * - Handles drag-and-drop for tab/space reorganization
+ * - Integrates with spotlight system for search functionality
+ * - Manages archived tabs and auto-archive settings
+ */
+
 import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';

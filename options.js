@@ -1,3 +1,17 @@
+/**
+ * Options - Extension settings and preferences UI
+ * 
+ * Purpose: Provides user interface for configuring extension behavior and preferences
+ * Key Functions: Auto-archive settings, default space configuration, extension preferences management
+ * Architecture: Options page that syncs with chrome.storage for persistent settings
+ * 
+ * Critical Notes:
+ * - Settings are synced across devices via chrome.storage.sync
+ * - Auto-archive timing affects background script alarm configuration
+ * - Changes trigger background script updates via message passing
+ * - Provides real-time feedback for setting changes
+ */
+
 import { Utils } from './utils.js'; 
 
 // Function to save options to chrome.storage

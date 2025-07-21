@@ -1,3 +1,17 @@
+/**
+ * Utils - Shared utility functions and storage management
+ * 
+ * Purpose: Provides common utilities and centralized settings/storage management across the extension
+ * Key Functions: Settings CRUD, archived tabs management, space data operations, default configurations
+ * Architecture: Static utility class with async storage operations
+ * 
+ * Critical Notes:
+ * - Central source of truth for extension settings and defaults
+ * - Handles both chrome.storage.sync (settings) and chrome.storage.local (spaces/tabs data)
+ * - Used by both background script and UI components for consistent data access
+ * - Settings changes automatically sync across extension contexts
+ */
+
 import { LocalStorage } from './localstorage.js';
 
 const MAX_ARCHIVED_TABS = 100;

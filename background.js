@@ -1,3 +1,17 @@
+/**
+ * Background Service Worker (Manifest V3) - Core extension orchestrator
+ * 
+ * Purpose: Manages extension lifecycle, message passing, and system integrations
+ * Key Functions: Spotlight injection/fallback, auto-archive system, tab activity tracking, Chrome API access
+ * Architecture: Service worker that handles all Chrome API calls and coordinates between content scripts
+ * 
+ * Critical Notes:
+ * - Only context with full Chrome API access (tabs, storage, search, etc.)
+ * - Handles spotlight injection with automatic popup fallback for restricted URLs
+ * - Manages tab activity tracking for auto-archive functionality
+ * - All content script Chrome API requests must route through here via message passing
+ */
+
 import { Utils } from './utils.js';
 import { SearchEngine } from './spotlight/shared/search-engine.js';
 import { BackgroundDataProvider } from './spotlight/shared/data-providers/background-data-provider.js';
