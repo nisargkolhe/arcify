@@ -56,10 +56,8 @@ chrome.commands.onCommand.addListener(async function(command) {
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "quickPinToggle" });
     } else if (command === "toggleSpotlight") {
-        console.log("[Background] Spotlight (current tab) command received");
         await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
     } else if (command === "toggleSpotlightNewTab") {
-        console.log("[Background] Spotlight (new tab) command received");
         await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
     }
 });
@@ -79,7 +77,6 @@ async function closeSpotlightInTrackedTabs() {
             })
         );
         await Promise.all(closePromises);
-        console.log(`[Background] Closed spotlight in ${spotlightOpenTabs.size} tracked tabs`);
         // Clear the set after closing
         spotlightOpenTabs.clear();
     } catch (error) {
@@ -148,7 +145,6 @@ async function openSpotlightPopup(spotlightTabMode) {
         // Open popup (requires popup to be configured in manifest)
         await chrome.action.openPopup();
         
-        console.log("Opened spotlight popup fallback with mode:", spotlightTabMode);
     } catch (popupError) {
         console.error("Error opening spotlight popup fallback:", popupError);
         // Final fallback: open side panel
@@ -203,11 +199,9 @@ async function setupAutoArchiveAlarm() {
             await chrome.alarms.create(AUTO_ARCHIVE_ALARM_NAME, {
                 periodInMinutes: period
             });
-            console.log(`Auto-archive alarm set to run every ${period} minutes.`);
         } else {
             // If disabled, clear any existing alarm
             await chrome.alarms.clear(AUTO_ARCHIVE_ALARM_NAME);
-            console.log("Auto-archive disabled, alarm cleared.");
         }
     } catch (error) {
         console.error("Error setting up auto-archive alarm:", error);
@@ -217,7 +211,6 @@ async function setupAutoArchiveAlarm() {
 // --- Alarm Listener ---
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === AUTO_ARCHIVE_ALARM_NAME) {
-        console.log("Auto-archive alarm triggered.");
         await runAutoArchiveCheck();
     }
 });
@@ -226,7 +219,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 async function runAutoArchiveCheck() {
     const settings = await Utils.getSettings();
     if (!settings.autoArchiveEnabled || settings.autoArchiveIdleMinutes <= 0) {
-        console.log("Auto-archive check skipped (disabled or invalid time).");
         return;
     }
 
@@ -255,7 +247,6 @@ async function runAutoArchiveCheck() {
                 });
             }
         });
-        console.log("Bookmarked URLs for exclusion:", bookmarkedUrls);
 
         // Get all non-pinned tabs across all windows
         const tabs = await chrome.tabs.query({ pinned: false });
@@ -269,7 +260,6 @@ async function runAutoArchiveCheck() {
             }
 
             if (bookmarkedUrls.has(tab.url)) {
-                console.log(`Skipping archive for tab ${tab.id} - URL is bookmarked in a space.`);
                 // Optionally update activity for bookmarked tabs so they don't get checked repeatedly
                 await updateTabLastActivity(tab.id);
                 continue;
@@ -285,16 +275,13 @@ async function runAutoArchiveCheck() {
                     await chrome.tabs.get(tab.id); // Throws error if tab closed
                     tabsToArchive.push(tab);
                  } catch (e) {
-                    console.log(`Tab ${tab.id} closed before archiving, removing activity record.`);
                     await removeTabLastActivity(tab.id); // Clean up record for closed tab
                  }
             }
         }
 
-        console.log(`Found ${tabsToArchive.length} tabs eligible for auto-archiving.`);
 
         for (const tab of tabsToArchive) {
-            console.log(`Auto-archiving tab: ${tab.id} - ${tab.title}`);
             const tabData = {
                 url: tab.url,
                 name: tab.title || tab.url, // Use URL if title is empty
@@ -307,7 +294,6 @@ async function runAutoArchiveCheck() {
                 await chrome.tabs.remove(tab.id); // Close the tab after archiving
                 await removeTabLastActivity(tab.id); // Remove activity timestamp after archiving
             } else {
-                console.log(`Skipping archive for tab ${tab.id} - not in a valid group.`);
                  // Decide if you want to update its activity or leave it for next check
                  // await updateTabLastActivity(tab.id);
             }
@@ -322,7 +308,6 @@ async function runAutoArchiveCheck() {
 
 // Run setup when the extension is installed or updated
 chrome.runtime.onInstalled.addListener(() => {
-    console.log("Extension installed/updated. Setting up alarm.");
     setupAutoArchiveAlarm();
     // Initialize activity for all existing tabs? Maybe too much overhead.
     // Better to let the alarm handle it over time.
@@ -330,7 +315,6 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Run setup when Chrome starts
 chrome.runtime.onStartup.addListener(() => {
-    console.log("Chrome started. Setting up alarm.");
     setupAutoArchiveAlarm();
 });
 
@@ -340,7 +324,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     const settingsChanged = ['autoArchiveEnabled', 'autoArchiveIdleMinutes'].some(key => key in changes);
 
     if ((areaName === 'sync' || areaName === 'local') && settingsChanged) {
-        console.log("Auto-archive settings changed. Re-evaluating alarm setup.");
         setupAutoArchiveAlarm(); // Re-create or clear the alarm based on new settings
     }
 
@@ -352,7 +335,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // Track tab activation
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    console.log(`Tab activated: ${activeInfo.tabId}`);
     await updateTabLastActivity(activeInfo.tabId);
     
     // Close any open spotlights when switching tabs
@@ -371,19 +353,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 // Clean up timestamp when a tab is closed
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
-    console.log(`Tab removed: ${tabId}`);
     await removeTabLastActivity(tabId);
     
     // Clean up spotlight tracking for closed tab
     if (spotlightOpenTabs.has(tabId)) {
         spotlightOpenTabs.delete(tabId);
-        console.log(`[Background] Removed closed tab ${tabId} from spotlight tracking`);
     }
 });
 
 // Optional: Listen for messages from options page to immediately update alarm
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('[Background] Received message:', message.action);
     
     if (message.action === 'updateAutoArchiveSettings') {
         console.log("Received message to update auto-archive settings.");
@@ -499,9 +478,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'getTopSites') {
         (async () => {
             try {
-                console.log('[Background] Getting top sites');
                 const topSites = await chrome.topSites.get();
-                console.log('[Background] Found top sites:', topSites.length);
                 sendResponse({ success: true, topSites: topSites });
             } catch (error) {
                 console.error('[Background] Error getting top sites:', error);
@@ -512,7 +489,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'getActiveSpaceColor') {
         (async () => {
             try {
-                console.log('[Background] Getting active space color');
                 const spacesResult = await chrome.storage.local.get('spaces');
                 const spaces = spacesResult.spaces || [];
                 
@@ -520,7 +496,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                 
                 if (!activeTab || !activeTab.groupId || activeTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-                    console.log('[Background] No active tab group, using default purple');
                     sendResponse({ success: true, color: 'purple' });
                     return;
                 }
@@ -529,10 +504,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const activeSpace = spaces.find(space => space.id === activeTab.groupId);
                 
                 if (activeSpace && activeSpace.color) {
-                    console.log('[Background] Found active space color:', activeSpace.color);
                     sendResponse({ success: true, color: activeSpace.color });
                 } else {
-                    console.log('[Background] No space found for group, using default purple');
                     sendResponse({ success: true, color: 'purple' });
                 }
             } catch (error) {
@@ -545,8 +518,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle search using the user's default search engine via chrome.search API
         (async () => {
             try {
-                console.log('[Background] Performing search with query:', message.query);
-                console.log('[Background] Search mode:', message.mode);
                 
                 // Determine disposition based on spotlight tab mode
                 const disposition = message.mode === SpotlightTabMode.NEW_TAB ? 'NEW_TAB' : 'CURRENT_TAB';
@@ -557,7 +528,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     disposition: disposition
                 });
                 
-                console.log('[Background] Search completed successfully');
                 sendResponse({ success: true });
             } catch (error) {
                 console.error('[Background] Error performing search:', error);
@@ -605,14 +575,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Track when spotlight opens in a tab
         if (sender.tab && sender.tab.id) {
             spotlightOpenTabs.add(sender.tab.id);
-            console.log(`[Background] Spotlight opened in tab ${sender.tab.id}, tracking ${spotlightOpenTabs.size} tabs`);
         }
         return false;
     } else if (message.action === 'spotlightClosed') {
         // Track when spotlight closes in a tab
         if (sender.tab && sender.tab.id) {
             spotlightOpenTabs.delete(sender.tab.id);
-            console.log(`[Background] Spotlight closed in tab ${sender.tab.id}, tracking ${spotlightOpenTabs.size} tabs`);
         }
         return false;
     }
