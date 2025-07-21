@@ -98,7 +98,7 @@ export class SearchEngine {
             },
             [ResultType.AUTOCOMPLETE_SUGGESTION]: {
                 title: result.title,
-                subtitle: 'Autocomplete',
+                subtitle: result.metadata?.isUrl ? result.url : 'Search',
                 action: '↵'
             },
             [ResultType.OPEN_TAB]: {
