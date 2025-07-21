@@ -59,14 +59,35 @@ async function initPopup() {
         console.log('[Popup] Failed to get accent color, using default:', error);
     }
     
+    // Pre-fill URL in current-tab mode
+    if (spotlightMode === SpotlightTabMode.CURRENT_TAB) {
+        try {
+            // Get current tab URL for prefill
+            const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+            if (activeTab && activeTab.url) {
+                input.value = activeTab.url;
+                setTimeout(() => {
+                    handleInstantInput();
+                    handleAsyncSearch();
+                }, 10);
+            } else {
+                // Load initial results if no URL to prefill
+                loadInitialResults();
+            }
+        } catch (error) {
+            console.error('[Popup] Error getting current tab for URL prefill:', error);
+            loadInitialResults();
+        }
+    } else {
+        // Load initial results for new-tab mode
+        loadInitialResults();
+    }
+    
     // Focus input
     setTimeout(() => {
         input.focus();
         input.select();
     }, 50);
-    
-    // Load initial results
-    loadInitialResults();
     
     // Set up event listeners
     setupEventListeners();

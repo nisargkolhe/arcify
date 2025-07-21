@@ -38,7 +38,9 @@ export class SearchResult {
     extractDomain(url) {
         try {
             if (!url) return '';
-            const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+            // Handle URLs with existing protocols (including chrome://)
+            const normalizedUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) ? url : `https://${url}`;
+            const urlObj = new URL(normalizedUrl);
             return urlObj.hostname;
         } catch {
             return url;
