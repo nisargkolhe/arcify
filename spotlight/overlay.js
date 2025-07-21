@@ -447,7 +447,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
                          alt="favicon"
                          data-fallback-icon="true">
                     <div class="arcify-spotlight-result-content">
-                        <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}</div>
+                        <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}${SpotlightUtils.formatDebugInfo(result)}</div>
                         <div class="arcify-spotlight-result-url">${SpotlightUtils.escapeHtml(formatted.subtitle)}</div>
                     </div>
                     <div class="arcify-spotlight-result-action">${SpotlightUtils.escapeHtml(formatted.action)}</div>

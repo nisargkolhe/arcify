@@ -14,6 +14,7 @@
 
 import { SearchResult, ResultType } from '../search-types.js';
 import { websiteNameExtractor } from '../website-name-extractor.js';
+import { getAutocompleteScore } from '../scoring-constants.js';
 
 export class AutocompleteProvider {
     constructor() {
@@ -110,7 +111,7 @@ export class AutocompleteProvider {
                         type: ResultType.AUTOCOMPLETE_SUGGESTION,
                         title: isUrl ? this.extractWebsiteName(suggestion) : suggestion,
                         url: isUrl ? this.normalizeURL(suggestion) : `https://www.google.com/search?q=${encodeURIComponent(suggestion)}`,
-                        score: 88 - index, // Decrease score for lower-ranked suggestions
+                        score: getAutocompleteScore(index), // Use centralized scoring function
                         favicon: null, // Will be handled by getFaviconUrl in ui-utilities
                         metadata: { 
                             query: suggestion,
