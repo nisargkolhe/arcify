@@ -12,7 +12,7 @@
  * - Not tied to Chrome APIs - works in any JavaScript context
  */
 
-import { SearchResult, ResultType, globalSearchResultPool } from '../search-types.js';
+import { SearchResult, ResultType } from '../search-types.js';
 import { websiteNameExtractor } from '../website-name-extractor.js';
 import { getAutocompleteScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
@@ -108,7 +108,7 @@ export class AutocompleteProvider {
                 .map((suggestion, index) => {
                     const isUrl = SpotlightUtils.isURL(suggestion);
                     
-                    return globalSearchResultPool.acquire({
+                    return new SearchResult({
                         type: ResultType.AUTOCOMPLETE_SUGGESTION,
                         title: isUrl ? this.extractWebsiteName(suggestion) : suggestion,
                         url: isUrl ? this.normalizeURL(suggestion) : `https://www.google.com/search?q=${encodeURIComponent(suggestion)}`,

@@ -13,7 +13,6 @@
  */
 
 import { SpotlightUtils } from './ui-utilities.js';
-import { globalSearchResultPool } from './search-types.js';
 
 export class SharedSpotlightLogic {
     
@@ -91,63 +90,38 @@ export class SharedSpotlightLogic {
     }
 
     /**
-     * Setup common keyboard event handling patterns
-     * @param {Function} onArrowDown - Handler for arrow down key
-     * @param {Function} onArrowUp - Handler for arrow up key  
-     * @param {Function} onEnter - Handler for enter key
+     * Setup keyboard handling with SelectionManager integration
+     * @param {Object} selectionManager - SelectionManager instance for navigation
+     * @param {Function} onEnter - Handler for enter key, receives selected result
      * @param {Function} onEscape - Handler for escape key
-     * @param {Function} onHome - Handler for home key (optional)
-     * @param {Function} onEnd - Handler for end key (optional)
+     * @param {boolean} skipContainerCheck - Skip container focus check (for popup mode)
      * @returns {Function} Event handler function for keydown events
      */
-    static createKeyDownHandler(handlers) {
+    static createKeyDownHandler(selectionManager, onEnter, onEscape, skipContainerCheck = true) {
         return (e) => {
+            // Let SelectionManager handle navigation keys first
+            if (selectionManager.handleKeyDown(e, skipContainerCheck)) {
+                return; // Event was handled by selection manager
+            }
+            
+            // Handle additional keys not covered by selection manager
             switch (e.key) {
-                case 'ArrowDown':
-                    if (handlers.onArrowDown) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handlers.onArrowDown(e);
-                    }
-                    break;
-
-                case 'ArrowUp':
-                    if (handlers.onArrowUp) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handlers.onArrowUp(e);
-                    }
-                    break;
-
-                case 'Home':
-                    if (handlers.onHome) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handlers.onHome(e);
-                    }
-                    break;
-
-                case 'End':
-                    if (handlers.onEnd) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handlers.onEnd(e);
-                    }
-                    break;
-
                 case 'Enter':
-                    if (handlers.onEnter) {
+                    if (onEnter) {
                         e.preventDefault();
                         e.stopPropagation();
-                        handlers.onEnter(e);
+                        const selected = selectionManager.getSelectedResult();
+                        if (selected) {
+                            onEnter(selected, e);
+                        }
                     }
                     break;
 
                 case 'Escape':
-                    if (handlers.onEscape) {
+                    if (onEscape) {
                         e.preventDefault();
                         e.stopPropagation();
-                        handlers.onEscape(e);
+                        onEscape(e);
                     }
                     break;
             }
@@ -158,31 +132,25 @@ export class SharedSpotlightLogic {
      * Setup common result click handling with event delegation
      * @param {HTMLElement} resultsContainer - Container element for results
      * @param {Function} onResultClick - Handler for result clicks, receives (result, index)
-     * @param {Array} currentResults - Current results array for index lookup
+     * @param {Function} getCurrentResults - Function that returns current results array
      */
-    static setupResultClickHandling(resultsContainer, onResultClick, currentResults) {
+    static setupResultClickHandling(resultsContainer, onResultClick, getCurrentResults) {
         // Use event delegation for better performance
         resultsContainer.addEventListener('click', (e) => {
             const item = e.target.closest('.arcify-spotlight-result-item');
-            if (item && currentResults) {
-                const index = parseInt(item.dataset.index);
-                const result = currentResults[index];
-                if (result && onResultClick) {
-                    onResultClick(result, index);
+            if (item) {
+                const currentResults = getCurrentResults();
+                if (currentResults) {
+                    const index = parseInt(item.dataset.index);
+                    const result = currentResults[index];
+                    if (result && onResultClick) {
+                        onResultClick(result, index);
+                    }
                 }
             }
         });
     }
 
-    /**
-     * Cleanup resources and release pooled objects
-     * @param {Array} results - Array of results to release back to pool
-     */
-    static cleanup(results) {
-        if (results && Array.isArray(results)) {
-            globalSearchResultPool.releaseAll(results);
-        }
-    }
 
     /**
      * Handle input events with debouncing
