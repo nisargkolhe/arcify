@@ -12,9 +12,10 @@
  * - Not tied to Chrome APIs - works in any JavaScript context
  */
 
-import { SearchResult, ResultType } from '../search-types.js';
+import { SearchResult, ResultType, globalSearchResultPool } from '../search-types.js';
 import { websiteNameExtractor } from '../website-name-extractor.js';
 import { getAutocompleteScore } from '../scoring-constants.js';
+import { SpotlightUtils } from '../ui-utilities.js';
 
 export class AutocompleteProvider {
     constructor() {
@@ -105,9 +106,9 @@ export class AutocompleteProvider {
             const results = suggestions
                 .slice(0, 5) // Limit to 5 suggestions
                 .map((suggestion, index) => {
-                    const isUrl = this.isURL(suggestion);
+                    const isUrl = SpotlightUtils.isURL(suggestion);
                     
-                    return new SearchResult({
+                    return globalSearchResultPool.acquire({
                         type: ResultType.AUTOCOMPLETE_SUGGESTION,
                         title: isUrl ? this.extractWebsiteName(suggestion) : suggestion,
                         url: isUrl ? this.normalizeURL(suggestion) : `https://www.google.com/search?q=${encodeURIComponent(suggestion)}`,
@@ -133,43 +134,6 @@ export class AutocompleteProvider {
         }
     }
 
-    // URL detection utility (similar to SpotlightUtils.isURL)
-    isURL(text) {
-        // Check if it's already a complete URL
-        try {
-            new URL(text);
-            return true;
-        } catch {
-            // Continue to other checks
-        }
-
-        // Check for domain-like patterns
-        const domainPattern = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/;
-        if (domainPattern.test(text)) {
-            return true;
-        }
-
-        // Check for localhost
-        if (text === 'localhost' || text.startsWith('localhost:')) {
-            return true;
-        }
-
-        // Check for IP addresses
-        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
-            const parts = text.split(':')[0].split('.');
-            return parts.every(part => {
-                const num = parseInt(part, 10);
-                return num >= 0 && num <= 255;
-            });
-        }
-
-        // Common URL patterns without protocol
-        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([/\?#].*)?$/.test(text)) {
-            return true;
-        }
-
-        return false;
-    }
 
     // Normalize URL (similar to SpotlightUtils.normalizeURL)
     normalizeURL(url) {
