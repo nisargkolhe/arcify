@@ -1,6 +1,6 @@
 // base-data-provider.js - Abstract base class with shared business logic
 
-import { SearchResult, ResultType, globalSearchResultPool } from '../search-types.js';
+import { SearchResult, ResultType } from '../search-types.js';
 import { findMatchingDomains } from '../popular-sites.js';
 import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
@@ -150,7 +150,7 @@ export class BaseDataProvider {
         try {
             const tabsData = await this.getOpenTabsData(query);
             
-            const results = tabsData.map(tab => globalSearchResultPool.acquire({
+            const results = tabsData.map(tab => new SearchResult({
                 type: ResultType.OPEN_TAB,
                 title: tab.title,
                 url: tab.url,
@@ -169,7 +169,7 @@ export class BaseDataProvider {
         try {
             const tabsData = await this.getRecentTabsData(limit);
             
-            const results = tabsData.map(tab => globalSearchResultPool.acquire({
+            const results = tabsData.map(tab => new SearchResult({
                 type: ResultType.OPEN_TAB,
                 title: tab.title,
                 url: tab.url,
@@ -188,7 +188,7 @@ export class BaseDataProvider {
         try {
             const bookmarksData = await this.getBookmarksData(query);
             
-            const results = bookmarksData.map(bookmark => globalSearchResultPool.acquire({
+            const results = bookmarksData.map(bookmark => new SearchResult({
                 type: ResultType.BOOKMARK,
                 title: bookmark.title,
                 url: bookmark.url,
@@ -206,7 +206,7 @@ export class BaseDataProvider {
         try {
             const historyData = await this.getHistoryData(query);
             
-            const results = historyData.map(item => globalSearchResultPool.acquire({
+            const results = historyData.map(item => new SearchResult({
                 type: ResultType.HISTORY,
                 title: item.title || item.url,
                 url: item.url,
@@ -224,7 +224,7 @@ export class BaseDataProvider {
         try {
             const topSitesData = await this.getTopSitesData();
             
-            const results = topSitesData.map(site => globalSearchResultPool.acquire({
+            const results = topSitesData.map(site => new SearchResult({
                 type: ResultType.TOP_SITE,
                 title: site.title,
                 url: site.url
@@ -252,7 +252,7 @@ export class BaseDataProvider {
     generateURLSuggestion(input) {
         // Import helper from ui-utilities for URL normalization
         const url = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(input) ? input : `https://${input}`;
-        return globalSearchResultPool.acquire({
+        return new SearchResult({
             type: ResultType.URL_SUGGESTION,
             title: `Navigate to ${url}`,
             url: url,
@@ -262,7 +262,7 @@ export class BaseDataProvider {
 
     // Generate search suggestion
     generateSearchSuggestion(input) {
-        return globalSearchResultPool.acquire({
+        return new SearchResult({
             type: ResultType.SEARCH_QUERY,
             title: `Search for "${input}"`,
             url: '',  // URL not needed since we'll use chrome.search API
@@ -373,7 +373,7 @@ export class BaseDataProvider {
             // Calculate fuzzy match score using centralized scoring function
             const fuzzyScore = getFuzzyMatchScore(match.matchType, match.domain.length, query.length);
             
-            return globalSearchResultPool.acquire({
+            return new SearchResult({
                 type: ResultType.TOP_SITE,
                 title: match.displayName,
                 url: `https://${match.domain}`,

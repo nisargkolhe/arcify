@@ -445,13 +445,11 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 
 
     // Input event handlers
-    input.addEventListener('input', () => {
-        // Update instant suggestion immediately (zero latency)
-        handleInstantInput();
-        
-        // Trigger async search (SearchEngine handles debouncing via message)
-        handleAsyncSearch();
-    });
+    input.addEventListener('input', SharedSpotlightLogic.createInputHandler(
+        handleInstantInput,    // instant update (zero latency)
+        handleAsyncSearch,     // async update (debounced by SearchEngine)
+        150                    // debounce delay in ms
+    ));
 
     // Handle result selection
     async function handleResultAction(result) {
@@ -474,64 +472,19 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
     }
 
     // Keyboard navigation
-    input.addEventListener('keydown', (e) => {
-        if (!dialog.contains(document.activeElement)) {
-            return;
-        }
-
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                e.stopPropagation();
-                selectionManager.moveSelection('down');
-                break;
-
-            case 'ArrowUp':
-                e.preventDefault();
-                e.stopPropagation();
-                selectionManager.moveSelection('up');
-                break;
-
-            case 'Home':
-                e.preventDefault();
-                e.stopPropagation();
-                selectionManager.moveToFirst();
-                break;
-
-            case 'End':
-                e.preventDefault();
-                e.stopPropagation();
-                selectionManager.moveToLast();
-                break;
-
-            case 'Enter':
-                e.preventDefault();
-                e.stopPropagation();
-                const selected = selectionManager.getSelectedResult();
-                if (selected) {
-                    handleResultAction(selected);
-                }
-                break;
-
-            case 'Escape':
-                e.preventDefault();
-                e.stopPropagation();
-                closeSpotlight();
-                break;
-        }
-    });
+    input.addEventListener('keydown', SharedSpotlightLogic.createKeyDownHandler(
+        selectionManager,                      // SelectionManager for navigation
+        (selected) => handleResultAction(selected),  // Enter handler
+        () => closeSpotlight(),               // Escape handler
+        // true                                 // container focus check enabled for overlay mode
+    ));
 
     // Handle clicks on results
-    resultsContainer.addEventListener('click', (e) => {
-        const item = e.target.closest('.arcify-spotlight-result-item');
-        if (item) {
-            const index = parseInt(item.dataset.index);
-            const result = currentResults[index];
-            if (result) {
-                handleResultAction(result);
-            }
-        }
-    });
+    SharedSpotlightLogic.setupResultClickHandling(
+        resultsContainer,
+        (result, index) => handleResultAction(result), // adapter: only pass result to existing handler
+        () => currentResults // function that returns current results
+    );
 
     // Close spotlight function
     function closeSpotlight() {

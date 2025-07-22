@@ -125,52 +125,29 @@ function setupEventListeners() {
     const resultsContainer = document.getElementById('spotlightResults');
     
     // Input event handlers
-    input.addEventListener('input', () => {
-        // Update instant suggestion immediately (zero latency)
-        handleInstantInput();
-        
-        // Trigger async search (SearchEngine handles debouncing via message)
-        handleAsyncSearch();
-    });
+    input.addEventListener('input', SharedSpotlightLogic.createInputHandler(
+        handleInstantInput,    // instant update (zero latency)
+        handleAsyncSearch,     // async update (debounced by SearchEngine)
+        150                    // debounce delay in ms
+    ));
     
     // Handle keyboard navigation
-    input.addEventListener('keydown', (e) => {
-        // Use shared selection manager for navigation (skip container check for popup)
-        if (selectionManager.handleKeyDown(e, true)) {
-            return; // Event was handled by selection manager
-        }
-        
-        // Handle additional keys not covered by selection manager
-        switch (e.key) {
-            case 'Enter':
-                e.preventDefault();
-                e.stopPropagation();
-                const selected = selectionManager.getSelectedResult();
-                if (selected) {
-                    handleResultAction(selected);
-                }
-                break;
-
-            case 'Escape':
-                e.preventDefault();
-                e.stopPropagation();
-                SpotlightMessageClient.notifyClosed();
-                window.close();
-                break;
-        }
-    });
+    input.addEventListener('keydown', SharedSpotlightLogic.createKeyDownHandler(
+        selectionManager,                      // SelectionManager for navigation
+        (selected) => handleResultAction(selected),  // Enter handler
+        () => {                                // Escape handler
+            SpotlightMessageClient.notifyClosed();
+            window.close();
+        },
+        true                                   // skipContainerCheck for popup mode
+    ));
     
     // Handle clicks on results
-    resultsContainer.addEventListener('click', (e) => {
-        const item = e.target.closest('.arcify-spotlight-result-item');
-        if (item) {
-            const index = parseInt(item.dataset.index);
-            const result = currentResults[index];
-            if (result) {
-                handleResultAction(result);
-            }
-        }
-    });
+    SharedSpotlightLogic.setupResultClickHandling(
+        resultsContainer,
+        (result, index) => handleResultAction(result), // adapter: only pass result to existing handler
+        () => currentResults // function that returns current results
+    );
 }
 
 // Load initial results
