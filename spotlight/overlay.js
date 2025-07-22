@@ -17,6 +17,7 @@ import { SpotlightUtils } from './shared/ui-utilities.js';
 import { SelectionManager } from './shared/selection-manager.js';
 import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
+import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 
 (async function(spotlightTabMode = 'current-tab') {
     
@@ -414,22 +415,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
 
     // Combine instant and async suggestions with deduplication
     function combineResults() {
-        const combined = [];
-        
-        // Add instant suggestion first (if exists)
-        if (instantSuggestion) {
-            combined.push(instantSuggestion);
-        }
-        
-        // Add async suggestions, filtering out duplicates of the instant suggestion
-        for (const asyncResult of asyncSuggestions) {
-            const isDuplicate = instantSuggestion && SpotlightUtils.areResultsDuplicate(instantSuggestion, asyncResult);
-            if (!isDuplicate) {
-                combined.push(asyncResult);
-            }
-        }
-        
-        return combined;
+        return SharedSpotlightLogic.combineResults(instantSuggestion, asyncSuggestions);
     }
 
     // Update the display with combined results
@@ -443,31 +429,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
         }
 
         const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-        
-        const html = currentResults.map((result, index) => {
-            const formatted = SpotlightUtils.formatResult(result, mode);
-            const isSelected = index === 0; // First result (instant suggestion) is always selected by default
-            
-            return `
-                <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
-                        data-index="${index}">
-                    <img class="arcify-spotlight-result-favicon" 
-                         src="${SpotlightUtils.getFaviconUrl(result)}" 
-                         alt="favicon"
-                         data-fallback-icon="true">
-                    <div class="arcify-spotlight-result-content">
-                        <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}${SpotlightUtils.formatDebugInfo(result)}</div>
-                        <div class="arcify-spotlight-result-url">${SpotlightUtils.escapeHtml(formatted.subtitle)}</div>
-                    </div>
-                    <div class="arcify-spotlight-result-action">${SpotlightUtils.escapeHtml(formatted.action)}</div>
-                </button>
-            `;
-        }).join('');
-
-        resultsContainer.innerHTML = html;
-        
-        // Add error handling for favicon images using shared utility
-        SpotlightUtils.setupFaviconErrorHandling(resultsContainer);
+        SharedSpotlightLogic.updateResultsDisplay(resultsContainer, [], currentResults, mode);
     }
 
 

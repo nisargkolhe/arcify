@@ -19,6 +19,7 @@ import { SpotlightTabMode } from './shared/search-types.js';
 import { SpotlightUtils } from './shared/ui-utilities.js';
 import { SelectionManager } from './shared/selection-manager.js';
 import { SpotlightMessageClient } from './shared/message-client.js';
+import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 
 
 // Global state
@@ -228,44 +229,10 @@ async function handleAsyncSearch() {
 }
 
 
-// Display search results
-// Check if two results are duplicates based on URL
-function areResultsDuplicate(result1, result2) {
-    if (!result1 || !result2) return false;
-    
-    // Compare normalized URLs for URL-based results
-    if (result1.url && result2.url) {
-        const url1 = result1.url.toLowerCase().replace(/\/+$/, ''); // Remove trailing slashes
-        const url2 = result2.url.toLowerCase().replace(/\/+$/, '');
-        return url1 === url2;
-    }
-    
-    // Compare titles for search queries
-    if (result1.type === 'search-query' && result2.type === 'search-query') {
-        return result1.title === result2.title;
-    }
-    
-    return false;
-}
 
 // Combine instant and async suggestions with deduplication
 function combineResults() {
-    const combined = [];
-    
-    // Add instant suggestion first (if exists)
-    if (instantSuggestion) {
-        combined.push(instantSuggestion);
-    }
-    
-    // Add async suggestions, filtering out duplicates of the instant suggestion
-    for (const asyncResult of asyncSuggestions) {
-        const isDuplicate = instantSuggestion && areResultsDuplicate(instantSuggestion, asyncResult);
-        if (!isDuplicate) {
-            combined.push(asyncResult);
-        }
-    }
-    
-    return combined;
+    return SharedSpotlightLogic.combineResults(instantSuggestion, asyncSuggestions);
 }
 
 // Update the display with combined results
@@ -279,30 +246,7 @@ function updateDisplay() {
         return;
     }
 
-    const html = currentResults.map((result, index) => {
-        const formatted = SpotlightUtils.formatResult(result, spotlightMode);
-        const isSelected = index === 0; // First result (instant suggestion) is always selected by default
-        
-        return `
-            <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
-                    data-index="${index}">
-                <img class="arcify-spotlight-result-favicon" 
-                     src="${SpotlightUtils.getFaviconUrl(result)}" 
-                     alt="favicon"
-                     data-fallback-icon="true">
-                <div class="arcify-spotlight-result-content">
-                    <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}${SpotlightUtils.formatDebugInfo(result)}</div>
-                    <div class="arcify-spotlight-result-url">${SpotlightUtils.escapeHtml(formatted.subtitle)}</div>
-                </div>
-                <div class="arcify-spotlight-result-action">${SpotlightUtils.escapeHtml(formatted.action)}</div>
-            </button>
-        `;
-    }).join('');
-
-    resultsContainer.innerHTML = html;
-    
-    // Add error handling for favicon images using shared utility
-    SpotlightUtils.setupFaviconErrorHandling(resultsContainer);
+    SharedSpotlightLogic.updateResultsDisplay(resultsContainer, [], currentResults, spotlightMode);
 }
 
 

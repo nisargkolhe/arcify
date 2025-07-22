@@ -32,13 +32,17 @@ export const SpotlightTabMode = {
 // Search Result class
 export class SearchResult {
     constructor({
-        type,
-        title,
-        url,
+        type = '',
+        title = '',
+        url = '',
         favicon = null,
         score = 0,
         metadata = {}
-    }) {
+    } = {}) {
+        this.initialize(type, title, url, favicon, score, metadata);
+    }
+
+    initialize(type, title, url, favicon, score, metadata) {
         this.type = type;
         this.title = title;
         this.url = url;
@@ -46,6 +50,16 @@ export class SearchResult {
         this.score = score;
         this.metadata = metadata;
         this.domain = this.extractDomain(url);
+    }
+
+    reset() {
+        this.type = '';
+        this.title = '';
+        this.url = '';
+        this.favicon = null;
+        this.score = 0;
+        this.metadata = {};
+        this.domain = '';
     }
 
     extractDomain(url) {
@@ -60,3 +74,60 @@ export class SearchResult {
         }
     }
 }
+
+// Search Result Pool for memory optimization
+export class SearchResultPool {
+    constructor(initialSize = 50) {
+        this.pool = Array(initialSize).fill(null).map(() => new SearchResult());
+        this.available = [...this.pool];
+        this.inUse = new Set();
+    }
+
+    acquire(options) {
+        let result;
+        if (this.available.length > 0) {
+            result = this.available.pop();
+        } else {
+            result = new SearchResult();
+        }
+        
+        if (options) {
+            result.initialize(
+                options.type,
+                options.title,
+                options.url,
+                options.favicon,
+                options.score,
+                options.metadata
+            );
+        }
+        
+        this.inUse.add(result);
+        return result;
+    }
+
+    release(result) {
+        if (this.inUse.has(result)) {
+            result.reset();
+            this.inUse.delete(result);
+            this.available.push(result);
+        }
+    }
+
+    releaseAll(results) {
+        if (Array.isArray(results)) {
+            results.forEach(result => this.release(result));
+        }
+    }
+
+    getStats() {
+        return {
+            totalObjects: this.pool.length + (this.inUse.size - this.available.length),
+            inPool: this.available.length,
+            inUse: this.inUse.size
+        };
+    }
+}
+
+// Global pool instance for shared usage
+export const globalSearchResultPool = new SearchResultPool();

@@ -1,6 +1,6 @@
 // base-data-provider.js - Abstract base class with shared business logic
 
-import { SearchResult, ResultType } from '../search-types.js';
+import { SearchResult, ResultType, globalSearchResultPool } from '../search-types.js';
 import { findMatchingDomains } from '../popular-sites.js';
 import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
@@ -150,7 +150,7 @@ export class BaseDataProvider {
         try {
             const tabsData = await this.getOpenTabsData(query);
             
-            const results = tabsData.map(tab => new SearchResult({
+            const results = tabsData.map(tab => globalSearchResultPool.acquire({
                 type: ResultType.OPEN_TAB,
                 title: tab.title,
                 url: tab.url,
@@ -169,7 +169,7 @@ export class BaseDataProvider {
         try {
             const tabsData = await this.getRecentTabsData(limit);
             
-            const results = tabsData.map(tab => new SearchResult({
+            const results = tabsData.map(tab => globalSearchResultPool.acquire({
                 type: ResultType.OPEN_TAB,
                 title: tab.title,
                 url: tab.url,
@@ -188,7 +188,7 @@ export class BaseDataProvider {
         try {
             const bookmarksData = await this.getBookmarksData(query);
             
-            const results = bookmarksData.map(bookmark => new SearchResult({
+            const results = bookmarksData.map(bookmark => globalSearchResultPool.acquire({
                 type: ResultType.BOOKMARK,
                 title: bookmark.title,
                 url: bookmark.url,
@@ -206,7 +206,7 @@ export class BaseDataProvider {
         try {
             const historyData = await this.getHistoryData(query);
             
-            const results = historyData.map(item => new SearchResult({
+            const results = historyData.map(item => globalSearchResultPool.acquire({
                 type: ResultType.HISTORY,
                 title: item.title || item.url,
                 url: item.url,
@@ -224,7 +224,7 @@ export class BaseDataProvider {
         try {
             const topSitesData = await this.getTopSitesData();
             
-            const results = topSitesData.map(site => new SearchResult({
+            const results = topSitesData.map(site => globalSearchResultPool.acquire({
                 type: ResultType.TOP_SITE,
                 title: site.title,
                 url: site.url
@@ -247,47 +247,12 @@ export class BaseDataProvider {
         }
     }
 
-    // URL detection utility
-    isURL(text) {
-        // Check if it's already a complete URL
-        try {
-            new URL(text);
-            return true;
-        } catch {}
-
-        // Check for domain-like patterns
-        const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.([a-zA-Z]{2,}|[a-zA-Z]{2,}\.[a-zA-Z]{2,})$/;
-        if (domainPattern.test(text)) {
-            return true;
-        }
-
-        // Check for localhost
-        if (text === 'localhost' || text.startsWith('localhost:')) {
-            return true;
-        }
-
-        // Check for IP addresses
-        if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(text)) {
-            const parts = text.split(':')[0].split('.');
-            return parts.every(part => {
-                const num = parseInt(part, 10);
-                return num >= 0 && num <= 255;
-            });
-        }
-
-        // Common URL patterns without protocol
-        if (/^[a-zA-Z0-9-]+\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)([\/\?\#].*)?$/.test(text)) {
-            return true;
-        }
-
-        return false;
-    }
 
     // Generate URL suggestion
     generateURLSuggestion(input) {
         // Import helper from ui-utilities for URL normalization
         const url = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(input) ? input : `https://${input}`;
-        return new SearchResult({
+        return globalSearchResultPool.acquire({
             type: ResultType.URL_SUGGESTION,
             title: `Navigate to ${url}`,
             url: url,
@@ -297,7 +262,7 @@ export class BaseDataProvider {
 
     // Generate search suggestion
     generateSearchSuggestion(input) {
-        return new SearchResult({
+        return globalSearchResultPool.acquire({
             type: ResultType.SEARCH_QUERY,
             title: `Search for "${input}"`,
             url: '',  // URL not needed since we'll use chrome.search API
@@ -308,7 +273,7 @@ export class BaseDataProvider {
 
     // Generate fallback result for errors
     generateFallbackResult(input) {
-        if (this.isURL(input)) {
+        if (SpotlightUtils.isURL(input)) {
             return this.generateURLSuggestion(input);
         } else {
             return this.generateSearchSuggestion(input);
@@ -408,7 +373,7 @@ export class BaseDataProvider {
             // Calculate fuzzy match score using centralized scoring function
             const fuzzyScore = getFuzzyMatchScore(match.matchType, match.domain.length, query.length);
             
-            return new SearchResult({
+            return globalSearchResultPool.acquire({
                 type: ResultType.TOP_SITE,
                 title: match.displayName,
                 url: `https://${match.domain}`,
