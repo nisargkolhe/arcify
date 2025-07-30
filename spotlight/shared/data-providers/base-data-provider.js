@@ -55,14 +55,12 @@ export class BaseDataProvider {
             let topSites = [];
             let autocomplete = [];
 
-            // Get tabs (only in new-tab mode)
-            if (mode === 'new-tab') {
-                try {
-                    openTabs = await this.getOpenTabs(trimmedQuery);
-                } catch (error) {
-                    console.error('[SearchProvider] Failed to get open tabs:', error);
-                    openTabs = [];
-                }
+            // Get tabs (in both modes)
+            try {
+                openTabs = await this.getOpenTabs(trimmedQuery);
+            } catch (error) {
+                console.error('[SearchProvider] Failed to get open tabs:', error);
+                openTabs = [];
             }
 
             // Get bookmarks
@@ -128,15 +126,9 @@ export class BaseDataProvider {
         const results = [];
 
         try {
-            if (mode === 'new-tab') {
-                // Show recent tabs for new tab mode
-                const recentTabs = await this.getRecentTabs(5);
-                results.push(...recentTabs);
-            }
-
-            // Show top sites as suggestions
-            const topSites = await this.getTopSites();
-            results.push(...topSites.slice(0, 4));
+            // Show all open tabs for both modes when no query
+            const openTabs = await this.getOpenTabs('');
+            results.push(...openTabs);
         } catch (error) {
             console.error('[SearchProvider] Error getting default results:', error);
         }
