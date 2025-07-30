@@ -74,14 +74,10 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
             width: 650px;
             max-width: 90vw;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
         }
 
         #arcify-spotlight-dialog::backdrop {
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            background: transparent;
         }
 
         .arcify-spotlight-container {
