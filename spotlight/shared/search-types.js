@@ -18,6 +18,7 @@ export const ResultType = {
     SEARCH_QUERY: 'search-query',
     AUTOCOMPLETE_SUGGESTION: 'autocomplete-suggestion',
     OPEN_TAB: 'open-tab',
+    PINNED_TAB: 'pinned-tab',
     BOOKMARK: 'bookmark',
     HISTORY: 'history',
     TOP_SITE: 'top-site'

@@ -64,8 +64,8 @@ export class SharedSpotlightLogic {
                          alt="favicon"
                          data-fallback-icon="true">
                     <div class="arcify-spotlight-result-content">
-                        <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}${SpotlightUtils.formatDebugInfo(result)}</div>
-                        <div class="arcify-spotlight-result-url">${SpotlightUtils.escapeHtml(formatted.subtitle)}</div>
+                        <div class="arcify-spotlight-result-title">${SpotlightUtils.escapeHtml(formatted.title)}</div>
+                        <div class="arcify-spotlight-result-url">${SpotlightUtils.escapeHtml(formatted.subtitle)}${SpotlightUtils.formatDebugInfo(result)}</div>
                     </div>
                     <div class="arcify-spotlight-result-action">${SpotlightUtils.escapeHtml(formatted.action)}</div>
                 </button>

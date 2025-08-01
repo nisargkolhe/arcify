@@ -22,6 +22,7 @@ export const BASE_SCORES = {
     SEARCH_QUERY: 100,
     URL_SUGGESTION: 95,
     OPEN_TAB: 90,
+    PINNED_TAB: 85,  // Pinned tabs ranked between open tabs and bookmarks
     BOOKMARK: 80,
     HISTORY: 70,
     TOP_SITE: 60,

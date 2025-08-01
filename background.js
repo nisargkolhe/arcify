@@ -512,6 +512,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
+    } else if (message.action === 'getPinnedTabs') {
+        console.log('[Background] Received getPinnedTabs message:', message);
+        (async () => {
+            try {
+                const dataProvider = backgroundSearchEngine.dataProvider;
+                console.log('[Background] Getting pinned tabs from data provider...');
+                const pinnedTabs = await dataProvider.getPinnedTabsData(message.query);
+                console.log('[Background] Sending pinned tabs response:', pinnedTabs.length, 'tabs');
+                sendResponse({ success: true, pinnedTabs: pinnedTabs });
+            } catch (error) {
+                console.error('[Background] Error getting pinned tabs:', error);
+                sendResponse({ success: false, error: error.message, pinnedTabs: [] });
+            }
+        })();
+        return true; // Async response
     } else if (message.action === 'getActiveSpaceColor') {
         (async () => {
             try {
@@ -609,6 +624,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             spotlightOpenTabs.delete(sender.tab.id);
         }
         return false;
+    } else if (message.action === 'activatePinnedTab') {
+        // Only forward if this came from overlay mode (content script)
+        // Popup mode can send directly to sidebar, so don't forward to prevent double tabs
+        if (sender.tab) {  // Message came from content script (overlay)
+            chrome.runtime.sendMessage(message);
+        }
+        sendResponse({ success: true });
+        return false; // Synchronous response
     }
     
     return false; // No async response needed

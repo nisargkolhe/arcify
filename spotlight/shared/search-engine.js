@@ -106,9 +106,16 @@ export class SearchEngine {
                 subtitle: result.domain,
                 action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
             },
+            [ResultType.PINNED_TAB]: {
+                title: result.title,
+                subtitle: result.metadata?.isActive ? 
+                    `${result.metadata.spaceName} • Switch to pinned tab` : 
+                    `${result.metadata.spaceName} • Open pinned tab`,
+                action: result.metadata?.isActive ? 'Switch' : 'Open'
+            },
             [ResultType.BOOKMARK]: {
                 title: result.title,
-                subtitle: result.domain,
+                subtitle: `${result.domain} • Open bookmark`,
                 action: '↵'
             },
             [ResultType.HISTORY]: {
@@ -181,6 +188,38 @@ export class SearchEngine {
                             if (!response?.success) {
                                 throw new Error('Failed to navigate current tab');
                             }
+                        }
+                    }
+                    break;
+
+                case ResultType.PINNED_TAB:
+                    console.log('[SearchEngine] Handling PINNED_TAB result:', result);
+                    if (!result.metadata?.spaceId) {
+                        throw new Error('PINNED_TAB result missing spaceId in metadata');
+                    }
+                    
+                    const pinnedTabMessage = {
+                        action: 'activatePinnedTab',
+                        spaceId: result.metadata.spaceId,
+                        spaceName: result.metadata.spaceName,
+                        bookmarkUrl: result.url,
+                        tabId: result.metadata.tabId,
+                        isActive: result.metadata.isActive,
+                        mode: mode
+                    };
+                    console.log('[SearchEngine] Sending activatePinnedTab message:', pinnedTabMessage);
+                    
+                    // Send message to sidebar to handle pinned tab activation
+                    if (this.isBackgroundContext) {
+                        // Send message to sidebar via runtime messaging
+                        chrome.runtime.sendMessage(pinnedTabMessage);
+                        console.log('[SearchEngine] Message sent from background context');
+                    } else {
+                        // From content script, send message to background which will forward to sidebar
+                        const response = await chrome.runtime.sendMessage(pinnedTabMessage);
+                        console.log('[SearchEngine] Message sent from content script, response:', response);
+                        if (!response?.success) {
+                            throw new Error('Failed to activate pinned tab');
                         }
                     }
                     break;
