@@ -1790,17 +1790,70 @@ async function handleTabRemove(tabId) {
     const isPinned = activeSpace.spaceBookmarks.find(id => id === tabId) != null;
     console.log("isPinned", isPinned);
 
+    if (isPinned) {
+        // For pinned tabs, convert to bookmark-only element using existing bookmark data
+        try {
+            // Find the bookmark in Chrome bookmarks for this space
+            const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+            const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+            const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
+            
+            if (spaceFolder) {
+                const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
+                
+                // Try to get tab URL from Chrome API first, then fall back to searching bookmarks
+                let tabUrl;
+                try {
+                    const tabData = await chrome.tabs.get(tabId);
+                    tabUrl = tabData.url;
+                } catch (error) {
+                    // Tab already closed, we'll find it by searching bookmarks
+                }
+                
+                // Find matching bookmark
+                const matchingBookmark = bookmarks.find(b => {
+                    if (tabUrl) return b.url === tabUrl;
+                    // Fallback: try to match by title from DOM
+                    const titleElement = tabElement.querySelector('.tab-title, .tab-details span');
+                    const titleText = titleElement?.textContent;
+                    return titleText && b.title === titleText;
+                });
+                
+                if (matchingBookmark) {
+                    // Use the established pattern from loadTabs()
+                    const bookmarkTab = {
+                        id: null,
+                        title: matchingBookmark.title,
+                        url: matchingBookmark.url,
+                        favIconUrl: null,
+                        spaceName: activeSpace.name
+                    };
+                    const bookmarkElement = await createTabElement(bookmarkTab, true, true);
+                    tabElement.replaceWith(bookmarkElement);
+                    console.log('Converted closed pinned tab to bookmark-only element');
+                } else {
+                    console.warn('Could not find matching bookmark for closed pinned tab, removing element');
+                    tabElement.remove();
+                }
+            } else {
+                console.warn('Could not find space folder for closed pinned tab, removing element');
+                tabElement.remove();
+            }
+        } catch (error) {
+            console.error('Error converting pinned tab to bookmark-only element:', error);
+            // Fallback: just remove the element
+            tabElement.remove();
+        }
+    } else {
+        // If not a pinned tab, remove the element
+        tabElement?.remove();
+    }
 
     // Remove tab from spaces
     spaces.forEach(space => {
         space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
         space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
     });
-
-    if (!isPinned) {
-        // If not a pinned tab or bookmark not found, remove the element
-        tabElement?.remove();
-    }
 
     saveSpaces();
 }
