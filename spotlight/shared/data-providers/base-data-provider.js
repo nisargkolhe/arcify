@@ -35,6 +35,10 @@ export class BaseDataProvider {
     async getAutocompleteData(query) { 
         throw new Error('getAutocompleteData must be implemented by subclass'); 
     }
+    
+    async getPinnedTabsData(query = '') { 
+        throw new Error('getPinnedTabsData must be implemented by subclass'); 
+    }
 
     // FULL IMPLEMENTATIONS (shared business logic)
 
@@ -50,6 +54,7 @@ export class BaseDataProvider {
         try {
             // Get results from different sources with individual error handling
             let openTabs = [];
+            let pinnedTabs = [];
             let bookmarks = [];
             let history = [];
             let topSites = [];
@@ -63,7 +68,17 @@ export class BaseDataProvider {
                 openTabs = [];
             }
 
-            // Get bookmarks
+            // Get pinned tabs
+            try {
+                console.log('[BaseDataProvider] Getting pinned tab suggestions for query:', trimmedQuery);
+                pinnedTabs = await this.getPinnedTabSuggestions(trimmedQuery);
+                console.log('[BaseDataProvider] Got pinned tab suggestions:', pinnedTabs.length);
+            } catch (error) {
+                console.error('[SearchProvider] Failed to get pinned tabs:', error);
+                pinnedTabs = [];
+            }
+
+            // Get bookmarks (excluding Arcify pinned tabs)
             try {
                 bookmarks = await this.getBookmarkSuggestions(trimmedQuery);
             } catch (error) {
@@ -98,7 +113,7 @@ export class BaseDataProvider {
             // Skip URL/search suggestions - these are handled by instant suggestions in the UI
             // Collect all results first
             const allResults = [];
-            allResults.push(...openTabs, ...bookmarks, ...history, ...autocomplete);
+            allResults.push(...openTabs, ...pinnedTabs, ...bookmarks, ...history, ...autocomplete);
             
             // Add top sites that match query (with fuzzy domain matching)
             const matchingTopSites = this.findMatchingTopSites(topSites, trimmedQuery);
@@ -176,6 +191,37 @@ export class BaseDataProvider {
     }
 
     // Chrome bookmarks API integration
+    async getPinnedTabSuggestions(query) {
+        try {
+            console.log('[BaseDataProvider] getPinnedTabSuggestions called with query:', query);
+            const pinnedTabsData = await this.getPinnedTabsData(query);
+            console.log('[BaseDataProvider] Got pinned tabs data:', pinnedTabsData.length, pinnedTabsData);
+            
+            const results = pinnedTabsData.map(pinnedTab => {
+                const result = new SearchResult({
+                    type: ResultType.PINNED_TAB,
+                    title: pinnedTab.title,
+                    url: pinnedTab.url,
+                    metadata: { 
+                        bookmarkId: pinnedTab.id,
+                        spaceId: pinnedTab.spaceId,
+                        spaceName: pinnedTab.spaceName,
+                        spaceColor: pinnedTab.spaceColor,
+                        tabId: pinnedTab.tabId,
+                        isActive: pinnedTab.isActive
+                    }
+                });
+                console.log('[BaseDataProvider] Created PINNED_TAB SearchResult:', result);
+                return result;
+            });
+            console.log('[BaseDataProvider] Returning', results.length, 'pinned tab results');
+            return results;
+        } catch (error) {
+            console.error('[SearchProvider-PinnedTabs] Error getting pinned tab suggestions:', error);
+            return [];
+        }
+    }
+
     async getBookmarkSuggestions(query) {
         try {
             const bookmarksData = await this.getBookmarksData(query);
@@ -298,6 +344,7 @@ export class BaseDataProvider {
             case ResultType.SEARCH_QUERY: baseScore = BASE_SCORES.SEARCH_QUERY; break;
             case ResultType.URL_SUGGESTION: baseScore = BASE_SCORES.URL_SUGGESTION; break;
             case ResultType.OPEN_TAB: baseScore = BASE_SCORES.OPEN_TAB; break;
+            case ResultType.PINNED_TAB: baseScore = BASE_SCORES.PINNED_TAB; break;
             case ResultType.BOOKMARK: baseScore = BASE_SCORES.BOOKMARK; break;
             case ResultType.HISTORY: baseScore = BASE_SCORES.HISTORY; break;
             case ResultType.TOP_SITE: baseScore = BASE_SCORES.TOP_SITE; break;
@@ -451,6 +498,7 @@ export class BaseDataProvider {
         // Use the same priority order as BASE_SCORES for consistency
         const typePriorities = {
             'open-tab': BASE_SCORES.OPEN_TAB,
+            'pinned-tab': BASE_SCORES.PINNED_TAB,
             'bookmark': BASE_SCORES.BOOKMARK,
             'history': BASE_SCORES.HISTORY,
             'top-site': result.metadata?.fuzzyMatch ? 

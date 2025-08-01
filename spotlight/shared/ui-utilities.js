@@ -188,6 +188,13 @@ export class SpotlightUtils {
                 subtitle: result.domain,
                 action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
             },
+            [ResultType.PINNED_TAB]: {
+                title: result.title,
+                subtitle: result.metadata?.isActive ? 
+                    `${result.metadata.spaceName} • Switch to pinned tab` : 
+                    `${result.metadata.spaceName} • Open pinned tab`,
+                action: result.metadata?.isActive ? 'Switch' : 'Open'
+            },
             [ResultType.BOOKMARK]: {
                 title: result.title,
                 subtitle: result.domain,
@@ -204,6 +211,8 @@ export class SpotlightUtils {
                 action: '↵'
             }
         };
+
+        console.log('---- Formatting result type', result.type);
 
         return formatters[result.type] || {
             title: result.title,
@@ -270,7 +279,7 @@ export class SpotlightUtils {
     // DEBUG: Format debug info for result items (easy to remove)
     static formatDebugInfo(result) {
         // Use environment variable for debug mode (false by default, true for dev builds)
-        const DEBUG_ENABLED = false;
+        const DEBUG_ENABLED = true;
         
         if (!DEBUG_ENABLED) {
             return '';

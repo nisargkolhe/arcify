@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.tabs.onActivated.addListener(handleTabActivated);
 
     // Setup Quick Pin listener
-    setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp);
+    setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, spaces, saveSpaces, setActiveSpace);
 
     // Add event listener for placeholder close button
     const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');
@@ -1477,6 +1477,9 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 }
 
                 saveSpaces(); // Save updated space state
+
+                // Ensure the tab is actually active (important for overlay mode)
+                await chrome.tabs.update(newTab.id, { active: true });
 
                 // Replace the bookmark-only element with a real tab element
                 activateTabInDOM(newTab.id); // Visually activate

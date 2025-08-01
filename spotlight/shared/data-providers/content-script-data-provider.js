@@ -117,4 +117,23 @@ export class ContentScriptDataProvider extends BaseDataProvider {
             return [];
         }
     }
+
+    async getPinnedTabsData(query = '') {
+        try {
+            const message = {
+                action: 'getPinnedTabs',
+                query: query
+            };
+            
+            const response = await chrome.runtime.sendMessage(message);
+            
+            if (response && response.success) {
+                return response.pinnedTabs;
+            }
+            return [];
+        } catch (error) {
+            console.error('[ContentScriptDataProvider] Error getting pinned tabs:', error);
+            return [];
+        }
+    }
 }

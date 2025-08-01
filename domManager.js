@@ -406,7 +406,7 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     }
 }
 
-export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp) {
+export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, currentActiveSpaceId, currentSpaces, saveSpacesFunc, setActiveSpaceFunc) {
     chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {
             console.log(`[QuickPin] Received command: ${request.command}`, { request });
@@ -469,6 +469,42 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             const newTabBtn = document.getElementById('newTabBtn');
             if (newTabBtn) {
                 newTabBtn.classList.remove('spotlight-active');
+            }
+        } else if (request.action === "activatePinnedTab") {
+            console.log("[Spotlight] Activating pinned tab:", request);
+            console.log("[Spotlight] Current activeSpaceId:", currentActiveSpaceId);
+            console.log("[Spotlight] Available spaces:", currentSpaces?.map(s => ({id: s.id, name: s.name})));
+            
+            // Switch to the space if needed
+            if (request.spaceId && currentActiveSpaceId !== request.spaceId) {
+                console.log("[Spotlight] Switching to space:", request.spaceId, request.spaceName);
+                setActiveSpaceFunc(request.spaceId);
+            }
+            
+            // Handle pinned tab activation
+            if (request.isActive && request.tabId) {
+                console.log("[Spotlight] Tab is active, switching to it:", request.tabId);
+                // Tab is already open, just switch to it and highlight
+                chrome.tabs.update(request.tabId, { active: true });
+                activateTabInDOM(request.tabId);
+            } else {
+                console.log("[Spotlight] Tab is not active, creating new tab");
+                // Tab is not open, create it (reuse existing bookmark click logic)
+                // Find the bookmark element in the DOM and trigger its click handler
+                const bookmarkElements = document.querySelectorAll('[data-url]');
+                console.log("[Spotlight] Found bookmark elements:", bookmarkElements.length);
+                const matchingBookmark = Array.from(bookmarkElements).find(el => 
+                    el.getAttribute('data-url') === request.bookmarkUrl
+                );
+                console.log("[Spotlight] Found matching bookmark element:", !!matchingBookmark);
+                
+                if (matchingBookmark) {
+                    console.log("[Spotlight] Triggering bookmark click");
+                    // Trigger the existing bookmark click logic
+                    matchingBookmark.click();
+                } else {
+                    console.warn("[Spotlight] No matching bookmark element found for URL:", request.bookmarkUrl);
+                }
             }
         }
     });
