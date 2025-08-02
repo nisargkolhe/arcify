@@ -1097,6 +1097,8 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
     var bookmarkedTabURLs = [];
     try {
         const tabs = await chrome.tabs.query({});
+        const pinnedTabs = await chrome.tabs.query({ pinned: true });
+        const pinnedUrls = new Set(pinnedTabs.map(tab => tab.url));
 
         const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
         const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
@@ -1186,7 +1188,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         await processBookmarkNode(item, folderElement.querySelector('.folder-content'));
                     } else {
                         // This is a bookmark
-                        if (!processedUrls.has(item.url)) {
+                        if (!processedUrls.has(item.url) && !pinnedUrls.has(item.url)) {
                             const existingTab = BookmarkUtils.findTabByUrl(tabs, item.url);
                             if (existingTab) {
                                 console.log('Creating UI element for active bookmark:', existingTab);
