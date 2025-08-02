@@ -203,8 +203,6 @@ export class SearchEngine {
                         spaceId: result.metadata.spaceId,
                         spaceName: result.metadata.spaceName,
                         bookmarkUrl: result.url,
-                        tabId: result.metadata.tabId,
-                        isActive: result.metadata.isActive,
                         mode: mode
                     };
                     console.log('[SearchEngine] Sending activatePinnedTab message:', pinnedTabMessage);

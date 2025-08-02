@@ -17,6 +17,7 @@ import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
+import { BookmarkUtils } from './bookmark-utils.js';
 import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener } from './domManager.js';
 
 // Constants
@@ -52,7 +53,7 @@ async function updateBookmarkForTab(tab, bookmarkTitle) {
         console.log("looking for space folder", spaceFolder);
         const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
         console.log("looking for bookmarks", bookmarks);
-        const bookmark = bookmarks.find(b => b.url === tab.url);
+        const bookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, tab.url);
         if (bookmark) {
             await chrome.bookmarks.update(bookmark.id, {
                 title: bookmarkTitle,
@@ -156,6 +157,78 @@ async function updatePinnedFavicons() {
     });
 }
 
+// Utility function to activate a pinned tab by URL (reuses existing bookmark opening logic)
+async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
+    console.log('[PinnedTabActivator] Activating pinned tab:', bookmarkUrl, targetSpaceId, spaceName);
+    
+    try {
+        // Try to find existing tab with this URL
+        const tabs = await chrome.tabs.query({});
+        const existingTab = BookmarkUtils.findTabByUrl(tabs, bookmarkUrl);
+        
+        if (existingTab) {
+            console.log('[PinnedTabActivator] Found existing tab, switching to it:', existingTab.id);
+            // Tab already exists, just switch to it and highlight
+            chrome.tabs.update(existingTab.id, { active: true });
+            activateTabInDOM(existingTab.id);
+            
+            // Store last active tab for the space
+            const space = spaces.find(s => s.id === existingTab.groupId);
+            if (space) {
+                space.lastTab = existingTab.id;
+                saveSpaces();
+            }
+        } else {
+            console.log('[PinnedTabActivator] No existing tab found, opening bookmark');
+            // Find existing bookmark-only element to replace
+            const existingBookmarkElement = document.querySelector(`[data-url="${bookmarkUrl}"].bookmark-only`);
+            
+            // Find the bookmark to get the correct title
+            const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+            const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+            const spaceFolder = spaceFolders.find(f => f.title === spaceName);
+            
+            let bookmarkTitle = null;
+            if (spaceFolder) {
+                const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
+                const matchingBookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, bookmarkUrl);
+                if (matchingBookmark) {
+                    bookmarkTitle = matchingBookmark.title;
+                }
+            }
+
+            // Prepare bookmark data for opening
+            const bookmarkData = {
+                url: bookmarkUrl,
+                title: bookmarkTitle || 'Bookmark',
+                spaceName: spaceName
+            };
+
+            // Prepare context for BookmarkUtils
+            const context = {
+                spaces,
+                activeSpaceId,
+                currentWindow,
+                saveSpaces,
+                createTabElement,
+                activateTabInDOM,
+                Utils
+            };
+
+            // Use shared bookmark opening logic
+            isOpeningBookmark = true;
+            try {
+                await BookmarkUtils.openBookmarkAsTab(bookmarkData, targetSpaceId, existingBookmarkElement, context, /*isPinned=*/true);
+            } finally {
+                isOpeningBookmark = false;
+            }
+        }
+    } catch (error) {
+        console.error("[PinnedTabActivator] Error activating pinned tab:", error);
+        isOpeningBookmark = false;
+    }
+}
+
 // Initialize the sidebar when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing sidebar...');
@@ -173,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.tabs.onActivated.addListener(handleTabActivated);
 
     // Setup Quick Pin listener
-    setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, spaces, saveSpaces, setActiveSpace);
+    setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, setActiveSpace, activatePinnedTabByURL);
 
     // Add event listener for placeholder close button
     const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');
@@ -335,7 +408,7 @@ async function initSidebar() {
                     console.log("found folder", group.title)
                     // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
 
-                    spaceBookmarks = await Utils.processBookmarkFolder(bookmarkFolder, group.id);
+                    spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(bookmarkFolder, group.id, Utils.setTabNameOverride.bind(Utils));
                     // Remove null values from spaceBookmarks
                     spaceBookmarks = spaceBookmarks.filter(id => id !== null);
 
@@ -786,7 +859,7 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
 
         const groupColor = await Utils.getTabGroupColor(spaceName);
         const groupId = await ChromeHelper.createNewTabGroup(tabToMove, spaceName, groupColor);
-        const spaceBookmarks = await Utils.processBookmarkFolder(spaceFolder, groupId);
+        const spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(spaceFolder, groupId, Utils.setTabNameOverride.bind(Utils));
 
         const space = {
             id: groupId,
@@ -839,10 +912,10 @@ async function moveTabToPinned(space, tab) {
     }
     const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(space.name);
     const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
-    const existingBookmark = bookmarks.find(b => b.url === tab.url);
+    const existingBookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, tab.url);
     if (!existingBookmark) {
         // delete existing bookmark
-        await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
+        await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
 
         await chrome.bookmarks.create({
             parentId: spaceFolder.id,
@@ -858,7 +931,7 @@ async function moveTabToTemp(space, tab) {
     const spaceFolder = spaceFolders.find(f => f.title === space.name);
 
     if (spaceFolder) {
-        await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
+        await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
     }
 
     // Move tab from bookmarks to temporary tabs in space data
@@ -928,14 +1001,14 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
                                     // Check if bookmark already exists in the target folder
                                     const existingBookmarks = await chrome.bookmarks.getChildren(parentId);
-                                    if (existingBookmarks.some(b => b.url === tab.url)) {
+                                    if (BookmarkUtils.findBookmarkByUrl(existingBookmarks, tab.url)) {
                                         console.log('Bookmark already exists in folder:', folderName);
                                         isDraggingTab = false;
                                         return;
                                     }
 
                                     // Find and remove the bookmark from its original location
-                                    await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
+                                    await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
 
                                     // Create the bookmark in the new location
                                     await chrome.bookmarks.create({
@@ -1124,7 +1197,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                     } else {
                         // This is a bookmark
                         if (!processedUrls.has(item.url)) {
-                            const existingTab = tabs.find(t => t.url === item.url);
+                            const existingTab = BookmarkUtils.findTabByUrl(tabs, item.url);
                             if (existingTab) {
                                 console.log('Creating UI element for active bookmark:', existingTab);
                                 bookmarkedTabURLs.push(existingTab.url);
@@ -1190,7 +1263,7 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
         console.log("spaceFolder", spaceFolder);
         if (spaceFolder) {
-            await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url, {
+            await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url, {
                 removeTabElement: true,
                 tabElement: tabElement,
                 logRemoval: true
@@ -1379,13 +1452,13 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                     if (newName && newName !== originalTitle) {
                         await Utils.setTabNameOverride(tab.id, tab.url, newName);
                         if (isPinned) {
-                            await Utils.updateBookmarkTitleIfNeeded(tab, activeSpace, newName);
+                            await BookmarkUtils.updateBookmarkTitle(tab, activeSpace, newName);
                         }
                     } else {
                         // If name is empty or same as original, remove override
                         await Utils.removeTabNameOverride(tab.id);
                         if (isPinned) {
-                            await Utils.updateBookmarkTitleIfNeeded(tab, activeSpace, originalTitle);
+                            await BookmarkUtils.updateBookmarkTitle(tab, activeSpace, originalTitle);
                         }
                     }
                 } catch (error) {
@@ -1451,48 +1524,26 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                     return;
                 }
 
-                // Create new tab with bookmark URL in the active group
-                const newTab = await chrome.tabs.create({
+                // Prepare bookmark data for opening
+                const bookmarkData = {
                     url: tab.url,
-                    active: true, // Make it active immediately
-                    windowId: currentWindow.id // Ensure it opens in the current window
-                });
-
-                // If bookmark has a custom name, set tab name override
-                if (tab.title && newTab.title !== tab.title) {
-                    await Utils.setTabNameOverride(newTab.id, tab.url, tab.title);
-                }
-
-                // Replace tab element
-                const bookmarkTab = {
-                    id: newTab.id,
                     title: tab.title,
-                    url: tab.url,
-                    favIconUrl: tab.favIconUrl,
                     spaceName: tab.spaceName
                 };
-                const activeBookmark = await createTabElement(bookmarkTab, true, false);
-                activeBookmark.classList.add('active');
-                tabElement.replaceWith(activeBookmark);
 
-                // Immediately group the new tab
-                await chrome.tabs.group({ tabIds: [newTab.id], groupId: activeSpaceId });
+                // Prepare context for BookmarkUtils
+                const context = {
+                    spaces,
+                    activeSpaceId,
+                    currentWindow,
+                    saveSpaces,
+                    createTabElement,
+                    activateTabInDOM,
+                    Utils
+                };
 
-                if (isPinned) {
-                    const space = spaces.find(s => s.name === tab.spaceName);
-                    if (space) {
-                        space.spaceBookmarks.push(newTab.id);
-                        saveSpaces();
-                    }
-                }
-
-                saveSpaces(); // Save updated space state
-
-                // Ensure the tab is actually active (important for overlay mode)
-                await chrome.tabs.update(newTab.id, { active: true });
-
-                // Replace the bookmark-only element with a real tab element
-                activateTabInDOM(newTab.id); // Visually activate
+                // Use shared bookmark opening logic
+                await BookmarkUtils.openBookmarkAsTab(bookmarkData, activeSpaceId, tabElement, context, isPinned);
 
             } catch (error) {
                 console.error("Error opening bookmark:", error);
@@ -1715,7 +1766,7 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                         const spaceFolder = spaceFolders.find(f => f.title === spaceWithTab.name);
                         
                         if (spaceFolder) {
-                            await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
+                            await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
                         }
                     }
                     
