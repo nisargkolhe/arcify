@@ -2,6 +2,7 @@
 
 import { BaseDataProvider } from './base-data-provider.js';
 import { AutocompleteProvider } from './autocomplete-provider.js';
+import { BookmarkUtils } from '../../../bookmark-utils.js';
 
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity';
 
@@ -54,37 +55,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
     }
 
     async getBookmarksData(query) {
-        try {
-            const bookmarks = await chrome.bookmarks.search(query);
-            
-            // Get Arcify folder to exclude its bookmarks from regular bookmark search
-            let arcifyFolderId = null;
-            try {
-                const arcifyFolder = await this.findArcifyFolder();
-                if (arcifyFolder) {
-                    arcifyFolderId = arcifyFolder.id;
-                }
-            } catch (error) {
-                // Ignore error if Arcify folder doesn't exist
-            }
-
-            // Filter out Arcify bookmarks and keep only bookmarks with URLs
-            const filteredBookmarks = bookmarks.filter(bookmark => {
-                if (!bookmark.url) return false;
-                
-                // Exclude bookmarks that are under Arcify folder
-                if (arcifyFolderId && this.isUnderArcifyFolder(bookmark, arcifyFolderId)) {
-                    return false;
-                }
-                
-                return true;
-            });
-            
-            return filteredBookmarks;
-        } catch (error) {
-            console.error('[BackgroundDataProvider] Error getting bookmarks:', error);
-            return [];
-        }
+        return await BookmarkUtils.getBookmarksData(query);
     }
 
     isUnderArcifyFolder(bookmark, arcifyFolderId) {
@@ -140,7 +111,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
             console.log('[BackgroundDataProvider] Found tabs:', tabs.length);
             
             // Get Arcify folder structure using robust method
-            const arcifyFolder = await this.findArcifyFolder();
+            const arcifyFolder = await BookmarkUtils.findArcifyFolder();
             if (!arcifyFolder) {
                 console.log('[BackgroundDataProvider] No Arcify folder found');
                 return [];
@@ -158,12 +129,12 @@ export class BackgroundDataProvider extends BaseDataProvider {
                 if (!space) continue;
 
                 // Get all bookmarks in this space folder (recursively)
-                const bookmarks = await this.getBookmarksFromFolder(spaceFolder.id);
+                const bookmarks = await BookmarkUtils.getBookmarksFromFolderRecursive(spaceFolder.id);
                 console.log('[BackgroundDataProvider] Found bookmarks in', spaceFolder.title, ':', bookmarks.length);
                 
                 for (const bookmark of bookmarks) {
                     // Check if there's a matching open tab
-                    const matchingTab = tabs.find(tab => tab.url === bookmark.url);
+                    const matchingTab = BookmarkUtils.findTabByUrl(tabs, bookmark.url);
                     console.log('[BackgroundDataProvider] Processing bookmark:', bookmark.title, 'matching tab:', !!matchingTab);
                     
                     // Apply query filter
@@ -198,106 +169,5 @@ export class BackgroundDataProvider extends BaseDataProvider {
         }
     }
 
-    async getBookmarksFromFolder(folderId) {
-        const bookmarks = [];
-        const items = await chrome.bookmarks.getChildren(folderId);
-        
-        for (const item of items) {
-            if (item.url) {
-                // This is a bookmark
-                bookmarks.push({
-                    id: item.id,
-                    title: item.title,
-                    url: item.url
-                });
-            } else {
-                // This is a folder, recursively get bookmarks
-                const subBookmarks = await this.getBookmarksFromFolder(item.id);
-                bookmarks.push(...subBookmarks);
-            }
-        }
-        
-        return bookmarks;
-    }
 
-    /**
-     * Robust method to find the Arcify folder in Chrome bookmarks
-     * This method handles various edge cases and provides better error handling
-     */
-    async findArcifyFolder() {
-        console.log('[BackgroundDataProvider] Finding Arcify folder...');
-        
-        try {
-            // Method 1: Try the standard search first (this should work in most cases)
-            console.log('[BackgroundDataProvider] Method 1: Searching for Arcify folder by title...');
-            const searchResults = await chrome.bookmarks.search({ title: 'Arcify' });
-            
-            if (searchResults && searchResults.length > 0) {
-                // Verify this is actually a folder (not a bookmark)
-                const arcifyFolder = searchResults.find(result => !result.url);
-                if (arcifyFolder) {
-                    console.log('[BackgroundDataProvider] Found Arcify folder via search:', arcifyFolder.id);
-                    return arcifyFolder;
-                }
-            }
-            
-            console.log('[BackgroundDataProvider] Method 1 failed, trying Method 2: Traversing bookmark tree...');
-            
-            // Method 2: Traverse the bookmark tree manually
-            // This is more reliable as it doesn't depend on search functionality
-            const rootChildren = await chrome.bookmarks.getChildren('0');
-            console.log('[BackgroundDataProvider] Root folders found:', rootChildren.map(child => ({ id: child.id, title: child.title })));
-            
-            // Check each root folder for Arcify folder
-            for (const rootFolder of rootChildren) {
-                console.log(`[BackgroundDataProvider] Checking folder: ${rootFolder.title} (ID: ${rootFolder.id})`);
-                
-                try {
-                    const children = await chrome.bookmarks.getChildren(rootFolder.id);
-                    const arcifyFolder = children.find(child => child.title === 'Arcify' && !child.url);
-                    
-                    if (arcifyFolder) {
-                        console.log(`[BackgroundDataProvider] Found Arcify folder in ${rootFolder.title}:`, arcifyFolder.id);
-                        return arcifyFolder;
-                    }
-                } catch (error) {
-                    console.warn(`[BackgroundDataProvider] Error checking folder ${rootFolder.title}:`, error);
-                    continue;
-                }
-            }
-            
-            // Method 3: Try to find by checking "Other Bookmarks" specifically
-            console.log('[BackgroundDataProvider] Method 2 failed, trying Method 3: Check Other Bookmarks specifically...');
-            
-            // Find "Other Bookmarks" folder - it could have different names in different locales
-            const otherBookmarksFolder = rootChildren.find(folder => 
-                folder.id === '2' || // Standard ID for Other Bookmarks
-                folder.title.toLowerCase().includes('other') ||
-                folder.title.toLowerCase().includes('bookmark')
-            );
-            
-            if (otherBookmarksFolder) {
-                console.log(`[BackgroundDataProvider] Found Other Bookmarks folder: ${otherBookmarksFolder.title} (ID: ${otherBookmarksFolder.id})`);
-                
-                try {
-                    const otherBookmarksChildren = await chrome.bookmarks.getChildren(otherBookmarksFolder.id);
-                    const arcifyFolder = otherBookmarksChildren.find(child => child.title === 'Arcify' && !child.url);
-                    
-                    if (arcifyFolder) {
-                        console.log('[BackgroundDataProvider] Found Arcify folder in Other Bookmarks:', arcifyFolder.id);
-                        return arcifyFolder;
-                    }
-                } catch (error) {
-                    console.warn('[BackgroundDataProvider] Error checking Other Bookmarks folder:', error);
-                }
-            }
-            
-            console.log('[BackgroundDataProvider] All methods failed - Arcify folder not found');
-            return null;
-            
-        } catch (error) {
-            console.error('[BackgroundDataProvider] Error in findArcifyFolder:', error);
-            return null;
-        }
-    }
 }
