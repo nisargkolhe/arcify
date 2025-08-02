@@ -30,6 +30,14 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["spotlight/overlay.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [
