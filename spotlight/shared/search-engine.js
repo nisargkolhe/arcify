@@ -83,59 +83,6 @@ export class SearchEngine {
         return results;
     }
 
-    // Format result for display
-    formatResult(result, mode) {
-        const formatters = {
-            [ResultType.URL_SUGGESTION]: {
-                title: result.title,
-                subtitle: result.url,
-                action: '↵'
-            },
-            [ResultType.SEARCH_QUERY]: {
-                title: result.title,
-                subtitle: 'Search',
-                action: '↵'
-            },
-            [ResultType.AUTOCOMPLETE_SUGGESTION]: {
-                title: result.title,
-                subtitle: result.metadata?.isUrl ? result.url : 'Search',
-                action: '↵'
-            },
-            [ResultType.OPEN_TAB]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: mode === SpotlightTabMode.NEW_TAB ? 'Switch to Tab' : '↵'
-            },
-            [ResultType.PINNED_TAB]: {
-                title: result.title,
-                subtitle: result.metadata?.isActive ? 
-                    `${result.metadata.spaceName} • Switch to pinned tab` : 
-                    `${result.metadata.spaceName} • Open pinned tab`,
-                action: result.metadata?.isActive ? 'Switch' : 'Open'
-            },
-            [ResultType.BOOKMARK]: {
-                title: result.title,
-                subtitle: `${result.domain} • Open bookmark`,
-                action: '↵'
-            },
-            [ResultType.HISTORY]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: '↵'
-            },
-            [ResultType.TOP_SITE]: {
-                title: result.title,
-                subtitle: result.domain,
-                action: '↵'
-            }
-        };
-
-        return formatters[result.type] || {
-            title: result.title,
-            subtitle: result.url,
-            action: '↵'
-        };
-    }
 
     // Handle result action
     async handleResultAction(result, mode, currentTabId = null) {

@@ -190,10 +190,8 @@ export class SpotlightUtils {
             },
             [ResultType.PINNED_TAB]: {
                 title: result.title,
-                subtitle: result.metadata?.isActive ? 
-                    `${result.metadata.spaceName} • Switch to pinned tab` : 
-                    `${result.metadata.spaceName} • Open pinned tab`,
-                action: result.metadata?.isActive ? 'Switch' : 'Open'
+                subtitle: result.domain,
+                action: result.metadata?.isActive ? 'Switch to Tab' : 'Open Pinned Tab'
             },
             [ResultType.BOOKMARK]: {
                 title: result.title,
@@ -279,7 +277,7 @@ export class SpotlightUtils {
     // DEBUG: Format debug info for result items (easy to remove)
     static formatDebugInfo(result) {
         // Use environment variable for debug mode (false by default, true for dev builds)
-        const DEBUG_ENABLED = true;
+        const DEBUG_ENABLED = false;
         
         if (!DEBUG_ENABLED) {
             return '';
