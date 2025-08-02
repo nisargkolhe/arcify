@@ -19,7 +19,24 @@ import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 
-(async function(spotlightTabMode = 'current-tab') {
+// Dormant mode: Listen for activation message when loaded as content script
+if (!window.arcifySpotlightTabMode) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'activateSpotlight') {
+            // Set up activation variables like background script injection
+            window.arcifySpotlightTabMode = message.mode;
+            window.arcifyCurrentTabUrl = message.tabUrl;
+            window.arcifyCurrentTabId = message.tabId;
+            
+            // Activate spotlight
+            activateSpotlight(message.mode);
+            sendResponse({ success: true });
+        }
+    });
+}
+
+// Main spotlight activation function
+async function activateSpotlight(spotlightTabMode = 'current-tab') {
     
     // Handle toggle functionality for existing spotlight
     const existingDialog = document.getElementById('arcify-spotlight-dialog');
@@ -47,18 +64,21 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
     // Mark as injected only when creating new dialog
     window.arcifySpotlightInjected = true;
 
-    // Get active space color
+    // Start with default color - will update asynchronously
     let activeSpaceColor = 'purple'; // Default fallback
-    try {
-        activeSpaceColor = await SpotlightMessageClient.getActiveSpaceColor();
-    } catch (error) {
-        console.error('[Spotlight] Failed to get active space color:', error);
-    }
-
-    // CSS styles with dynamic accent color
+    
+    // CSS styles with default accent color (will be updated)
     const accentColorDefinitions = SpotlightUtils.getAccentColorCSS(activeSpaceColor);
     const spotlightCSS = `
         ${accentColorDefinitions}
+        
+        /* Smooth transitions for color changes */
+        :root {
+            transition: --spotlight-accent-color 0.3s ease,
+                       --spotlight-accent-color-15 0.3s ease,
+                       --spotlight-accent-color-20 0.3s ease,
+                       --spotlight-accent-color-80 0.3s ease;
+        }
         
         #arcify-spotlight-dialog {
             margin: 0;
@@ -287,6 +307,7 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 
     // Create and inject styles
     const styleSheet = document.createElement('style');
+    styleSheet.id = 'arcify-spotlight-styles';
     styleSheet.textContent = spotlightCSS;
     document.head.appendChild(styleSheet);
 
@@ -367,8 +388,8 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
             handleAsyncSearch();
         }, 10);
     } else {
-        // Load initial results
-        loadInitialResults();
+        // Initial results will be loaded asynchronously after UI appears (Phase 2 optimization)
+        displayEmptyState();
     }
 
     // Handle instant suggestion update (no debouncing)
@@ -520,10 +541,46 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
     // Notify background that spotlight opened in this tab
     SpotlightMessageClient.notifyOpened();
     
+    // Focus input immediately
     setTimeout(() => {
         input.focus();
         input.select();
         input.scrollLeft = 0;
     }, 50);
+    
+    // Async Phase 2 improvements: Update color and load initial results non-blocking
+    (async () => {
+        try {
+            // Update active space color asynchronously
+            const realActiveSpaceColor = await SpotlightMessageClient.getActiveSpaceColor();
+            if (realActiveSpaceColor !== activeSpaceColor) {
+                // Update CSS variables for smooth color transition
+                const newColorDefinitions = SpotlightUtils.getAccentColorCSS(realActiveSpaceColor);
+                const styleElement = document.querySelector('#arcify-spotlight-styles');
+                if (styleElement) {
+                    // Extract just the color definitions and update them
+                    const colorRegex = /:root\s*{([^}]*)}/;
+                    const currentCSS = styleElement.textContent;
+                    const newColorMatch = newColorDefinitions.match(colorRegex);
+                    if (newColorMatch) {
+                        const updatedCSS = currentCSS.replace(colorRegex, newColorMatch[0]);
+                        styleElement.textContent = updatedCSS;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[Spotlight] Error updating active space color:', error);
+        }
+        
+        // Load initial results after color update (if input is still empty)
+        if (!input.value.trim()) {
+            loadInitialResults();
+        }
+    })();
 
-})(window.arcifySpotlightTabMode);
+}
+
+// If activated by background script injection (legacy mode), run immediately
+if (window.arcifySpotlightTabMode) {
+    activateSpotlight(window.arcifySpotlightTabMode);
+}
