@@ -28,7 +28,6 @@ body {
     color: #333;
     height: 100vh;
     overflow: hidden;
-    font-weight: 500;
 }
 
 h3 {
@@ -111,7 +110,7 @@ h3 {
 }
 
 .pinned-favicon.active, .pinned-favicon.active:hover {
-    background-color: #ffffff;
+    background-color: #ECEFF1;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -247,7 +246,7 @@ h3 {
     position: absolute;
     top: 100%;
     right: 0;
-    background-color: #ffffff;
+    background-color: #ECEFF1;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     display: none;
@@ -349,7 +348,7 @@ h3 {
 
 .folder.collapsed div.folder-icon {
     width: 16px;
-    margin-right: 10px;
+    margin-right: 16px;
 }
 
 .folder.collapsed:hover {
@@ -491,10 +490,11 @@ h3 {
 
 .tabs-container {
     min-height: 60px;
+    margin-top: 4px;
     /* border-radius: 8px;
     background-color: rgba(255, 255, 255, 0.1);
     padding: 8px;
-    margin-top: 8px; */
+     */
 }
 
 .create-space-container {
@@ -596,7 +596,7 @@ h3 {
 }
 
 .space-switcher button.active {
-    background-color: #ffffff;
+    background-color: #ECEFF1;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -610,7 +610,7 @@ h3 {
     transition: background-color 0.2s;
     background: var(--space-bg-color, rgba(255, 255, 255, 0.1));
     position: relative;
-    font-weight: 600;
+    /* font-weight: 600; */
 }
 
 .tab:hover {
@@ -620,7 +620,7 @@ h3 {
 }
 
 .tab.active {
-    background-color: #ffffff;
+    background-color: #ECEFF1;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -1300,21 +1300,230 @@ h3 {
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
     :root {
-        --chrome-grey-color: #9b9797;
-        --chrome-blue-color: #5678ae;
-        --chrome-red-color: #b36c67;
-        --chrome-yellow-color: #a99457;
+        --chrome-grey-color: #546E7A;
+        --chrome-blue-color: #235d8b;
+        --chrome-red-color: #963d3d;
+        --chrome-yellow-color: #aa822a;
         --chrome-green-color: #4f8057;
         --chrome-pink-color: #b06c92;
         --chrome-purple-color: #8d75a1;
         --chrome-cyan-color: #5e9299;
-        --chrome-grey-color-dark: #817e7e;
-        --chrome-blue-color-dark: #4f6f9c;
-        --chrome-red-color-dark: #a7645e;
-        --chrome-yellow-color-dark: rgb(144, 122, 57);
+        --chrome-grey-color-dark: #455A64;
+        --chrome-blue-color-dark: #1f4b6d;
+        --chrome-red-color-dark: #7c3537;
+        --chrome-yellow-color-dark: #845e24;
         --chrome-green-color-dark: #436f4a;
         --chrome-pink-color-dark: #935779;
         --chrome-purple-color-dark: #7c668e;
         --chrome-cyan-color-dark: #55858b;
+    }
+
+    /* Dark mode text colors */
+    body {
+        color: #ECEFF1;
+    }
+
+    h3 {
+        /* color: rgba(255, 255, 255, 0.8); */
+        color: #ECEFF1;
+    }
+
+    .space-name {
+        /* color: #fafafa; */
+        color: #ECEFF1;
+    }
+
+    .space-options {
+        /* color: rgba(255, 255, 255, 0.8); */
+        color: #ECEFF1;
+    }
+
+    .space-options-dropdown {
+        background-color: #2a2a2a;
+        border: 1px solid #444;
+    }
+
+    .space-options-dropdown button {
+        color: #ECEFF1;
+    }
+
+    .space-options-dropdown button:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .folder-name {
+        /* color: #fafafa; */
+        color: #ECEFF1;
+    }
+
+    .folder-toggle {
+        color: rgba(255, 255, 255, 0.8);    
+    }
+
+    .tab-placeholder {
+        color: rgba(255, 255, 255, 0.5);
+        border: 2px dotted rgba(255, 255, 255, 0.2);
+    }
+
+    .clean-tabs-btn {
+        /* color: rgba(255, 255, 255, 0.8); */
+        color: #ECEFF1;
+    }
+
+    .clean-tabs-btn:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .add-space-btn {
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .add-space-btn:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .new-tab-btn {
+        color: #ECEFF1;
+    }
+
+    .space-switcher button {
+        color: #ECEFF1;
+    }
+
+    .space-switcher button.active {
+        color: #000000;
+    }
+
+    .tab-title-display,
+    .tab-title-input {
+        /* color: #fafafa; */
+        color: #ECEFF1;
+    }
+
+    .tab.active .tab-title-display,
+    .tab.active .tab-title-input {
+        color: #000000;
+    }
+
+    .tab-domain-display {
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    #newSpaceName {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #ECEFF1;
+    }
+
+    #newSpaceName:focus {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    #newSpaceName::placeholder {
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    #createSpaceBtn {
+        background-color: rgba(255, 255, 255, 0.2);
+        color: #ECEFF1;
+    }
+
+    #createSpaceBtn:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .sidebar-button {
+        color: rgba(255, 255, 255, 0.8);
+    }
+
+    .sidebar-button:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .archived-tabs-list .archived-tab-item {
+        color: #ECEFF1;
+    }
+
+    .archived-tabs-list .archived-tab-item:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .no-archived-tabs-message {
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .archiving-toggle-label {
+        color: #ECEFF1;
+    }
+
+    .archiving-time-input {
+        background: rgba(255, 255, 255, 0.1);
+        color: #ECEFF1;
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .archiving-time-input:disabled {
+        background: rgba(255, 255, 255, 0.05);
+        color: rgba(255, 255, 255, 0.4);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .pinned-tab-placeholder {
+        color: rgba(255, 255, 255, 0.5);
+        border: 2px dashed rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .placeholder-close-btn {
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    .placeholder-close-btn:hover {
+        color: #ECEFF1;
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Spotlight dialog dark mode */
+    .spotlight-container {
+        background-color: rgba(42, 42, 42, 0.95);
+    }
+
+    .spotlight-input {
+        color: #ECEFF1;
+    }
+
+    .spotlight-input::placeholder {
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    /* Context menu dark mode */
+    .context-menu {
+        background-color: #2a2a2a;
+        border: 1px solid #444;
+    }
+
+    .context-menu-item {
+        background-color: #2a2a2a;
+        color: #ECEFF1;
+    }
+
+    .context-menu-item:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .context-menu-separator {
+        background-color: #444;
+    }
+
+    .context-menu-item.with-submenu::after {
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    /* Color picker dark mode */
+    .color-picker-grid {
+        background: #2a2a2a;
+    }
+
+    .color-swatch.selected {
+        border-color: rgba(255, 255, 255, 0.5);
     }
 }
