@@ -1310,7 +1310,10 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 function updateChevronState(spaceElement, pinnedContainer) {
     const chevronButton = spaceElement.querySelector('.space-toggle-chevron');
     const isCollapsed = pinnedContainer.classList.contains('collapsed');
-    
+    if (!chevronButton) {
+        return;
+    }
+
     if (isCollapsed) {
         chevronButton.classList.add('collapsed');
     } else {
