@@ -62,35 +62,41 @@
     <template id="spaceTemplate">
         <div class="space">
             <div class="space-header">
-                <div class="space-name-section">
+                <div class="space-name-container">
+                    <button class="space-toggle-chevron" title="Toggle pinned section">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="chevron-icon">
+                            <path d="M7 10l5 5 5-5z"/>
+                        </svg>
+                    </button>
                     <input type="text" class="space-name" placeholder="Space Name">
-                    <div class="space-options-container">
-                        <button id="space-options" class="space-options" title="Options">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" class="svg-icon"><path d="M296 376c0 22-18 40-40 40-22 0-40-18-40-40 0-22 18-40 40-40 22 0 40 18 40 40z m0-240c0 22-18 40-40 40-22 0-40-18-40-40 0-22 18-40 40-40 22 0 40 18 40 40z m0 120c0 22-18 40-40 40-22 0-40-18-40-40 0-22 18-40 40-40 22 0 40 18 40 40z"/></svg>
-                        </button>
-                        <div class="space-options-dropdown">
-                            <select class="space-color-select" id="spaceColorSelect">
-                                <option value="grey">Grey</option>
-                                <option value="blue">Blue</option>
-                                <option value="red">Red</option>
-                                <option value="yellow">Yellow</option>
-                                <option value="green">Green</option>
-                                <option value="pink">Pink</option>
-                                <option value="purple">Purple</option>
-                                <option value="cyan">Cyan</option>
-                            </select>
-                            <div class="color-picker-grid" id="spaceOptionColorSwatch">
-                                <div class="color-swatch" data-color="grey"></div>
-                                <div class="color-swatch" data-color="blue"></div>
-                                <div class="color-swatch" data-color="red"></div>
-                                <div class="color-swatch" data-color="yellow"></div>
-                                <div class="color-swatch" data-color="green"></div>
-                                <div class="color-swatch" data-color="pink"></div>
-                                <div class="color-swatch" data-color="purple"></div>
-                                <div class="color-swatch" data-color="cyan"></div>
-                            </div>
-                            <button class="new-folder-btn">New Folder</button>
-                            <button class="delete-space-btn">Delete Space</button>
+                </div>
+                <button id="archive-button" class="sidebar-button" title="Archived Tabs">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" class="svg-icon"><path d="M475 256c0-30-5-58-17-85-12-27-27-51-47-70-19-20-43-35-70-47-27-12-55-17-85-17-33 0-64 6-93 20-30 14-55 34-76 59-1 2-2 4-2 6 0 3 1 4 3 6l39 39c2 2 4 3 7 3 3 0 5-2 7-3 13-19 31-33 51-42 20-10 41-15 64-15 20 0 39 4 57 11 18 8 33 18 46 32 14 13 24 28 32 46 7 18 11 37 11 57 0 20-4 39-11 57-8 18-18 33-32 46-13 14-28 24-46 32-18 7-37 11-57 11-19 0-37-3-54-10-17-7-32-16-45-29l39-39c6-6 7-13 4-20-4-8-9-11-17-11l-128 0c-5 0-9 1-13 5-4 4-5 8-5 13l0 128c0 8 3 13 11 17 7 3 14 2 20-4l37-37c20 19 44 34 70 45 26 10 53 15 81 15 30 0 58-5 85-17 27-12 51-27 70-47 20-19 35-43 47-70 12-27 17-55 17-85z m-182 82l0-128c0-2-1-5-3-6-2-2-4-3-7-3l-91 0c-3 0-5 1-7 3-1 1-2 4-2 6l0 19c0 2 1 4 2 6 2 2 4 3 7 3l64 0 0 100c0 3 1 5 3 7 1 2 3 2 6 2l18 0c3 0 5 0 7-2 2-2 3-4 3-7z"/></svg>
+                </button>
+                <div class="space-options-container">
+                    <button id="space-options" class="space-options" title="Options">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" class="svg-icon"><path d="M296 376c0 22-18 40-40 40-22 0-40-18-40-40 0-22 18-40 40-40 22 0 40 18 40 40z m0-240c0 22-18 40-40 40-22 0-40-18-40-40 0-22 18-40 40-40 22 0 40 18 40 40z m0 120c0 22-18 40-40 40-22 0-40-18-40-40 0-22 18-40 40-40 22 0 40 18 40 40z"/></svg>
+                    </button>
+                    <div class="space-options-dropdown">
+                        <select class="space-color-select" id="spaceColorSelect">
+                            <option value="grey">Grey</option>
+                            <option value="blue">Blue</option>
+                            <option value="red">Red</option>
+                            <option value="yellow">Yellow</option>
+                            <option value="green">Green</option>
+                            <option value="pink">Pink</option>
+                            <option value="purple">Purple</option>
+                            <option value="cyan">Cyan</option>
+                        </select>
+                        <div class="color-picker-grid" id="spaceOptionColorSwatch">
+                            <div class="color-swatch" data-color="grey"></div>
+                            <div class="color-swatch" data-color="blue"></div>
+                            <div class="color-swatch" data-color="red"></div>
+                            <div class="color-swatch" data-color="yellow"></div>
+                            <div class="color-swatch" data-color="green"></div>
+                            <div class="color-swatch" data-color="pink"></div>
+                            <div class="color-swatch" data-color="purple"></div>
+                            <div class="color-swatch" data-color="cyan"></div>
                         </div>
                     </div>
                 </div>
@@ -113,7 +119,7 @@
             </div>
             <div id="space-content" class="space-content">
                 <div class="pinned-tabs">
-                    <h3>Pinned</h3>
+                    <!-- <h3>Pinned</h3> -->
                     <div class="placeholder-container">
                         <div class="tab-placeholder">Drag a tab here to pin</div>
                     </div>
@@ -135,7 +141,7 @@
                 </div>
                 <div class="temporary-tabs">
                     <div class="temp-header">
-                        <h3>Today</h3>
+                        <div class="divider-line"></div>
                         <button class="clean-tabs-btn">Clean All</button>
                     </div>
                     <div class="tabs-container" data-tab-type="temporary"></div>
