@@ -22,7 +22,7 @@ const addSpaceBtn = document.getElementById('addSpaceBtn');
 const newTabBtn = document.getElementById('newTabBtn');
 const spaceTemplate = document.getElementById('spaceTemplate');
 
-export function setupDOMElements(createNewSpace, createNewTab) {
+export function setupDOMElements(createNewSpace) {
     spaceSwitcher.addEventListener('wheel', (event) => {
         event.preventDefault();
 
@@ -53,7 +53,10 @@ export function setupDOMElements(createNewSpace, createNewTab) {
     });
 
     document.getElementById('createSpaceBtn').addEventListener('click', createNewSpace);
-    newTabBtn.addEventListener('click', createNewTab);
+    newTabBtn.addEventListener('click', () => {
+        // Trigger spotlight instead of creating a new tab
+        chrome.runtime.sendMessage({ command: "toggleSpotlightNewTab" });
+    });
 
     const createSpaceColorSwatch = document.getElementById('createSpaceColorSwatch');
     createSpaceColorSwatch.addEventListener('click', (e) => {
