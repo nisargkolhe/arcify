@@ -446,7 +446,7 @@ async function initSidebar() {
         console.error('Error initializing sidebar:', error);
     }
 
-    setupDOMElements(createNewSpace, createNewTab);
+    setupDOMElements(createNewSpace);
 }
 
 function createSpaceElement(space) {
@@ -1298,9 +1298,6 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                 tempContainer.appendChild(tabElement);
             }
         });
-
-        // Update chevron state based on pinned section visibility
-        updateChevronState(spaceElement, pinnedContainer);
     } catch (error) {
         console.error('Error loading tabs:', error);
     }
@@ -1898,13 +1895,19 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                    titleInput.value = override ? override.name : tab.title;
                }
            }
-
-            if (changeInfo.url) {
-                tabElement.querySelector('.tab-favicon').src = Utils.getFaviconUrl(changeInfo.url);
+            let faviconElement = tabElement.querySelector('.tab-favicon');
+            if (!faviconElement) {
+                // fallback to img element
+                faviconElement = tabElement.querySelector('img');
+            }
+            if (changeInfo.url && faviconElement) {
+                faviconElement.src = Utils.getFaviconUrl(changeInfo.url);
                 // Update bookmark URL if this is a pinned tab
                 if (tabElement.closest('[data-tab-type="pinned"]')) {
                     updateBookmarkForTab(tab, displayTitle);
                 }
+            } else if (!faviconElement) {
+                console.log('No favicon element found', faviconElement, tabElement);
             }
             // Update active state when tab's active state changes
             if (changeInfo.active !== undefined && changeInfo.active) {

@@ -58,10 +58,14 @@ if (chrome.contextMenus) {
 }
 
 // Listen for messages from the content script (sidebar)
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+chrome.runtime.onMessage.addListener(async function(request, sender, sendResponse) {
     // Forward the pin toggle command to the sidebar
     if (request.command === "toggleSpacePin") {
         chrome.runtime.sendMessage({ command: "toggleSpacePin", tabId: request.tabId });
+    } else if (request.command === "toggleSpotlight") {
+        await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
+    } else if (request.command === "toggleSpotlightNewTab") {
+        await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
     }
 });
 
