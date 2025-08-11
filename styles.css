@@ -206,6 +206,67 @@ h3 {
     align-items: center;
 }
 
+.space-name-container {
+    display: flex;
+    align-items: center;
+    flex-grow: 1;
+    position: relative;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+    margin-left: 8px;
+}
+
+.space-toggle-chevron {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    margin-right: 8px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    width: 0;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    overflow: hidden;
+}
+
+.space-name-container:hover .space-toggle-chevron {
+    opacity: 0.7 !important;
+    pointer-events: auto;
+    width: auto;
+    margin-right: 8px;
+    margin-left: 0px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.space-name-container:hover .space-name {
+    margin-left: 2px;
+}
+
+.space-toggle-chevron:hover {
+    opacity: 1 !important;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.chevron-icon {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    transition: transform 0.2s ease;
+}
+
+.space-toggle-chevron.collapsed .chevron-icon {
+    transform: rotate(-90deg);
+}
+
 .space-name {
     flex-grow: 1;
     background: none;
@@ -216,7 +277,7 @@ h3 {
     padding: 4px 0;
     border-radius: 4px;
     opacity: 0.95;
-    margin-left: 8px;
+    transition: margin-left 0.2s ease;
 }
 
 .space-name:focus {
@@ -234,7 +295,7 @@ h3 {
     font-size: 20px;
     color: #101010bd;
     cursor: pointer;
-    padding: 8px;
+    padding: 4px 2px;
     border-radius: 8px;
 }
 
@@ -464,7 +525,22 @@ h3 {
 
 .pinned-tabs,
 .temporary-tabs {
-    margin-top: 12px;
+    margin-top: 4px;
+}
+
+.pinned-tabs {
+    transition: all 0.3s ease;
+    overflow: hidden;
+    max-height: 500px; /* Adjust based on your content */
+    opacity: 1;
+}
+
+.pinned-tabs.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
 }
 
 .temp-header {
@@ -472,6 +548,14 @@ h3 {
     justify-content: space-between;
     align-items: center;
     /* margin-bottom: 8px; */
+}
+
+.divider-line {
+    flex-grow: 1;
+    height: 1px;
+    background-color: rgba(0, 0, 0, 0.1);
+    margin-right: 12px;
+    margin-left: 8px;
 }
 
 .clean-tabs-btn {
@@ -990,7 +1074,7 @@ h3 {
     background: none;
     border: none;
     font-size: 20px; /* Adjust icon size */
-    padding: 8px;
+    padding: 4px 2px;
     cursor: pointer;
     border-radius: 8px;
     color: #101010bd; /* Adjust icon color */
@@ -1067,7 +1151,7 @@ h3 {
 }
 
 .svg-icon {
-    width: 24px;
+    width: 18px;
     margin: 0 4px;
     fill: currentColor;
     opacity: 0.7;
@@ -1324,26 +1408,22 @@ h3 {
     }
 
     h3 {
-        /* color: rgba(255, 255, 255, 0.8); */
         color: #ECEFF1;
     }
 
     .space-name {
-        /* color: #fafafa; */
         color: #ECEFF1;
+    }
+
+    .space-toggle-chevron {
+        color: #ECEFF1;
+    }
+
+    .space-toggle-chevron:hover {
+        background-color: rgba(255, 255, 255, 0.1);
     }
 
     .space-options {
-        /* color: rgba(255, 255, 255, 0.8); */
-        color: #ECEFF1;
-    }
-
-    .space-options-dropdown {
-        background-color: #2a2a2a;
-        border: 1px solid #444;
-    }
-
-    .space-options-dropdown button {
         color: #ECEFF1;
     }
 
@@ -1352,7 +1432,6 @@ h3 {
     }
 
     .folder-name {
-        /* color: #fafafa; */
         color: #ECEFF1;
     }
 
@@ -1366,12 +1445,15 @@ h3 {
     }
 
     .clean-tabs-btn {
-        /* color: rgba(255, 255, 255, 0.8); */
-        color: #ECEFF1;
+        color: #E0E0E0;
     }
 
     .clean-tabs-btn:hover {
         background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .divider-line {
+        background-color: rgba(255, 255, 255, 0.2);
     }
 
     .add-space-btn {
@@ -1516,11 +1598,6 @@ h3 {
 
     .context-menu-item.with-submenu::after {
         color: rgba(255, 255, 255, 0.6);
-    }
-
-    /* Color picker dark mode */
-    .color-picker-grid {
-        background: #2a2a2a;
     }
 
     .color-swatch.selected {

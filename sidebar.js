@@ -523,6 +523,42 @@ function createSpaceElement(space) {
         await updateSpaceSwitcher();
     });
 
+    // Set up chevron toggle for pinned section
+    const chevronButton = spaceElement.querySelector('.space-toggle-chevron');
+    const pinnedSection = spaceElement.querySelector('.pinned-tabs');
+    
+    // Initialize state from localStorage or default to expanded
+    const isPinnedCollapsed = localStorage.getItem(`space-${space.id}-pinned-collapsed`) === 'true';
+    if (isPinnedCollapsed) {
+        chevronButton.classList.add('collapsed');
+        pinnedSection.classList.add('collapsed');
+    }
+    
+    // Initialize chevron state
+    updateChevronState(spaceElement, pinnedSection);
+
+
+
+    chevronButton.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent space name editing
+        const isCollapsed = chevronButton.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+            // Expand
+            chevronButton.classList.remove('collapsed');
+            pinnedSection.classList.remove('collapsed');
+            localStorage.setItem(`space-${space.id}-pinned-collapsed`, 'false');
+        } else {
+            // Collapse
+            chevronButton.classList.add('collapsed');
+            pinnedSection.classList.add('collapsed');
+            localStorage.setItem(`space-${space.id}-pinned-collapsed`, 'true');
+        }
+        
+        // Update chevron state
+        updateChevronState(spaceElement, pinnedSection);
+    });
+
     // Set up containers
     const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
     const tempContainer = spaceElement.querySelector('[data-tab-type="temporary"]');
@@ -913,6 +949,13 @@ async function moveTabToPinned(space, tab) {
             url: tab.url
         });
     }
+    
+    // Update chevron state after moving tab to pinned
+    const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
+    if (spaceElement) {
+        const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+        updateChevronState(spaceElement, pinnedContainer);
+    }
 }
 
 async function moveTabToTemp(space, tab) {
@@ -931,6 +974,13 @@ async function moveTabToTemp(space, tab) {
     }
 
     saveSpaces();
+    
+    // Update chevron state after moving tab from pinned
+    const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
+    if (spaceElement) {
+        const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+        updateChevronState(spaceElement, pinnedContainer);
+    }
 }
 
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
@@ -1238,8 +1288,23 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                 tempContainer.appendChild(tabElement);
             }
         });
+
+        // Update chevron state based on pinned section visibility
+        updateChevronState(spaceElement, pinnedContainer);
     } catch (error) {
         console.error('Error loading tabs:', error);
+    }
+}
+
+// Function to update chevron state based on pinned section visibility
+function updateChevronState(spaceElement, pinnedContainer) {
+    const chevronButton = spaceElement.querySelector('.space-toggle-chevron');
+    const isCollapsed = pinnedContainer.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+        chevronButton.classList.add('collapsed');
+    } else {
+        chevronButton.classList.remove('collapsed');
     }
 }
 
@@ -1305,10 +1370,24 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
             tabElement.replaceWith(inactiveTabElement);
 
             chrome.tabs.remove(tab.id);
+            
+            // Update chevron state after closing pinned tab
+            const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
+            if (spaceElement) {
+                const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+                updateChevronState(spaceElement, pinnedContainer);
+            }
             return;
         }
     } else {
         chrome.tabs.remove(tab.id);
+    }
+    
+    // Update chevron state after closing any tab
+    const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
+    if (spaceElement) {
+        const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+        updateChevronState(spaceElement, pinnedContainer);
     }
 }
 
