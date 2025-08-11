@@ -544,9 +544,11 @@ h3 {
 }
 
 .temp-header {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    z-index: 2;
     /* margin-bottom: 8px; */
 }
 
