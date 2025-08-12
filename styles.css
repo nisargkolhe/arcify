@@ -141,7 +141,7 @@ h3 {
     cursor: pointer;
     background-color: #fff;
     border-radius: 8px;
-    transition: background-color 0.2s;
+    transition: background-color 0.3s ease;
     color: #333;
 }
 
@@ -212,7 +212,7 @@ h3 {
     flex-grow: 1;
     position: relative;
     border-radius: 4px;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.3s ease;
     margin-left: 8px;
 }
 
@@ -339,6 +339,12 @@ h3 {
     background-color: rgba(0, 0, 0, 0.05);
 }
 
+.options-separator {
+    height: 1px;
+    background-color: rgba(0, 0, 0, 0.1);
+    margin: 4px 8px;
+}
+
 .space-color-select {
     display: none;
 }
@@ -398,7 +404,7 @@ h3 {
     /* border: 1px solid rgba(0, 0, 0, 0.1); */
     /* background-color: rgba(255, 255, 255, 0.2); */
     background: var(--space-bg-color-dark, rgba(255, 255, 255, 0.1));
-    transition: all 0.3s;
+    transition: all 0.2s;
     position: relative;
     z-index: 1;
 }
@@ -518,7 +524,7 @@ h3 {
 .space-content {
     display: flex;
     flex-direction: column;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     opacity: 1;
     z-index: 1;
 }
@@ -534,7 +540,7 @@ h3 {
 }
 
 .pinned-tabs {
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     overflow: hidden;
     max-height: 500px; /* Adjust based on your content */
     opacity: 1;
@@ -628,7 +634,7 @@ h3 {
     gap: 8px;
     font-size: 16px;
     width: 100%;
-    transition: background-color 0.2s;
+    transition: background-color 0.3s ease;
 }
 
 .new-tab-btn:hover {
@@ -654,7 +660,7 @@ h3 {
     -ms-overflow-style: none; /* IE and Edge */
     opacity: 1;
     visibility: visible;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
     mask-image: linear-gradient(to right, rgb(0, 0, 0), rgb(0, 0, 0), rgb(0, 0, 0), rgb(0, 0, 0), rgba(0, 0, 0, 0));
 }
 
@@ -679,7 +685,7 @@ h3 {
     overflow: hidden;
     text-overflow: ellipsis;
     flex: none;
-    transition: background-color 0.3s;
+    transition: background-color 0.3s ease;
 }
 
 .space-switcher button:hover {
@@ -698,7 +704,7 @@ h3 {
     margin-bottom: 4px;
     border-radius: 12px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.3s ease;
     background: var(--space-bg-color, rgba(255, 255, 255, 0.1));
     position: relative;
     /* font-weight: 600; */
@@ -805,7 +811,7 @@ h3 {
     border-radius: 6px;
     margin-left: 8px;
     opacity: 0;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition: opacity 0.2s ease, background-color 0.3s ease;
 }
 
 .tab:hover .tab-close,
@@ -864,7 +870,7 @@ h3 {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.3s ease;
+    transition: transform 0.2s ease;
 }
 
 .add-space-toggle.active {
@@ -882,7 +888,7 @@ h3 {
     align-items: center;
     opacity: 0;
     height: 0px;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
 }
 
 .add-space-input-container.visible {
@@ -899,7 +905,7 @@ h3 {
     font-size: 14px;
     color: #333;
     outline: none;
-    transition: background-color 0.2s;
+    transition: background-color 0.3s ease;
 }
 
 #newSpaceName:focus {
@@ -918,7 +924,7 @@ h3 {
     font-size: 14px;
     color: #333;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: background-color 0.3s ease;
 }
 
 #createSpaceBtn:hover:not(:disabled) {
@@ -1050,7 +1056,7 @@ h3 {
     border-radius: 8px; /* Rounded corners */
     font-size: 1rem;
     font-weight: 600;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.3s ease;
     display: inline-block; /* Allow centering */
     margin-top: 1rem; /* Space above button */
 }
@@ -1074,7 +1080,7 @@ h3 {
     margin-top: auto; /* Push to the bottom */
     display: flex;
     justify-content: flex-start; /* Align button to the left */
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
 }
 
 .sidebar-button { /* General style for buttons like archive */
@@ -1088,7 +1094,7 @@ h3 {
     cursor: pointer;
     border-radius: 8px;
     color: #101010bd; /* Adjust icon color */
-    transition: background-color 0.2s ease;
+    transition: background-color 0.3s ease;
 }
 
 .sidebar-button:hover {
@@ -1104,7 +1110,7 @@ h3 {
     max-height: 50%; /* Limit height */
     overflow-y: auto;
     z-index: 0; /* Ensure it's above other elements */
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     /* padding: 8px; */
     /* font-size: 13px; */
 }

@@ -573,6 +573,7 @@ function createSpaceElement(space) {
     // Set up options menu
     const newFolderBtn = spaceElement.querySelector('.new-folder-btn');
     const deleteSpaceBtn = spaceElement.querySelector('.delete-space-btn');
+    const settingsBtn = spaceElement.querySelector('.settings-btn');
 
     newFolderBtn.addEventListener('click', () => {
         createNewFolder(spaceContainer);
@@ -582,6 +583,10 @@ function createSpaceElement(space) {
         if (confirm('Delete this space and close all its tabs?')) {
             deleteSpace(space.id);
         }
+    });
+
+    settingsBtn.addEventListener('click', () => {
+        chrome.runtime.openOptionsPage();
     });
 
     // Load tabs
