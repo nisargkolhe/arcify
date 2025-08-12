@@ -455,7 +455,7 @@ function createSpaceElement(space) {
     const sidebarContainer = document.getElementById('sidebar-container');
     const spaceContainer = spaceElement.querySelector('.space');
     spaceContainer.dataset.spaceId = space.id;
-    spaceContainer.style.display = space.id === activeSpaceId ? 'block' : 'none';
+    spaceContainer.style.display = space.id === activeSpaceId ? 'flex' : 'none';
     spaceContainer.dataset.spaceUuid = space.id;
 
     // Set space background color based on the tab group color

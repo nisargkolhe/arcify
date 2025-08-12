@@ -133,7 +133,7 @@ export function activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher) {
     document.querySelectorAll('.space').forEach(s => {
         const isActive = s.dataset.spaceId === String(spaceId);
         s.classList.toggle('active', isActive);
-        s.style.display = isActive ? 'block' : 'none';
+        s.style.display = isActive ? 'flex' : 'none';
     });
 
     // Get space color and update sidebar container background
@@ -391,7 +391,7 @@ export async function showArchivedTabsPopup(activeSpaceId) {
             restoreButton.innerHTML = RESTORE_ICON;
             restoreButton.className = 'tab-restore';
             restoreButton.style.marginLeft = 'auto';
-            restoreButton.addEventListener('click', (e) => {
+            item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 Utils.restoreArchivedTab(archivedTab);
                 item.remove();
