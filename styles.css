@@ -198,6 +198,9 @@ h3 {
     /* background-color: rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 16px; */
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
 }
 
 .space-header {
@@ -522,11 +525,13 @@ h3 {
     transition: all 0.2s ease;
     opacity: 1;
     z-index: 1;
+    overflow-y: scroll;
 }
 
 .space-content.hidden {
     opacity: 0;
     z-index: 0;
+    height: 0;
 }
 
 .pinned-tabs,
@@ -536,8 +541,8 @@ h3 {
 
 .pinned-tabs {
     transition: all 0.2s ease;
-    overflow: hidden;
-    max-height: 500px; /* Adjust based on your content */
+    /* overflow: hidden;
+    max-height: 500px;  */
     opacity: 1;
 }
 
@@ -1070,12 +1075,12 @@ h3 {
 
 /* Archive Section Styles */
 .archive-section {
-    position: absolute; /* Needed for absolute positioning of popup */
     width: 100%;
     margin-top: auto; /* Push to the bottom */
     display: flex;
     justify-content: flex-start; /* Align button to the left */
     transition: all 0.2s ease;
+    overflow: hidden;
 }
 
 .sidebar-button { /* General style for buttons like archive */
@@ -1094,15 +1099,15 @@ h3 {
 }
 
 .archived-tabs-popup {
-    display: block; /* Hidden by default */
-    height: 100%;
+    display: flex; /* Hidden by default */
+    flex-direction: column;
+    height: 0;
     opacity: 0;
-    margin-top: 12px;
+    margin-top: 0;
     width: 100%;
-    max-height: 50%; /* Limit height */
     overflow-y: auto;
     z-index: 0; /* Ensure it's above other elements */
-    transition: all 0.2s ease;
+    transition: opacity 0.3s ease;
     /* padding: 8px; */
     /* font-size: 13px; */
 }
@@ -1110,7 +1115,12 @@ h3 {
 .archived-tabs-popup.visible {
     opacity: 1;
     z-index: 2;
-    /* height: 25rem; */
+    height: 100%;
+    margin-top: 12px;
+}
+
+.archived-tabs-list {
+    overflow-y: scroll;
 }
 
 .archived-tabs-list .archived-tab-item {

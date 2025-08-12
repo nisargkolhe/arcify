@@ -123,10 +123,11 @@ const Utils = {
 
         const archivedTabs = await this.getArchivedTabs();
 
-        const exists = archivedTabs.some(t => t.url === tabData.url && t.spaceId === tabData.spaceId);
-        if (exists) {
-            console.log(`Tab already archived: ${tabData.name}`);
-            return; // Don't add duplicates
+        // Check if URL already exists in archive (regardless of space)
+        const existingTab = archivedTabs.find(t => t.url === tabData.url);
+        if (existingTab) {
+            console.log(`Tab with URL already archived: ${tabData.name} (${tabData.url})`);
+            return; // Don't add duplicates based on URL
         }
 
         // Add new tab with timestamp
