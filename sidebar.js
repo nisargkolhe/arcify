@@ -1758,21 +1758,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         showTabContextMenu(e.pageX, e.pageY, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive);
     });
 
-    // Create a wrapper container for the tab and spacing
-    const tabWrapper = document.createElement('div');
-    tabWrapper.style.display = 'flex';
-    tabWrapper.style.flexDirection = 'column';
-    
-    // Add the tab element to the wrapper
-    tabWrapper.appendChild(tabElement);
-    
-    // Add vertical spacing element below the tab
-    const spacingElement = document.createElement('div');
-    spacingElement.style.height = '4px';
-    spacingElement.style.width = '100%';
-    tabWrapper.appendChild(spacingElement);
-
-    return tabWrapper;
+    return tabElement;
 }
 
 function createNewTab(callback = () => {}) {
