@@ -1389,7 +1389,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 
 
         // Load temporary tabs
-        space.temporaryTabs.forEach(async tabId => {
+        space.temporaryTabs.reverse().forEach(async tabId => {
             console.log("checking", tabId, spaces);
             const tab = tabs.find(t => t.id === tabId);
             const pinned = bookmarkedTabURLs.find(url => url == tab.url);
@@ -1772,8 +1772,21 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         showTabContextMenu(e.pageX, e.pageY, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive);
     });
 
+    // Create a wrapper container for the tab and spacing
+    const tabWrapper = document.createElement('div');
+    tabWrapper.style.display = 'flex';
+    tabWrapper.style.flexDirection = 'column';
+    
+    // Add the tab element to the wrapper
+    tabWrapper.appendChild(tabElement);
+    
+    // Add vertical spacing element below the tab
+    const spacingElement = document.createElement('div');
+    spacingElement.style.height = '4px';
+    spacingElement.style.width = '100%';
+    tabWrapper.appendChild(spacingElement);
 
-    return tabElement;
+    return tabWrapper;
 }
 
 function createNewTab(callback = () => {}) {
@@ -2305,4 +2318,39 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
+    
+    // 6. Scroll to top of temporary tabs if this is a new tab being added to temporary section    
+    if (!pinned && spaceElement) {
+        const spaceContent = spaceElement.querySelector('.space-content');
+        
+        if (spaceContent) {            
+            // Use setTimeout to ensure the DOM has been updated
+            setTimeout(() => {                
+                // Check if the top of temporary-tabs section is within the frame
+                const tempTabsSection = spaceElement.querySelector('.temporary-tabs');
+                if (tempTabsSection) {
+                    const tempTabsRect = tempTabsSection.getBoundingClientRect();
+                    const spaceContentRect = spaceContent.getBoundingClientRect();
+                    
+                    // Check if the top of temporary-tabs is above the visible area of spaceContent
+                    const isTempTabsTopVisible = tempTabsRect.top >= spaceContentRect.top;
+                    console.log('[ScrollDebug] Temp tabs top visible:', isTempTabsTopVisible, 'tempTabsRect.top:', tempTabsRect.top, 'spaceContentRect.top:', spaceContentRect.top);
+                    
+                    if (!isTempTabsTopVisible) {
+                        console.log('[ScrollDebug] Scrolling to show temp tabs - top was out of frame');
+                        // Scroll to make the temporary-tabs section visible at the top
+                        spaceContent.scrollTop = (spaceContentRect.top - tempTabsRect.top);
+                    } else {
+                        console.log('[ScrollDebug] Not scrolling - temp tabs top is already visible');
+                    }
+                } else {
+                    console.warn('[ScrollDebug] Temporary tabs section not found');
+                }
+            }, 0);
+        } else {
+            console.warn('[ScrollDebug] Space content element not found');
+        }
+    } else {
+        console.log('[ScrollDebug] Skipping scroll - pinned:', pinned, 'spaceElement exists:', !!spaceElement);
+    }
 }

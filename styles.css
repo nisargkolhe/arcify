@@ -406,7 +406,7 @@ h3 {
     overflow: hidden;
     /* border: 1px solid rgba(0, 0, 0, 0.1); */
     /* background-color: rgba(255, 255, 255, 0.2); */
-    background: var(--space-bg-color-dark, rgba(255, 255, 255, 0.1));
+    background: var(--space-bg-color, rgba(255, 255, 255, 0.1));
     transition: all 0.2s;
     position: relative;
     z-index: 1;
@@ -706,7 +706,7 @@ h3 {
     display: flex;
     align-items: center;
     padding: 4px 12px;
-    margin-bottom: 4px;
+    /* margin-bottom: 4px; */
     border-radius: 12px;
     cursor: pointer;
     transition: background-color 0.3s ease;
