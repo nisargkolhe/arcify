@@ -1126,6 +1126,10 @@ async function createNewFolder(spaceElement) {
     folderContent.classList.toggle('collapsed');
     folderToggle.classList.toggle('collapsed');
 
+    // Set up initial display for new folder
+    folderNameInput.style.display = 'inline-block';
+    folderTitle.style.display = 'none';
+
     folderHeader.addEventListener('click', () => {
         folderElement.classList.toggle('collapsed');
         folderContent.classList.toggle('collapsed');
@@ -1144,9 +1148,56 @@ async function createNewFolder(spaceElement) {
                 parentId: spaceFolder.id,
                 title: folderNameInput.value
             });
-            folderNameInput.classList.toggle('hidden');
+            folderNameInput.style.display = 'none';
             folderTitle.innerHTML = folderNameInput.value;
-            folderTitle.classList.toggle('hidden');
+            folderTitle.style.display = 'inline';
+        }
+    });
+
+    // Add double-click functionality for folder name editing (for new folders)
+    folderHeader.addEventListener('dblclick', (e) => {
+        // Prevent dblclick on folder toggle button from triggering rename
+        if (e.target === folderToggle) return;
+
+        folderTitle.style.display = 'none';
+        folderNameInput.style.display = 'inline-block';
+        folderNameInput.readOnly = false;
+        folderNameInput.disabled = false;
+        folderNameInput.select();
+        folderNameInput.focus();
+    });
+
+    const saveOrCancelNewFolderEdit = async (save) => {
+        if (save) {
+            const newName = folderNameInput.value.trim();
+            if (newName) {
+                const spaceName = spaceElement.querySelector('.space-name').value;
+                const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
+                const existingFolders = await chrome.bookmarks.getChildren(spaceFolder.id);
+                const folder = existingFolders.find(f => f.title === newName);
+                if (!folder) {
+                    await chrome.bookmarks.create({
+                        parentId: spaceFolder.id,
+                        title: newName
+                    });
+                }
+            }
+        }
+        // Update display regardless of save/cancel
+        folderNameInput.style.display = 'none';
+        folderTitle.innerHTML = folderNameInput.value || 'Untitled';
+        folderTitle.style.display = 'inline';
+    };
+
+    folderNameInput.addEventListener('blur', () => saveOrCancelNewFolderEdit(true));
+    folderNameInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            await saveOrCancelNewFolderEdit(true);
+            folderNameInput.blur();
+        } else if (e.key === 'Escape') {
+            await saveOrCancelNewFolderEdit(false);
+            folderNameInput.blur();
         }
     });
 
@@ -1239,12 +1290,58 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                             folderIcon.innerHTML = folderElement.classList.contains('collapsed') ? FOLDER_CLOSED_ICON : FOLDER_OPEN_ICON;
                         });
 
+                        // Add double-click functionality for folder name editing
+                        folderHeader.addEventListener('dblclick', (e) => {
+                            // Prevent dblclick on folder toggle button from triggering rename
+                            if (e.target === folderToggle) return;
+
+                            folderTitle.style.display = 'none';
+                            folderNameInput.style.display = 'inline-block';
+                            folderNameInput.readOnly = false;
+                            folderNameInput.disabled = false;
+                            folderNameInput.select();
+                            folderNameInput.focus();
+                        });
+
+                        const saveOrCancelFolderEdit = async (save) => {
+                            if (save) {
+                                const newName = folderNameInput.value.trim();
+                                if (newName && newName !== item.title) {
+                                    try {
+                                        await chrome.bookmarks.update(item.id, { title: newName });
+                                        item.title = newName; // Update local item object
+                                    } catch (error) {
+                                        console.error("Error updating folder name:", error);
+                                    }
+                                }
+                            }
+                            // Update display regardless of save/cancel
+                            folderNameInput.value = item.title;
+                            folderNameInput.readOnly = true;
+                            folderNameInput.disabled = true;
+                            folderNameInput.style.display = 'none';
+                            folderTitle.innerHTML = item.title;
+                            folderTitle.style.display = 'inline';
+                        };
+
+                        folderNameInput.addEventListener('blur', () => saveOrCancelFolderEdit(true));
+                        folderNameInput.addEventListener('keydown', async (e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                await saveOrCancelFolderEdit(true);
+                                folderNameInput.blur();
+                            } else if (e.key === 'Escape') {
+                                await saveOrCancelFolderEdit(false);
+                                folderNameInput.blur();
+                            }
+                        });
+
                         folderNameInput.value = item.title;
                         folderNameInput.readOnly = true;
                         folderNameInput.disabled = true;
-                        folderNameInput.classList.toggle('hidden');
+                        folderNameInput.style.display = 'none';
                         folderTitle.innerHTML = item.title;
-                        folderTitle.classList.toggle('hidden');
+                        folderTitle.style.display = 'inline';
                         placeHolderElement.classList.remove('hidden');
 
                         container.appendChild(folderElement);
