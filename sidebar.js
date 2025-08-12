@@ -1495,10 +1495,14 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
 
 async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     console.log('Creating tab element:', tab.id, 'IsBookmarkOnly:', isBookmarkOnly);
-    const tabElement = document.createElement('div');
-    tabElement.classList.add('tab');
+    
+    // Get the template and clone it
+    const template = document.getElementById('tabTemplate');
+    const tabElement = template.content.cloneNode(true).querySelector('.tab');
+    
+    // Set up the tab element properties
     if (isBookmarkOnly) {
-        tabElement.classList.add('inactive', 'bookmark-only'); // Add specific class for styling
+        tabElement.classList.add('inactive', 'bookmark-only');
         tabElement.dataset.url = tab.url;
     } else {
         tabElement.dataset.tabId = tab.id;
@@ -1508,39 +1512,25 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         }
     }
 
-    const favicon = document.createElement('img');
+    // Get references to template elements
+    const favicon = tabElement.querySelector('.tab-favicon');
+    const tabDetails = tabElement.querySelector('.tab-details');
+    const titleDisplay = tabElement.querySelector('.tab-title-display');
+    const domainDisplay = tabElement.querySelector('.tab-domain-display');
+    const titleInput = tabElement.querySelector('.tab-title-input');
+    const actionButton = tabElement.querySelector('.tab-close');
+
+    // Set up favicon
     favicon.src = Utils.getFaviconUrl(tab.url);
-    favicon.classList.add('tab-favicon');
     favicon.onerror = () => { 
         favicon.src = tab.favIconUrl; 
-        favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; }; // Fallback favicon
-    }; // Fallback favicon
+        favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; };
+    };
 
-    // --- Renaming Elements ---
-    const tabDetails = document.createElement('div');
-    tabDetails.className = 'tab-details';
-
-    const titleDisplay = document.createElement('span');
-    titleDisplay.className = 'tab-title-display';
-
-    const domainDisplay = document.createElement('span');
-    domainDisplay.className = 'tab-domain-display';
-    domainDisplay.style.display = 'none'; // Hide initially
-
-    const titleInput = document.createElement('input');
-    titleInput.type = 'text';
-    titleInput.className = 'tab-title-input';
-    titleInput.style.display = 'none'; // Hide initially
-    titleInput.spellcheck = false; // Optional: disable spellcheck
-
-    tabDetails.appendChild(titleDisplay);
-    tabDetails.appendChild(domainDisplay);
-    tabDetails.appendChild(titleInput);
-    // --- End Renaming Elements ---
-
-    const actionButton = document.createElement('button');
-    actionButton.classList.add(isBookmarkOnly ? 'tab-remove' : 'tab-close'); // Use 'tab-remove' for bookmarks
-    actionButton.innerHTML = isBookmarkOnly ? '−' : '×'; // Use minus for remove, times for close
+    // Set up action button
+    actionButton.classList.remove('tab-close');
+    actionButton.classList.add(isBookmarkOnly ? 'tab-remove' : 'tab-close');
+    actionButton.innerHTML = isBookmarkOnly ? '−' : '×';
     actionButton.title = isBookmarkOnly ? 'Remove Bookmark' : 'Close Tab';
     actionButton.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -1549,10 +1539,6 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         const isCurrentlyPinned = activeSpace?.spaceBookmarks.includes(tab.id);
         closeTab(tabElement, tab, isCurrentlyPinned, isBookmarkOnly);
     });
-
-    tabElement.appendChild(favicon);
-    tabElement.appendChild(tabDetails); // Add the details container
-    tabElement.appendChild(actionButton);
 
     // --- Function to update display based on overrides ---
     const updateDisplay = async () => {
