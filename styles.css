@@ -188,6 +188,7 @@ h3 {
     flex-direction: column;
     gap: 16px;
     overflow-y: scroll;
+    scrollbar-width: none;
 }
 
 .spaces-list::-webkit-scrollbar {
@@ -526,6 +527,7 @@ h3 {
     opacity: 1;
     z-index: 1;
     overflow-y: scroll;
+    scrollbar-width: none;
 }
 
 .space-content.hidden {
@@ -588,6 +590,7 @@ h3 {
 .tabs-container {
     min-height: 60px;
     margin-top: 4px;
+    background: var(--space-bg-color);
     /* border-radius: 8px;
     background-color: rgba(255, 255, 255, 0.1);
     padding: 8px;
@@ -1121,6 +1124,7 @@ h3 {
 
 .archived-tabs-list {
     overflow-y: scroll;
+    scrollbar-width: none;
 }
 
 .archived-tabs-list .archived-tab-item {
