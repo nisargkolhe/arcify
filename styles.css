@@ -204,6 +204,7 @@ h3 {
     display: flex;
     flex-direction: column;
     overflow-y: hidden;
+    height: 100%;
 }
 
 .space-header {
@@ -530,6 +531,7 @@ h3 {
     z-index: 1;
     overflow-y: scroll;
     scrollbar-width: none;
+    flex-grow: 1;
 }
 
 .space-content.hidden {
