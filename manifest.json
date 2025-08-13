@@ -43,6 +43,7 @@
       "resources": [
         "sidebar.js",
         "onboarding.js",
+        "installation-onboarding.js",
         "assets/*",
         "_favicon/*",
         "spotlight/shared/*"
@@ -61,29 +62,25 @@
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Ctrl+E",
-        "mac": "Command+E"
+        "default": "Alt+S"
       },
       "description": "Toggle side panel"
     },
     "quickPinToggle": {
       "suggested_key": {
-        "default": "Ctrl+D",
-        "mac": "Command+D"
+        "default": "Alt+D"
       },
       "description": "Quick Pin/Unpin Tab"
     },
     "toggleSpotlight": {
       "suggested_key": {
-        "default": "Ctrl+K",
-        "mac": "Command+K"
+        "default": "Alt+L"
       },
       "description": "Current Tab URL"
     },
     "toggleSpotlightNewTab": {
       "suggested_key": {
-        "default": "Ctrl+H",
-        "mac": "Command+H"
+        "default": "Alt+T"
       },
       "description": "New Tab"
     }
