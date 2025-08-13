@@ -35,10 +35,17 @@ chrome.sidePanel.setPanelBehavior({
 
 
 // Listen for extension installation
-chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install' || details.reason === 'update') {
+chrome.runtime.onInstalled.addListener(async (details) => {
+    if (details.reason === 'install') {
+        // Check if onboarding has been completed before
+        const result = await chrome.storage.sync.get(['onboardingCompleted']);
+        if (!result.onboardingCompleted) {
+            chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
+        }
+    } else if (details.reason === 'update') {
         chrome.tabs.create({ url: 'onboarding.html', active: true });
     }
+    
     if (chrome.contextMenus) {
         chrome.contextMenus.create({
             id: "openArcify",

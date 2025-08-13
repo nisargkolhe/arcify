@@ -39,6 +39,7 @@ const Utils = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
             autoArchiveIdleMinutes: 30, // Default: 30 minutes
+            enableSpotlight: true, // Default: enabled
             // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);
