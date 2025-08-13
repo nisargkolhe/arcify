@@ -15,6 +15,7 @@
 import { ResultType, SpotlightTabMode } from './search-types.js';
 import { websiteNameExtractor } from './website-name-extractor.js';
 import { BASE_SCORES } from './scoring-constants.js';
+import { Utils } from '../../utils.js';
 
 export class SpotlightUtils {
     // Helper to properly prefix URLs with protocol
@@ -143,8 +144,7 @@ export class SpotlightUtils {
             if (result.metadata?.isUrl && result.url) {
                 // For URL autocomplete suggestions, get the website favicon
                 try {
-                    const url = new URL(SpotlightUtils.normalizeURL(result.url));
-                    return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
+                    return Utils.getFaviconUrl(result.url, "64");
                 } catch {
                     // Fallback to search icon if URL parsing fails
                 }
@@ -155,8 +155,7 @@ export class SpotlightUtils {
         
         if (result.url) {
             try {
-                const url = new URL(SpotlightUtils.normalizeURL(result.url));
-                return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
+                return Utils.getFaviconUrl(result.url, "64");
             } catch {
                 // Fallback for invalid URLs
             }
