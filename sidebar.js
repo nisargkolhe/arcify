@@ -2271,7 +2271,8 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
                     container.appendChild(tabElement);
                 }
             } else {
-                container.insertBefore(tabElement, container.firstChild);
+                // Add to the bottom after all existing elements
+                container.appendChild(tabElement);
             }
         } else {
             container.appendChild(tabElement);
