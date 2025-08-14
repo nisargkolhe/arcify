@@ -12,13 +12,11 @@ function getExtensionInputs() {
     options: resolve(process.cwd(), 'options.html'),
     onboarding: resolve(process.cwd(), 'onboarding.html'),
     'installation-onboarding': resolve(process.cwd(), 'installation-onboarding.html'),
-    'spotlight-popup': resolve(process.cwd(), 'spotlight/popup.html'),
     background: resolve(process.cwd(), 'background.js'),
     'sidebar-script': resolve(process.cwd(), 'sidebar.js'),
     'options-script': resolve(process.cwd(), 'options.js'),
     'onboarding-script': resolve(process.cwd(), 'onboarding.js'),
     'installation-onboarding-script': resolve(process.cwd(), 'installation-onboarding.js'),
-    'spotlight-popup-script': resolve(process.cwd(), 'spotlight/popup.js'),
   };
 }
 
@@ -28,13 +26,12 @@ function getExtensionInputs() {
 function getExtensionOutput(isDev = false) {
   return {
     entryFileNames: (chunkInfo) => {
-      const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'installation-onboarding-script', 'spotlight-popup-script'];
+      const mainScripts = ['background', 'sidebar-script', 'options-script', 'onboarding-script', 'installation-onboarding-script'];
       if (mainScripts.includes(chunkInfo.name)) {
         if (chunkInfo.name === 'sidebar-script') return 'sidebar.js';
         if (chunkInfo.name === 'options-script') return 'options.js';
         if (chunkInfo.name === 'onboarding-script') return 'onboarding.js';
         if (chunkInfo.name === 'installation-onboarding-script') return 'installation-onboarding.js';
-        if (chunkInfo.name === 'spotlight-popup-script') return 'spotlight/popup.js';
         return `${chunkInfo.name}.js`;
       }
       return isDev ? '[name].js' : 'assets/[name]-[hash].js';
@@ -42,9 +39,6 @@ function getExtensionOutput(isDev = false) {
     chunkFileNames: isDev ? '[name].js' : 'assets/[name]-[hash].js',
     assetFileNames: (assetInfo) => {
       if (assetInfo.name?.endsWith('.css')) {
-        if (assetInfo.name?.includes('popup')) {
-          return 'spotlight/popup.css';
-        }
         return '[name][extname]';
       }
       return isDev ? '[name][extname]' : 'assets/[name]-[hash][extname]';
@@ -74,14 +68,19 @@ function getExtensionPlugins(isDev = false) {
           await fs.copy('styles.css', `${outDir}/styles.css`);
         }
         
-        // Copy spotlight files except overlay.js (overlay is built separately)
+        // Copy spotlight files except overlay.js (overlay is built separately) and popup files
         if (await fs.pathExists('spotlight')) {
           await fs.copy('spotlight', `${outDir}/spotlight`, {
             filter: (src) => {
               // Exclude overlay.js (built separately as IIFE)
               if (src.endsWith('overlay.js')) return false;
               
-              // Include everything else (CSS files and JS modules needed by popup)
+              // Exclude popup files (popup mode removed)
+              if (src.endsWith('popup.html')) return false;
+              if (src.endsWith('popup.css')) return false;
+              if (src.endsWith('popup.js')) return false;
+              
+              // Include everything else (shared modules needed by overlay)
               return true;
             }
           });

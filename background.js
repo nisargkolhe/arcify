@@ -189,40 +189,39 @@ async function injectSpotlightScript(spotlightTabMode) {
             });
         }
     } catch (error) {
-        console.log("All spotlight activation methods failed, using popup fallback:", error);
-        // Final fallback: open spotlight popup
-        await openSpotlightPopup(spotlightTabMode);
+        console.log("All spotlight activation methods failed, using Chrome tab fallback:", error);
+        // Final fallback: Chrome tab operations
+        await fallbackToChromeTabs(spotlightTabMode);
     }
 }
 
-// Helper function to open spotlight popup fallback
-async function openSpotlightPopup(spotlightTabMode) {
+// Helper function for Chrome tab fallback when spotlight injection fails
+async function fallbackToChromeTabs(spotlightTabMode) {
     try {
         // First, close any existing spotlights in tracked tabs
         await closeSpotlightInTrackedTabs();
         
-        // Set popup mode and tab mode in storage for popup to read
-        await chrome.storage.local.set({ 
-            spotlightMode: spotlightTabMode,
-            spotlightPopupActive: true 
-        });
+        console.log(`Falling back to Chrome tabs for mode: ${spotlightTabMode}`);
         
-        // Notify sidebar about spotlight mode
-        chrome.runtime.sendMessage({
-            action: 'spotlightOpened',
-            mode: spotlightTabMode
-        });
+        // TODO: Consider adding a toast/notification to inform users that current tab 
+        // URL hotkeys don't work on core Chrome pages (chrome://, extension pages, etc.)
+        // This would help users understand why we're opening a new tab instead.
+        // Could use chrome.notifications API or a subtle in-page notification.
+
+        // Always create new tab regardless of original mode
+        // This ensures URL bar is always focused when spotlight fails
+        // Chrome security model prevents extensions from focusing address bar directly
+        await chrome.tabs.create({ url: 'chrome://newtab/', active: true });
+        console.log("Spotlight failed - created new tab with URL bar focused");
         
-        // Open popup (requires popup to be configured in manifest)
-        await chrome.action.openPopup();
-        
-    } catch (popupError) {
-        console.error("Error opening spotlight popup fallback:", popupError);
+    } catch (chromeTabError) {
+        console.error("Error with Chrome tab fallback:", chromeTabError);
         // Final fallback: open side panel
         try {
             const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
             if (tab) {
                 chrome.sidePanel.open({windowId: tab.windowId});
+                console.log("Opened side panel as final fallback");
             }
         } catch (sidePanelError) {
             console.error("All fallbacks failed:", sidePanelError);
@@ -444,26 +443,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.create({ url: message.url });
         sendResponse({ success: true });
         return false; // Synchronous response
-    } else if (message.action === 'navigateCurrentTab') {
-        // Handle navigation of current tab for popup current-tab mode
-        // Needs message passing to background script because the browser `window` object
-        // is not available in popup. Popup only has access to its own window.
-        (async () => {
-            try {
-                const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
-                if (activeTab) {
-                    await chrome.tabs.update(activeTab.id, { url: message.url });
-                    sendResponse({ success: true });
-                } else {
-                    console.error('[Background] No active tab found');
-                    sendResponse({ success: false, error: 'No active tab found' });
-                }
-            } catch (error) {
-                console.error('[Background] Error navigating current tab:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
     } else if (message.action === 'switchToTab') {
         // Handle tab switching for spotlight search results
         (async () => {
