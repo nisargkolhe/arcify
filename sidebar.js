@@ -37,6 +37,7 @@ const spaceTemplate = document.getElementById('spaceTemplate');
 // Global state
 let spaces = [];
 let activeSpaceId = null;
+let previousSpaceId = null;
 let isCreatingSpace = false;
 let isOpeningBookmark = false;
 let isDraggingTab = false;
@@ -244,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.tabs.onRemoved.addListener(handleTabRemove);
     // chrome.tabs.onMoved.addListener(handleTabMove);
     chrome.tabs.onActivated.addListener(handleTabActivated);
+    chrome.tabGroups.onRemoved.addListener(handleTabGroupRemoved);
 
     // Setup Quick Pin listener
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, setActiveSpace, activatePinnedTabByURL);
@@ -440,6 +442,12 @@ async function initSidebar() {
                 }
             } else {
                 await setActiveSpace(defaultGroupId ?? spaces[0].id);
+            }
+            
+            // Initialize previousSpaceId to the default space (first space)
+            if (spaces.length > 0) {
+                previousSpaceId = spaces[0].id;
+                console.log('Initialized previousSpaceId to default space:', previousSpaceId);
             }
         }
     } catch (error) {
@@ -827,6 +835,12 @@ function getDragAfterElement(container, y) {
 
 async function setActiveSpace(spaceId, updateTab = true) {
     console.log('Setting active space:', spaceId);
+
+    // Track the previous space before updating
+    if (activeSpaceId && activeSpaceId !== spaceId) {
+        previousSpaceId = activeSpaceId;
+        console.log('Previous space recorded:', previousSpaceId);
+    }
 
     // Update global state
     activeSpaceId = spaceId;
@@ -2264,6 +2278,45 @@ function scrollToTab(tabId, timeout = 0) {
             console.log('[ScrollDebug] Tab not found, no scroll needed');
         }
     }, timeout);
+}
+
+/**
+ * Handles when a tab group is removed (space is closed)
+ * @param {number} groupId - The ID of the removed tab group
+ */
+async function handleTabGroupRemoved(groupId) {
+    console.log('Tab group removed:', groupId);
+    
+    // Check if this was the currently active space
+    if (groupId === activeSpaceId) {
+        console.log('Active space was closed, switching to last tab from previously used space');
+        
+        // Find the previously used space (excluding the closed one)
+        const previousSpace = spaces.find(s => s.id === previousSpaceId && s.id !== groupId);
+        if (previousSpace && previousSpace.lastTab) {
+            try {
+                // Try to activate the last tab from the previously used space
+                await chrome.tabs.update(previousSpace.lastTab, { active: true });
+                console.log('Switched to last tab from previously used space:', previousSpace.lastTab);
+            } catch (error) {
+                console.warn('Could not activate last tab from previously used space, it may have been closed:', error);
+                
+                // Fallback: find any remaining tab and activate it
+                const remainingTabs = await chrome.tabs.query({ currentWindow: true });
+                if (remainingTabs.length > 0) {
+                    await chrome.tabs.update(remainingTabs[0].id, { active: true });
+                    console.log('Switched to fallback tab:', remainingTabs[0].id);
+                }
+            }
+        } else {
+            // No previously used space or no last tab recorded, find any remaining tab
+            const remainingTabs = await chrome.tabs.query({ currentWindow: true });
+            if (remainingTabs.length > 0) {
+                await chrome.tabs.update(remainingTabs[0].id, { active: true });
+                console.log('Switched to fallback tab:', remainingTabs[0].id);
+            }
+        }
+    }
 }
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
