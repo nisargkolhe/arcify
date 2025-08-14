@@ -847,7 +847,7 @@ async function setActiveSpace(spaceId, updateTab = true) {
     let tabGroups = await chrome.tabGroups.query({});
     let tabGroupsToClose = tabGroups.filter(group => group.id !== spaceId);
     tabGroupsToClose.forEach(async group => {
-        await chrome.tabGroups.update(group.id, {collapsed: true})
+            await chrome.tabGroups.update(group.id, {collapsed: true})
     });
 
     const tabGroupForSpace = tabGroups.find(group => group.id === spaceId);
@@ -2180,6 +2180,33 @@ function handleTabActivated(activeInfo) {
             // Activate only the tab in the current space
             activateTabInDOM(activeInfo.tabId);
         }
+        
+        // Scroll to the activated tab's location
+        setTimeout(() => {
+            const tabElement = document.querySelector(`[data-tab-id="${activeInfo.tabId}"]`);
+            if (tabElement) {
+                const spaceElement = tabElement.closest('[data-space-id]');
+                if (spaceElement) {
+                    const spaceContent = spaceElement.querySelector('.space-content');
+                    if (spaceContent) {
+                        const tabRect = tabElement.getBoundingClientRect();
+                        const spaceContentRect = spaceContent.getBoundingClientRect();
+                        
+                        // Check if the tab is visible in the space content
+                        const isTabVisible = tabRect.top >= spaceContentRect.top && tabRect.bottom <= spaceContentRect.bottom;
+                        
+                        if (!isTabVisible) {
+                            console.log('[ScrollDebug] Scrolling to show activated tab');
+                            // Scroll to make the tab visible
+                            const scrollTop = spaceContent.scrollTop + (tabRect.top - spaceContentRect.top);
+                            spaceContent.scrollTop = scrollTop;
+                        } else {
+                            console.log('[ScrollDebug] Tab is already visible, no scroll needed');
+                        }
+                    }
+                }
+            }
+        }, 0);
     });
 }
 
@@ -2295,39 +2322,4 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
-    
-    // 6. Scroll to top of temporary tabs if this is a new tab being added to temporary section    
-    if (!pinned && spaceElement) {
-        const spaceContent = spaceElement.querySelector('.space-content');
-        
-        if (spaceContent) {            
-            // Use setTimeout to ensure the DOM has been updated
-            setTimeout(() => {                
-                // Check if the top of temporary-tabs section is within the frame
-                const tempTabsSection = spaceElement.querySelector('.temporary-tabs');
-                if (tempTabsSection) {
-                    const tempTabsRect = tempTabsSection.getBoundingClientRect();
-                    const spaceContentRect = spaceContent.getBoundingClientRect();
-                    
-                    // Check if the top of temporary-tabs is above the visible area of spaceContent
-                    const isTempTabsTopVisible = tempTabsRect.top >= spaceContentRect.top;
-                    console.log('[ScrollDebug] Temp tabs top visible:', isTempTabsTopVisible, 'tempTabsRect.top:', tempTabsRect.top, 'spaceContentRect.top:', spaceContentRect.top);
-                    
-                    if (!isTempTabsTopVisible) {
-                        console.log('[ScrollDebug] Scrolling to show temp tabs - top was out of frame');
-                        // Scroll to make the temporary-tabs section visible at the top
-                        spaceContent.scrollTop = (spaceContentRect.top - tempTabsRect.top);
-                    } else {
-                        console.log('[ScrollDebug] Not scrolling - temp tabs top is already visible');
-                    }
-                } else {
-                    console.warn('[ScrollDebug] Temporary tabs section not found');
-                }
-            }, 0);
-        } else {
-            console.warn('[ScrollDebug] Space content element not found');
-        }
-    } else {
-        console.log('[ScrollDebug] Skipping scroll - pinned:', pinned, 'spaceElement exists:', !!spaceElement);
-    }
 }
