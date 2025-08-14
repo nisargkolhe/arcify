@@ -1010,7 +1010,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
                 // Get the element we're dragging over
                 const afterElement = getDragAfterElement(targetContainer, e.clientY);
-                if (afterElement) {
+                if (afterElement && targetContainer.contains(afterElement)) {
                     targetContainer.insertBefore(draggingElement, afterElement);
                 } else {
                     targetContainer.appendChild(draggingElement);
@@ -2281,8 +2281,12 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
                     container.appendChild(tabElement);
                 }
             } else {
-                // Add to the bottom after all existing elements
-                container.appendChild(tabElement);
+                if (pinned){
+                    // Add to the bottom after all existing elements
+                    container.appendChild(tabElement);
+                } else {
+                    container.insertBefore(tabElement, container.firstChild);
+                }
             }
         } else {
             container.appendChild(tabElement);
