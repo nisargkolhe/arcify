@@ -1997,6 +1997,10 @@ function handleTabUpdate(tabId, changeInfo, tab) {
             if (changeInfo.active !== undefined && changeInfo.active) {
                 activateTabInDOM(tabId);
             }
+            if (changeInfo.status == 'complete' || changeInfo.status == 'loading') {
+                // Scroll to the newly created tab
+                scrollToTab(tabId, 100);
+            } 
         }
     });
 }
@@ -2180,31 +2184,7 @@ function handleTabActivated(activeInfo) {
         }
         
         // Scroll to the activated tab's location
-        setTimeout(() => {
-            const tabElement = document.querySelector(`[data-tab-id="${activeInfo.tabId}"]`);
-            if (tabElement) {
-                const spaceElement = tabElement.closest('[data-space-id]');
-                if (spaceElement) {
-                    const spaceContent = spaceElement.querySelector('.space-content');
-                    if (spaceContent) {
-                        const tabRect = tabElement.getBoundingClientRect();
-                        const spaceContentRect = spaceContent.getBoundingClientRect();
-                        
-                        // Check if the tab is visible in the space content
-                        const isTabVisible = tabRect.top >= spaceContentRect.top && tabRect.bottom <= spaceContentRect.bottom;
-                        
-                        if (!isTabVisible) {
-                            console.log('[ScrollDebug] Scrolling to show activated tab');
-                            // Scroll to make the tab visible
-                            const scrollTop = spaceContent.scrollTop + (tabRect.top - spaceContentRect.top);
-                            spaceContent.scrollTop = scrollTop;
-                        } else {
-                            console.log('[ScrollDebug] Tab is already visible, no scroll needed');
-                        }
-                    }
-                }
-            }
-        }, 0);
+        scrollToTab(activeInfo.tabId, 0);
     });
 }
 
@@ -2246,6 +2226,45 @@ async function deleteSpace(spaceId) {
 ////////////////////////////////////////////////////////////////
 // -- Helper Functions
 ////////////////////////////////////////////////////////////////
+
+/**
+ * Scrolls to make a tab visible in the sidebar
+ * @param {number} tabId - The ID of the tab to scroll to
+ * @param {number} timeout - Timeout in milliseconds to wait before scrolling
+ */
+function scrollToTab(tabId, timeout = 0) {
+    setTimeout(() => {
+        const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
+        if (tabElement) {
+            const spaceElement = tabElement.closest('[data-space-id]');
+            if (spaceElement) {
+                const spaceContent = spaceElement.querySelector('.space-content');
+                if (spaceContent) {
+                    const tabRect = tabElement.getBoundingClientRect();
+                    const spaceContentRect = spaceContent.getBoundingClientRect();
+                    
+                    // Check if the tab is visible in the space content
+                    const isTabVisible = tabRect.top >= spaceContentRect.top && tabRect.bottom <= spaceContentRect.bottom;
+                    
+                    if (!isTabVisible) {
+                        console.log('[ScrollDebug] Scrolling to show tab');
+                        // Scroll to make the tab visible
+                        const scrollTop = spaceContent.scrollTop + (tabRect.top - spaceContentRect.top);
+                        spaceContent.scrollTop = scrollTop;
+                    } else {
+                        console.log('[ScrollDebug] Tab is already visible, no scroll needed');
+                    }
+                } else {
+                    console.log('[ScrollDebug] Space content not found, no scroll needed');
+                }
+            } else {
+                console.log('[ScrollDebug] Space not found, no scroll needed');
+            }
+        } else {
+            console.log('[ScrollDebug] Tab not found, no scroll needed');
+        }
+    }, timeout);
+}
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
     // Remove tab from its original space data first
