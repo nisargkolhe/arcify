@@ -39,3 +39,6 @@ lerna-debug.log*
 # Vibe coding
 CLAUDE.md
 .claude/*
+
+# Playwright
+test-results/
