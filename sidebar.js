@@ -836,9 +836,16 @@ async function setActiveSpace(spaceId, updateTab = true) {
 
     let tabGroups = await chrome.tabGroups.query({});
     let tabGroupsToClose = tabGroups.filter(group => group.id !== spaceId);
-    tabGroupsToClose.forEach(async group => {
-            await chrome.tabGroups.update(group.id, {collapsed: true})
-    });
+    
+    // Use a proper async loop instead of forEach
+    for (const group of tabGroupsToClose) {
+        try {
+            await chrome.tabGroups.update(group.id, {collapsed: true});
+        } catch (error) {
+            console.warn(`Failed to collapse tab group ${group.id}:`, error);
+            // Continue with other groups even if one fails
+        }
+    }
 
     const tabGroupForSpace = tabGroups.find(group => group.id === spaceId);
     if (!tabGroupForSpace) {
@@ -2164,6 +2171,7 @@ function handleTabActivated(activeInfo) {
 
         if (spaceWithTab && spaceWithTab.id !== activeSpaceId) {
             // Switch to the space containing the tab
+            activeSpaceId = spaceWithTab.id;
             await activateSpaceInDOM(spaceWithTab.id, spaces, updateSpaceSwitcher);
             activateTabInDOM(activeInfo.tabId);
         } else {
