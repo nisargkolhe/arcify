@@ -978,6 +978,17 @@ function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
     }
 }
 
+// Helper function to set up drag event listeners for tab elements
+function setupTabDragHandlers(tabElement) {
+    tabElement.addEventListener('dragstart', () => {
+        tabElement.classList.add('dragging');
+    });
+
+    tabElement.addEventListener('dragend', () => {
+        tabElement.classList.remove('dragging');
+    });
+}
+
 async function setActiveSpace(spaceId, updateTab = true) {
     console.log('Setting active space:', spaceId);
 
@@ -1711,12 +1722,13 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     const tabElement = template.content.cloneNode(true).querySelector('.tab');
     
     // Set up the tab element properties
+    tabElement.draggable = true; // Enable dragging for all tabs (regular and bookmark-only)
+    
     if (isBookmarkOnly) {
         tabElement.classList.add('inactive', 'bookmark-only');
         tabElement.dataset.url = tab.url;
     } else {
         tabElement.dataset.tabId = tab.id;
-        tabElement.draggable = true;
         if (tab.active) {
             tabElement.classList.add('active');
         }
@@ -1940,15 +1952,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         }
     });
 
-    if (!isBookmarkOnly) {
-        tabElement.addEventListener('dragstart', () => {
-            tabElement.classList.add('dragging');
-        });
-
-        tabElement.addEventListener('dragend', () => {
-            tabElement.classList.remove('dragging');
-        });
-    }
+    // Set up drag handlers for all tabs (regular and bookmark-only)
+    setupTabDragHandlers(tabElement);
 
     // --- Context Menu ---
     tabElement.addEventListener('contextmenu', async (e) => {
