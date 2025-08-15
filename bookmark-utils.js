@@ -146,16 +146,20 @@ export const BookmarkUtils = {
     },
 
     /**
-     * Recursively find a bookmark by URL within a folder and all its subfolders
+     * Recursively find a bookmark by URL and/or title within a folder and all its subfolders
      * @param {string} folderId - The folder ID to search in
-     * @param {string} url - URL to search for
+     * @param {Object} searchCriteria - Search criteria object with url and/or title properties
+     * @param {string} [searchCriteria.url] - URL to search for
+     * @param {string} [searchCriteria.title] - Title to search for
      * @returns {Promise<Object|null>} Object with bookmark, parentFolderId, and folderPath, or null if not found
      */
-    async findBookmarkInFolderRecursive(folderId, url) {
-        console.log(`[BookmarkUtils] Searching for bookmark with URL: ${url} in folder: ${folderId}`);
+    async findBookmarkInFolderRecursive(folderId, searchCriteria) {
+        const { url, title } = searchCriteria;
+        const searchDesc = url ? `URL: ${url}` : title ? `title: ${title}` : 'unknown criteria';
+        console.log(`[BookmarkUtils] Searching for bookmark with ${searchDesc} in folder: ${folderId}`);
         
-        if (!folderId || !url) {
-            console.warn('[BookmarkUtils] Missing folderId or url for recursive search');
+        if (!folderId || (!url && !title)) {
+            console.warn('[BookmarkUtils] Missing folderId or search criteria (url/title) for recursive search');
             return null;
         }
         
@@ -165,8 +169,18 @@ export const BookmarkUtils = {
             
             for (const item of items) {
                 if (item.url) {
-                    // This is a bookmark - check if it matches
-                    if (item.url === url) {
+                    // This is a bookmark - check if it matches search criteria
+                    let matches = false;
+                    
+                    if (url && item.url === url) {
+                        matches = true;
+                    }
+                    
+                    if (title && item.title === title) {
+                        matches = true;
+                    }
+                    
+                    if (matches) {
                         console.log(`[BookmarkUtils] Found matching bookmark: ${item.title} in folder ${folderId}`);
                         return {
                             bookmark: item,
@@ -177,7 +191,7 @@ export const BookmarkUtils = {
                 } else {
                     // This is a folder - recurse into it
                     console.log(`[BookmarkUtils] Recursing into subfolder: ${item.title} (${item.id})`);
-                    const result = await this.findBookmarkInFolderRecursive(item.id, url);
+                    const result = await this.findBookmarkInFolderRecursive(item.id, searchCriteria);
                     if (result) {
                         console.log(`[BookmarkUtils] Found bookmark in subfolder: ${item.title}`);
                         return result;

@@ -2440,7 +2440,7 @@ async function handleTabRemove(tabId) {
                 let matchingBookmark = null;
                 if (tabUrl) {
                     console.log('Searching for bookmark recursively with URL:', tabUrl);
-                    let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, tabUrl);
+                    let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { url: tabUrl });
                     console.log('Bookmark search result:', bookmarkResult);
                     matchingBookmark = bookmarkResult?.bookmark;
                 }
@@ -2452,17 +2452,10 @@ async function handleTabRemove(tabId) {
                     const titleText = titleElement?.textContent;
                     
                     if (titleText) {
-                        console.log('Attempting to find bookmark by title:', titleText);
-                        // This is a more complex search, we'd need to extend BookmarkUtils for this
-                        // For now, just log that we couldn't find it
-                        const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
-                        const matchingBookmark = bookmarks.find(b => {
-                            if (tabUrl) return b.url === tabUrl;
-                            // Fallback: try to match by title from DOM
-                            const titleElement = tabElement.querySelector('.tab-title, .tab-details span');
-                            const titleText = titleElement?.textContent;
-                            return titleText && b.title === titleText;
-                        });
+                        console.log('Searching for bookmark recursively with title:', titleText);
+                        let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { title: titleText });
+                        console.log('Title search result:', bookmarkResult);
+                        matchingBookmark = bookmarkResult?.bookmark;
                     }
                 }
                 
