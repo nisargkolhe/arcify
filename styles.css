@@ -1278,6 +1278,55 @@ h3 {
     /* Add any other styles for the dragged item */
 }
 
+/* Drop indicator lines for drag and drop visual feedback */
+.drop-indicator-horizontal {
+    position: relative;
+}
+
+.drop-indicator-horizontal::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background-color: var(--chrome-blue-color);
+    border-radius: 2px;
+    z-index: 1000;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.drop-indicator-horizontal.above::before {
+    top: -6px;
+}
+
+.drop-indicator-horizontal.below::before {
+    bottom: -6px;
+}
+
+.drop-indicator-vertical {
+    position: relative;
+}
+
+.drop-indicator-vertical::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: var(--chrome-blue-color);
+    border-radius: 2px;
+    z-index: 1000;
+    box-shadow: 1px 0 3px rgba(0, 0, 0, 0.2);
+}
+
+.drop-indicator-vertical.left::before {
+    left: -6px;
+}
+
+.drop-indicator-vertical.right::before {
+    right: -6px;
+}
+
 .archiving-controls {
   display: flex;
   align-items: center;
