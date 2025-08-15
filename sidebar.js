@@ -979,6 +979,51 @@ function setupTabDragHandlers(tabElement) {
     });
 }
 
+// Variables for folder auto-open functionality
+let folderOpenTimer = null;
+let currentHoveredFolder = null;
+
+// Helper function to programmatically open a folder
+function openFolder(folderElement) {
+    if (!folderElement.classList.contains('collapsed')) return; // Already open
+    
+    const folderContent = folderElement.querySelector('.folder-content');
+    const folderToggle = folderElement.querySelector('.folder-toggle');
+    const folderIcon = folderElement.querySelector('.folder-icon');
+    
+    folderElement.classList.remove('collapsed');
+    folderContent.classList.remove('collapsed');
+    folderToggle.classList.remove('collapsed');
+    
+    // Update icon to show folder is open
+    if (folderIcon) {
+        folderIcon.innerHTML = FOLDER_OPEN_ICON;
+    }
+}
+
+// Helper function to start auto-open timer for a folder
+function startFolderOpenTimer(folderElement) {
+    clearFolderOpenTimer(); // Clear any existing timer
+    
+    currentHoveredFolder = folderElement;
+    folderOpenTimer = setTimeout(() => {
+        if (currentHoveredFolder === folderElement && folderElement.classList.contains('collapsed')) {
+            openFolder(folderElement);
+        }
+        folderOpenTimer = null;
+        currentHoveredFolder = null;
+    }, 250); // 750ms delay like macOS Finder
+}
+
+// Helper function to clear the folder auto-open timer
+function clearFolderOpenTimer() {
+    if (folderOpenTimer) {
+        clearTimeout(folderOpenTimer);
+        folderOpenTimer = null;
+    }
+    currentHoveredFolder = null;
+}
+
 async function setActiveSpace(spaceId, updateTab = true) {
     console.log('Setting active space:', spaceId);
 
@@ -1155,6 +1200,166 @@ async function moveTabToTemp(space, tab) {
     }
 }
 
+// Helper function to manage folder placeholder state
+function updateFolderPlaceholder(folderElement) {
+    if (!folderElement) return;
+    
+    const folderContent = folderElement.querySelector('.folder-content');
+    const placeholder = folderElement.querySelector('.tab-placeholder');
+    
+    if (!folderContent || !placeholder) return;
+    
+    // Count actual tab elements (not placeholders)
+    const tabElements = folderContent.querySelectorAll('.tab:not(.tab-placeholder)');
+    const isEmpty = tabElements.length === 0;
+    
+    if (isEmpty) {
+        placeholder.classList.remove('hidden');
+        console.log('Showing placeholder for empty folder');
+    } else {
+        placeholder.classList.add('hidden');
+        console.log('Hiding placeholder for populated folder');
+    }
+}
+
+// Update all folder placeholders in the current space
+function updateAllFolderPlaceholders() {
+    const currentSpace = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
+    if (!currentSpace) return;
+    
+    const folders = currentSpace.querySelectorAll('.folder');
+    folders.forEach(folder => {
+        updateFolderPlaceholder(folder);
+    });
+}
+
+// Handle bookmark operations during drop events
+async function handleBookmarkOperations(event, draggingElement, container, targetFolder) {
+    // Validate required elements exist
+    if (!draggingElement || !container || !event) {
+        console.warn('Missing required elements for bookmark operations');
+        return;
+    }
+    
+    // Handle tab being moved to pinned section or folder
+    if (container.dataset.tabType === 'pinned' && draggingElement.dataset.tabId) {
+        console.log("Tab dropped to pinned section or folder");
+        const tabId = parseInt(draggingElement.dataset.tabId);
+        
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            const spaceElement = container.closest('.space');
+            if (!spaceElement) {
+                console.error('Could not find parent space element');
+                return;
+            }
+            
+            const spaceId = spaceElement.dataset.spaceId;
+            const space = spaces.find(s => s.id === parseInt(spaceId));
+
+            if (!space) {
+                console.error(`Space not found for ID: ${spaceId}`);
+                return;
+            }
+            
+            if (!tab) {
+                console.error(`Tab not found for ID: ${tabId}`);
+                return;
+            }
+            
+            // Move tab from temporary to pinned in space data
+            space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
+            if (!space.spaceBookmarks.includes(tabId)) {
+                space.spaceBookmarks.push(tabId);
+            }
+
+            // Determine the target folder
+            const targetFolderElement = targetFolder ? targetFolder.closest('.folder') : null;
+
+            // Add to bookmarks if URL doesn't exist
+            const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(space.name);
+            if (spaceFolder) {
+                let parentId = spaceFolder.id;
+                if (targetFolderElement) {
+                    console.log("moving into a folder");
+                    const folderName = targetFolderElement.querySelector('.folder-name').value;
+                    const existingFolders = await chrome.bookmarks.getChildren(spaceFolder.id);
+                    let folder = existingFolders.find(f => f.title === folderName);
+                    if (!folder) {
+                        folder = await chrome.bookmarks.create({
+                            parentId: spaceFolder.id,
+                            title: folderName
+                        });
+                    }
+                    parentId = folder.id;
+
+                    // Check if bookmark already exists in the target folder
+                    const existingBookmarks = await chrome.bookmarks.getChildren(parentId);
+                    if (BookmarkUtils.findBookmarkByUrl(existingBookmarks, tab.url)) {
+                        console.log('Bookmark already exists in folder:', folderName);
+                        return;
+                    }
+
+                    // Find and remove the bookmark from its original location
+                    await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
+
+                    // Create the bookmark in the new location
+                    await chrome.bookmarks.create({
+                        parentId: parentId,
+                        title: tab.title,
+                        url: tab.url
+                    });
+
+                    // Update folder placeholder state
+                    updateFolderPlaceholder(targetFolderElement);
+                } else {
+                    await moveTabToPinned(space, tab);
+                }
+            }
+
+            saveSpaces();
+            
+            // Update all folder placeholders after bookmark operations
+            updateAllFolderPlaceholders();
+        } catch (error) {
+            console.error('Error handling pinned tab drop:', error);
+            // Update placeholders even if there was an error
+            updateAllFolderPlaceholders();
+        }
+    } else if (container.dataset.tabType === 'temporary' && draggingElement.dataset.tabId) {
+        console.log("Tab dropped to temporary section");
+        const tabId = parseInt(draggingElement.dataset.tabId);
+        
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            const space = spaces.find(s => s.id === parseInt(activeSpaceId));
+
+            if (space && tab) {
+                // Remove tab from bookmarks if it exists
+                moveTabToTemp(space, tab);
+                
+                // Update all folder placeholders after removing bookmark
+                updateAllFolderPlaceholders();
+            }
+        } catch (error) {
+            console.error('Error handling temporary tab drop:', error);
+            // Update placeholders even if there was an error
+            updateAllFolderPlaceholders();
+        }
+    } else if (draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
+        const tabId = parseInt(draggingElement.dataset.tabId);
+        try {
+            await chrome.tabs.update(tabId, { pinned: false });
+            // Update all folder placeholders after unpinning
+            updateAllFolderPlaceholders();
+        } catch (error) {
+            console.error('Error unpinning favicon:', error);
+            // Update placeholders even if there was an error
+            updateAllFolderPlaceholders();
+        }
+    }
+}
+
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
     console.log('Setting up drag and drop handlers...');
     [pinnedContainer, tempContainer].forEach(container => {
@@ -1164,6 +1369,18 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
             if (draggingElement) {
                 const targetFolder = e.target.closest('.folder-content');
                 const targetContainer = targetFolder || container;
+
+                // Check for collapsed folder auto-open functionality
+                const folderElement = e.target.closest('.folder');
+                if (folderElement && folderElement.classList.contains('collapsed')) {
+                    // Start timer to auto-open collapsed folder if hovering over it
+                    if (currentHoveredFolder !== folderElement) {
+                        startFolderOpenTimer(folderElement);
+                    }
+                } else {
+                    // Clear timer if not hovering over a collapsed folder
+                    clearFolderOpenTimer();
+                }
 
                 // Get the element we're dragging over to show drop indicator
                 const afterElement = getDragAfterElement(targetContainer, e.clientY);
@@ -1176,94 +1393,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                     hideAllDropIndicators();
                 }
 
-                // Handle tab being moved to pinned section or folder
-                if (container.dataset.tabType === 'pinned' && draggingElement.dataset.tabId && !isDraggingTab) {
-                    console.log("Tab dragged to pinned section or folder");
-                    isDraggingTab = true;
-                    const tabId = parseInt(draggingElement.dataset.tabId);
-                    chrome.tabs.get(tabId, async (tab) => {
-                        const spaceId = container.closest('.space').dataset.spaceId;
-                        const space = spaces.find(s => s.id === parseInt(spaceId));
-
-                        if (space && tab) {
-                            // Move tab from temporary to pinned in space data
-                            space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
-                            if (!space.spaceBookmarks.includes(tabId)) {
-                                space.spaceBookmarks.push(tabId);
-                            }
-
-                            // Determine the target folder or container
-                            const targetFolderContent = draggingElement.closest('.folder-content');
-                            const targetFolder = targetFolderContent ? targetFolderContent.closest('.folder') : null;
-
-                            // Add to bookmarks if URL doesn't exist
-                            const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(space.name);
-                            if (spaceFolder) {
-                                let parentId = spaceFolder.id;
-                                if (targetFolder) {
-                                    console.log("moving into a folder");
-                                    const folderElement = targetFolder.closest('.folder');
-                                    const folderName = folderElement.querySelector('.folder-name').value;
-                                    const existingFolders = await chrome.bookmarks.getChildren(spaceFolder.id);
-                                    let folder = existingFolders.find(f => f.title === folderName);
-                                    if (!folder) {
-                                        folder = await chrome.bookmarks.create({
-                                            parentId: spaceFolder.id,
-                                            title: folderName
-                                        });
-                                    }
-                                    parentId = folder.id;
-
-                                    // Check if bookmark already exists in the target folder
-                                    const existingBookmarks = await chrome.bookmarks.getChildren(parentId);
-                                    if (BookmarkUtils.findBookmarkByUrl(existingBookmarks, tab.url)) {
-                                        console.log('Bookmark already exists in folder:', folderName);
-                                        isDraggingTab = false;
-                                        return;
-                                    }
-
-                                    // Find and remove the bookmark from its original location
-                                    await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
-
-                                    // Create the bookmark in the new location
-                                    await chrome.bookmarks.create({
-                                        parentId: parentId,
-                                        title: tab.title,
-                                        url: tab.url
-                                    });
-
-                                    // hide placeholder
-                                    const placeHolderElement = folderElement.querySelector('.tab-placeholder');
-                                    if (placeHolderElement) {
-                                        console.log("hiding from", folderElement);
-                                        placeHolderElement.classList.add('hidden');
-                                    }
-                                } else {
-                                    await moveTabToPinned(space, tab);
-                                }
-                            }
-
-                            saveSpaces();
-                        }
-                        isDraggingTab = false;
-                    });
-                } else if (container.dataset.tabType === 'temporary' && draggingElement.dataset.tabId && !isDraggingTab) {
-                    console.log("Tab dragged to temporary section");
-                    isDraggingTab = true;
-                    const tabId = parseInt(draggingElement.dataset.tabId);
-                    chrome.tabs.get(tabId, async (tab) => {
-                        const space = spaces.find(s => s.id === parseInt(activeSpaceId));
-
-                        if (space && tab) {
-                            // Remove tab from bookmarks if it exists
-                            moveTabToTemp(space, tab);
-                        }
-                        isDraggingTab = false;
-                    });
-                } else if(draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
-                    const tabId = parseInt(draggingElement.dataset.tabId);
-                    chrome.tabs.update(tabId, { pinned: false });
-                }
+                // Note: Actual bookmark operations moved to drop event for proper architecture
             }
         });
 
@@ -1272,13 +1402,17 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
             // Only hide indicators if we're actually leaving the container (not moving to a child)
             if (!container.contains(e.relatedTarget)) {
                 hideAllDropIndicators();
+                // Clear folder auto-open timer when leaving the container
+                clearFolderOpenTimer();
             }
         });
 
         // Add drop handler to position elements and hide indicators
-        container.addEventListener('drop', e => {
+        container.addEventListener('drop', async e => {
             e.preventDefault();
             hideAllDropIndicators();
+            // Clear folder auto-open timer on drop
+            clearFolderOpenTimer();
             
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
@@ -1305,6 +1439,9 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                     // Fallback: append to end if no specific target
                     targetContainer.appendChild(draggingElement);
                 }
+                
+                // Handle bookmark operations after DOM positioning is complete
+                await handleBookmarkOperations(e, draggingElement, container, targetFolder);
             }
         });
     });
@@ -1404,6 +1541,10 @@ async function createNewFolder(spaceElement) {
 
     // Add the new folder to the pinned container
     pinnedContainer.appendChild(folderElement);
+    
+    // Ensure new empty folder shows placeholder
+    updateFolderPlaceholder(folderElement);
+    
     folderNameInput.focus();
 }
 
@@ -1543,12 +1684,14 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         folderNameInput.style.display = 'none';
                         folderTitle.innerHTML = item.title;
                         folderTitle.style.display = 'inline';
-                        placeHolderElement.classList.remove('hidden');
 
                         container.appendChild(folderElement);
 
                         // Recursively process the folder's contents
                         await processBookmarkNode(item, folderElement.querySelector('.folder-content'));
+                        
+                        // Update folder placeholder state after loading contents
+                        updateFolderPlaceholder(folderElement);
                     } else {
                         // This is a bookmark
                         if (!processedUrls.has(item.url) && !pinnedUrls.has(item.url)) {
@@ -1574,9 +1717,10 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                                 container.appendChild(tabElement);
                             }
                             processedUrls.add(item.url);
-                            const placeHolderElement = container.querySelector('.tab-placeholder');
-                            if (placeHolderElement) {
-                                placeHolderElement.classList.add('hidden');
+                            // Update placeholder state for folder if this container is inside a folder
+                            const parentFolder = container.closest('.folder');
+                            if (parentFolder) {
+                                updateFolderPlaceholder(parentFolder);
                             }
                         }
                     }
