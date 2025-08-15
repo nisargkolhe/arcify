@@ -137,23 +137,81 @@ async function updatePinnedFavicons() {
     pinnedFavicons.addEventListener('dragover', e => {
         e.preventDefault();
         e.currentTarget.classList.add('drag-over');
+        
+        // Show drop indicator for horizontal favicons
+        const draggingElement = document.querySelector('.dragging');
+        if (draggingElement) {
+            const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
+            if (afterElement) {
+                const position = getDropPosition(afterElement, e.clientX, e.clientY, true);
+                showDropIndicator(afterElement, position, true);
+            } else {
+                hideAllDropIndicators();
+            }
+        }
     });
 
     pinnedFavicons.addEventListener('dragleave', e => {
         e.preventDefault();
         e.currentTarget.classList.remove('drag-over');
+        // Hide indicators when leaving the pinned favicons area
+        if (!pinnedFavicons.contains(e.relatedTarget)) {
+            hideAllDropIndicators();
+        }
     });
 
     pinnedFavicons.addEventListener('drop', async e => {
         e.preventDefault();
         e.currentTarget.classList.remove('drag-over');
+        hideAllDropIndicators(); // Clean up indicators on drop
         const draggingElement = document.querySelector('.dragging');
         if (draggingElement && draggingElement.dataset.tabId) {
             const tabId = parseInt(draggingElement.dataset.tabId);
-            await chrome.tabs.update(tabId, { pinned: true });
-            updatePinnedFavicons();
-            // Remove the tab from its original container
-            draggingElement.remove();
+            
+            // If dragging a pinned favicon to reorder, handle positioning
+            if (draggingElement.classList.contains('pinned-favicon')) {
+                const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
+                if (afterElement) {
+                    const position = getDropPosition(afterElement, e.clientX, e.clientY, true);
+                    
+                    // Position element based on indicator logic
+                    if (position === 'left') {
+                        pinnedFavicons.insertBefore(draggingElement, afterElement);
+                    } else { // 'right'
+                        const nextSibling = afterElement.nextElementSibling;
+                        if (nextSibling) {
+                            pinnedFavicons.insertBefore(draggingElement, nextSibling);
+                        } else {
+                            pinnedFavicons.appendChild(draggingElement);
+                        }
+                    }
+                } else {
+                    // Fallback: append to end
+                    pinnedFavicons.appendChild(draggingElement);
+                }
+            } else {
+                // Dragging a regular tab to make it pinned
+                const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
+                const position = afterElement ? getDropPosition(afterElement, e.clientX, e.clientY, true) : null;
+                const targetIndex = calculatePinnedTabIndex(afterElement, position, pinnedFavicons);
+                
+                // Step 1: Pin the tab (this adds it to the end by default)
+                await chrome.tabs.update(tabId, { pinned: true });
+                
+                // Step 2: Move it to the correct position if needed
+                if (targetIndex !== undefined && targetIndex >= 0) {
+                    try {
+                        await chrome.tabs.move(tabId, { index: targetIndex });
+                    } catch (error) {
+                        console.warn('Error moving pinned tab to target index:', error);
+                    }
+                }
+                
+                // Step 3: Update the favicon display
+                updatePinnedFavicons();
+                // Remove the tab from its original container
+                draggingElement.remove();
+            }
         }
     });
 }
@@ -843,6 +901,83 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element
 }
 
+function getDragAfterElementFavicon(container, x) {
+    const draggableElements = [...container.querySelectorAll('.pinned-favicon:not(.dragging)')]
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect()
+        const offset = x - box.left - box.width / 2
+
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child }
+        } else {
+            return closest
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element
+}
+
+// Helper functions for drop indicator management
+function hideAllDropIndicators() {
+    // Remove all drop indicator classes from all elements
+    document.querySelectorAll('.drop-indicator-horizontal, .drop-indicator-vertical').forEach(element => {
+        element.classList.remove('drop-indicator-horizontal', 'drop-indicator-vertical', 'above', 'below', 'left', 'right');
+    });
+}
+
+function showDropIndicator(targetElement, position, isHorizontal = false) {
+    // First, hide all existing indicators
+    hideAllDropIndicators();
+    
+    if (!targetElement) return;
+    
+    if (isHorizontal) {
+        // For horizontal favicons (left/right positioning)
+        targetElement.classList.add('drop-indicator-vertical');
+        targetElement.classList.add(position); // 'left' or 'right'
+    } else {
+        // For vertical sidebar tabs (above/below positioning)
+        targetElement.classList.add('drop-indicator-horizontal');
+        targetElement.classList.add(position); // 'above' or 'below'
+    }
+}
+
+function getDropPosition(element, clientX, clientY, isHorizontal = false) {
+    if (!element) return null;
+    
+    const rect = element.getBoundingClientRect();
+    
+    if (isHorizontal) {
+        // For horizontal favicons, use X position to determine left/right
+        const centerX = rect.left + rect.width / 2;
+        return clientX < centerX ? 'left' : 'right';
+    } else {
+        // For vertical tabs, use Y position to determine above/below
+        const centerY = rect.top + rect.height / 2;
+        return clientY < centerY ? 'above' : 'below';
+    }
+}
+
+function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
+    if (!afterElement) {
+        // If no target element, append to the end
+        return pinnedFavicons.querySelectorAll('.pinned-favicon').length;
+    }
+    
+    const pinnedElements = Array.from(pinnedFavicons.querySelectorAll('.pinned-favicon'));
+    const afterIndex = pinnedElements.indexOf(afterElement);
+    
+    if (afterIndex === -1) {
+        // Fallback: append to end if element not found
+        return pinnedElements.length;
+    }
+    
+    if (position === 'left') {
+        return afterIndex; // Insert before the target element
+    } else { // position === 'right'
+        return afterIndex + 1; // Insert after the target element  
+    }
+}
+
 async function setActiveSpace(spaceId, updateTab = true) {
     console.log('Setting active space:', spaceId);
 
@@ -1029,12 +1164,15 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 const targetFolder = e.target.closest('.folder-content');
                 const targetContainer = targetFolder || container;
 
-                // Get the element we're dragging over
+                // Get the element we're dragging over to show drop indicator
                 const afterElement = getDragAfterElement(targetContainer, e.clientY);
                 if (afterElement && targetContainer.contains(afterElement)) {
-                    targetContainer.insertBefore(draggingElement, afterElement);
+                    // Show drop indicator instead of moving the element
+                    const position = getDropPosition(afterElement, e.clientX, e.clientY, false);
+                    showDropIndicator(afterElement, position, false);
                 } else {
-                    targetContainer.appendChild(draggingElement);
+                    // If no specific element, hide indicators
+                    hideAllDropIndicators();
                 }
 
                 // Handle tab being moved to pinned section or folder
@@ -1124,6 +1262,47 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 } else if(draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
                     const tabId = parseInt(draggingElement.dataset.tabId);
                     chrome.tabs.update(tabId, { pinned: false });
+                }
+            }
+        });
+
+        // Add dragleave handler to hide indicators when leaving container
+        container.addEventListener('dragleave', e => {
+            // Only hide indicators if we're actually leaving the container (not moving to a child)
+            if (!container.contains(e.relatedTarget)) {
+                hideAllDropIndicators();
+            }
+        });
+
+        // Add drop handler to position elements and hide indicators
+        container.addEventListener('drop', e => {
+            e.preventDefault();
+            hideAllDropIndicators();
+            
+            const draggingElement = document.querySelector('.dragging');
+            if (draggingElement) {
+                const targetFolder = e.target.closest('.folder-content');
+                const targetContainer = targetFolder || container;
+                
+                // Calculate drop position using same logic as indicators
+                const afterElement = getDragAfterElement(targetContainer, e.clientY);
+                if (afterElement && targetContainer.contains(afterElement)) {
+                    const position = getDropPosition(afterElement, e.clientX, e.clientY, false);
+                    
+                    // Position element based on indicator logic
+                    if (position === 'above') {
+                        targetContainer.insertBefore(draggingElement, afterElement);
+                    } else { // 'below'
+                        const nextSibling = afterElement.nextElementSibling;
+                        if (nextSibling) {
+                            targetContainer.insertBefore(draggingElement, nextSibling);
+                        } else {
+                            targetContainer.appendChild(draggingElement);
+                        }
+                    }
+                } else {
+                    // Fallback: append to end if no specific target
+                    targetContainer.appendChild(draggingElement);
                 }
             }
         });
