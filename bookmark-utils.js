@@ -146,6 +146,55 @@ export const BookmarkUtils = {
     },
 
     /**
+     * Recursively find a bookmark by URL within a folder and all its subfolders
+     * @param {string} folderId - The folder ID to search in
+     * @param {string} url - URL to search for
+     * @returns {Promise<Object|null>} Object with bookmark, parentFolderId, and folderPath, or null if not found
+     */
+    async findBookmarkInFolderRecursive(folderId, url) {
+        console.log(`[BookmarkUtils] Searching for bookmark with URL: ${url} in folder: ${folderId}`);
+        
+        if (!folderId || !url) {
+            console.warn('[BookmarkUtils] Missing folderId or url for recursive search');
+            return null;
+        }
+        
+        try {
+            const items = await chrome.bookmarks.getChildren(folderId);
+            console.log(`[BookmarkUtils] Found ${items.length} items in folder ${folderId}`);
+            
+            for (const item of items) {
+                if (item.url) {
+                    // This is a bookmark - check if it matches
+                    if (item.url === url) {
+                        console.log(`[BookmarkUtils] Found matching bookmark: ${item.title} in folder ${folderId}`);
+                        return {
+                            bookmark: item,
+                            parentFolderId: folderId,
+                            folderPath: folderId // Could be enhanced to return full path
+                        };
+                    }
+                } else {
+                    // This is a folder - recurse into it
+                    console.log(`[BookmarkUtils] Recursing into subfolder: ${item.title} (${item.id})`);
+                    const result = await this.findBookmarkInFolderRecursive(item.id, url);
+                    if (result) {
+                        console.log(`[BookmarkUtils] Found bookmark in subfolder: ${item.title}`);
+                        return result;
+                    }
+                }
+            }
+            
+            console.log(`[BookmarkUtils] Bookmark not found in folder ${folderId}`);
+            return null;
+            
+        } catch (error) {
+            console.error(`[BookmarkUtils] Error searching folder ${folderId}:`, error);
+            return null;
+        }
+    },
+
+    /**
      * Find a bookmark by URL in an array of bookmarks
      * @param {Array} bookmarks - Array of bookmark objects
      * @param {string} url - URL to search for
