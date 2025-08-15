@@ -1907,6 +1907,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         tabElement.dataset.url = tab.url;
     } else {
         tabElement.dataset.tabId = tab.id;
+        tabElement.dataset.url = tab.url;
         if (tab.active) {
             tabElement.classList.add('active');
         }
@@ -2411,25 +2412,59 @@ async function handleTabRemove(tabId) {
             const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
             
             if (spaceFolder) {
-                const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
-                
-                // Try to get tab URL from Chrome API first, then fall back to searching bookmarks
+                // Try to get tab URL from Chrome API first, then fall back to DOM extraction
                 let tabUrl;
                 try {
                     const tabData = await chrome.tabs.get(tabId);
                     tabUrl = tabData.url;
+                    console.log('Found tab URL from Chrome API:', tabUrl);
                 } catch (error) {
-                    // Tab already closed, we'll find it by searching bookmarks
+                    // Tab already closed, try to extract URL from DOM or other means
+                    console.log('Tab already closed, unable to get URL from Chrome API');
                 }
                 
-                // Find matching bookmark
-                const matchingBookmark = bookmarks.find(b => {
-                    if (tabUrl) return b.url === tabUrl;
-                    // Fallback: try to match by title from DOM
-                    const titleElement = tabElement.querySelector('.tab-title, .tab-details span');
+                // Fallback: Extract URL from bookmark-only element's dataset if Chrome API failed
+                if (!tabUrl && tabElement) {
+                    console.log('!!!!!!!! TAB ELEMENT', tabElement);
+                    if (tabElement.dataset.url) {
+                        tabUrl = tabElement.dataset.url;
+                        console.log('Extracted URL from bookmark-only element dataset:', tabUrl);
+                    } else if (tabElement.classList.contains('bookmark-only')) {
+                        console.log('Bookmark-only element found but no URL in dataset - this should not happen');
+                    } else {
+                        console.log('Real tab element found but Chrome API failed - tab may have been closed very recently');
+                    }
+                }
+                
+                // Use recursive search to find bookmark in space folder and all subfolders
+                let matchingBookmark = null;
+                if (tabUrl) {
+                    console.log('Searching for bookmark recursively with URL:', tabUrl);
+                    let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, tabUrl);
+                    console.log('Bookmark search result:', bookmarkResult);
+                    matchingBookmark = bookmarkResult?.bookmark;
+                }
+                
+                // If URL search failed, try fallback search by title (less reliable)
+                if (!matchingBookmark) {
+                    console.log('URL search failed, attempting fallback title search');
+                    const titleElement = tabElement.querySelector('.tab-title-display, .tab-details span');
                     const titleText = titleElement?.textContent;
-                    return titleText && b.title === titleText;
-                });
+                    
+                    if (titleText) {
+                        console.log('Attempting to find bookmark by title:', titleText);
+                        // This is a more complex search, we'd need to extend BookmarkUtils for this
+                        // For now, just log that we couldn't find it
+                        const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
+                        const matchingBookmark = bookmarks.find(b => {
+                            if (tabUrl) return b.url === tabUrl;
+                            // Fallback: try to match by title from DOM
+                            const titleElement = tabElement.querySelector('.tab-title, .tab-details span');
+                            const titleText = titleElement?.textContent;
+                            return titleText && b.title === titleText;
+                        });
+                    }
+                }
                 
                 if (matchingBookmark) {
                     // Use the established pattern from loadTabs()
@@ -2441,8 +2476,18 @@ async function handleTabRemove(tabId) {
                         spaceName: activeSpace.name
                     };
                     const bookmarkElement = await createTabElement(bookmarkTab, true, true);
+                    
+                    // Preserve folder context - replace in the same DOM location
+                    const parentFolder = tabElement.closest('.folder');
                     tabElement.replaceWith(bookmarkElement);
-                    console.log('Converted closed pinned tab to bookmark-only element');
+                    
+                    // Update folder placeholder state if the tab was in a folder
+                    if (parentFolder) {
+                        console.log('Updated folder placeholder state after tab-to-bookmark conversion');
+                        updateFolderPlaceholder(parentFolder);
+                    }
+                    
+                    console.log('Successfully converted closed pinned tab to bookmark-only element in', parentFolder ? 'folder' : 'root level');
                 } else {
                     console.warn('Could not find matching bookmark for closed pinned tab, removing element');
                     tabElement.remove();
