@@ -1241,13 +1241,35 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
         return;
     }
     
-    // Handle tab being moved to pinned section or folder
-    if (container.dataset.tabType === 'pinned' && draggingElement.dataset.tabId) {
+    // Handle tab being moved to pinned section or folder (both open tabs and bookmark-only tabs)
+    if (container.dataset.tabType === 'pinned' && (draggingElement.dataset.tabId || draggingElement.dataset.url)) {
         console.log("Tab dropped to pinned section or folder");
-        const tabId = parseInt(draggingElement.dataset.tabId);
+        
+        // Determine if this is a bookmark-only tab or a regular tab
+        const isBookmarkOnly = !draggingElement.dataset.tabId && draggingElement.dataset.url;
+        console.log("Processing drag drop - isBookmarkOnly:", isBookmarkOnly);
         
         try {
-            const tab = await chrome.tabs.get(tabId);
+            let tab;
+            let tabId;
+            
+            if (isBookmarkOnly) {
+                // For bookmark-only tabs, create a synthetic tab object from DOM data
+                const titleElement = draggingElement.querySelector('.tab-title-display');
+                tab = {
+                    id: null,
+                    url: draggingElement.dataset.url,
+                    title: titleElement ? titleElement.textContent : 'Untitled',
+                    favIconUrl: null
+                };
+                tabId = null;
+                console.log("Created synthetic tab object for bookmark-only:", tab);
+            } else {
+                // For regular tabs, fetch the actual tab object
+                tabId = parseInt(draggingElement.dataset.tabId);
+                tab = await chrome.tabs.get(tabId);
+                console.log("Fetched real tab object:", tab);
+            }
             const spaceElement = container.closest('.space');
             if (!spaceElement) {
                 console.error('Could not find parent space element');
@@ -1267,10 +1289,15 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 return;
             }
             
-            // Move tab from temporary to pinned in space data
-            space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
-            if (!space.spaceBookmarks.includes(tabId)) {
-                space.spaceBookmarks.push(tabId);
+            // Move tab from temporary to pinned in space data (only for regular tabs with real IDs)
+            if (!isBookmarkOnly && tabId) {
+                space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
+                if (!space.spaceBookmarks.includes(tabId)) {
+                    space.spaceBookmarks.push(tabId);
+                }
+                console.log("Updated space data for regular tab:", tabId);
+            } else {
+                console.log("Skipping space data update for bookmark-only tab");
             }
 
             // Determine the target folder
@@ -1310,7 +1337,24 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                         url: tab.url
                     });
 
-                    // Update folder placeholder state
+                    // Move DOM element to target folder content
+                    const targetFolderContent = targetFolderElement.querySelector('.folder-content');
+                    if (targetFolderContent && draggingElement) {
+                        console.log("Moving DOM element to target folder content");
+                        
+                        // Remove from current location and append to target folder
+                        const sourceFolder = draggingElement.closest('.folder');
+                        draggingElement.remove();
+                        targetFolderContent.appendChild(draggingElement);
+                        
+                        // Update placeholder states for both source and target folders
+                        if (sourceFolder && sourceFolder !== targetFolderElement) {
+                            updateFolderPlaceholder(sourceFolder);
+                            console.log("Updated source folder placeholder state");
+                        }
+                        console.log("Updated target folder placeholder state");
+                    }
+                    // Always update placeholder for targetFolder
                     updateFolderPlaceholder(targetFolderElement);
                 } else {
                     await moveTabToPinned(space, tab);
