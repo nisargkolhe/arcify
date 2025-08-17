@@ -1407,6 +1407,19 @@ h3 {
     padding: 8px 16px;
     text-align: center;
     width: 100%;
+    transition: background-color 0.2s ease;
+}
+
+/* Drag-over styles for empty drop zones */
+.pinned-placeholder-container.drag-over {
+    background-color: rgba(139, 179, 243, 0.1);
+    border-radius: 8px;
+}
+
+.tab-placeholder.drag-over {
+    background-color: rgba(139, 179, 243, 0.1);
+    border-color: rgba(139, 179, 243, 0.3);
+    color: rgba(0, 0, 0, 0.7);
 }
 
 .pinned-tab-placeholder {
