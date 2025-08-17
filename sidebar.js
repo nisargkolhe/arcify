@@ -143,10 +143,24 @@ async function updatePinnedFavicons() {
         if (draggingElement) {
             const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
             if (afterElement) {
-                const position = getDropPosition(afterElement, e.clientX, e.clientY, true);
-                showDropIndicator(afterElement, position, true);
+                // Check if this is a placeholder (empty container)
+                if (afterElement.classList.contains('pinned-placeholder-container')) {
+                    // Show visual feedback on the placeholder itself
+                    afterElement.classList.add('drag-over');
+                    hideAllDropIndicators(); // Don't show traditional indicators for placeholders
+                } else {
+                    // Show traditional drop indicators for actual favicons
+                    const position = getDropPosition(afterElement, e.clientX, e.clientY, true);
+                    showDropIndicator(afterElement, position, true);
+                    // Remove any placeholder drag-over state
+                    const placeholder = pinnedFavicons.querySelector('.pinned-placeholder-container');
+                    if (placeholder) placeholder.classList.remove('drag-over');
+                }
             } else {
                 hideAllDropIndicators();
+                // Remove any placeholder drag-over state
+                const placeholder = pinnedFavicons.querySelector('.pinned-placeholder-container');
+                if (placeholder) placeholder.classList.remove('drag-over');
             }
         }
     });
@@ -157,6 +171,9 @@ async function updatePinnedFavicons() {
         // Hide indicators when leaving the pinned favicons area
         if (!pinnedFavicons.contains(e.relatedTarget)) {
             hideAllDropIndicators();
+            // Remove any placeholder drag-over state
+            const placeholder = pinnedFavicons.querySelector('.pinned-placeholder-container');
+            if (placeholder) placeholder.classList.remove('drag-over');
         }
     });
 
@@ -164,6 +181,9 @@ async function updatePinnedFavicons() {
         e.preventDefault();
         e.currentTarget.classList.remove('drag-over');
         hideAllDropIndicators(); // Clean up indicators on drop
+        // Remove any placeholder drag-over state
+        const placeholder = pinnedFavicons.querySelector('.pinned-placeholder-container');
+        if (placeholder) placeholder.classList.remove('drag-over');
         const draggingElement = document.querySelector('.dragging');
         if (draggingElement && draggingElement.dataset.tabId) {
             const tabId = parseInt(draggingElement.dataset.tabId);
@@ -172,17 +192,25 @@ async function updatePinnedFavicons() {
             if (draggingElement.classList.contains('pinned-favicon')) {
                 const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
                 if (afterElement) {
-                    const position = getDropPosition(afterElement, e.clientX, e.clientY, true);
-                    
-                    // Position element based on indicator logic
-                    if (position === 'left') {
-                        pinnedFavicons.insertBefore(draggingElement, afterElement);
-                    } else { // 'right'
-                        const nextSibling = afterElement.nextElementSibling;
-                        if (nextSibling) {
-                            pinnedFavicons.insertBefore(draggingElement, nextSibling);
-                        } else {
-                            pinnedFavicons.appendChild(draggingElement);
+                    // Check if this is a placeholder (empty container)
+                    if (afterElement.classList.contains('pinned-placeholder-container')) {
+                        // Empty container - append directly and hide placeholder
+                        pinnedFavicons.appendChild(draggingElement);
+                        afterElement.style.display = 'none';
+                    } else {
+                        // Normal positioning logic for actual favicons
+                        const position = getDropPosition(afterElement, e.clientX, e.clientY, true);
+                        
+                        // Position element based on indicator logic
+                        if (position === 'left') {
+                            pinnedFavicons.insertBefore(draggingElement, afterElement);
+                        } else { // 'right'
+                            const nextSibling = afterElement.nextElementSibling;
+                            if (nextSibling) {
+                                pinnedFavicons.insertBefore(draggingElement, nextSibling);
+                            } else {
+                                pinnedFavicons.appendChild(draggingElement);
+                            }
                         }
                     }
                 } else {
@@ -192,8 +220,19 @@ async function updatePinnedFavicons() {
             } else {
                 // Dragging a regular tab to make it pinned
                 const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
-                const position = afterElement ? getDropPosition(afterElement, e.clientX, e.clientY, true) : null;
-                const targetIndex = calculatePinnedTabIndex(afterElement, position, pinnedFavicons);
+                let position = null;
+                let targetIndex = 0; // Default to index 0 for empty containers
+                
+                if (afterElement) {
+                    if (afterElement.classList.contains('pinned-placeholder-container')) {
+                        // Empty container - use index 0 and hide placeholder after pinning
+                        targetIndex = 0;
+                    } else {
+                        // Normal positioning logic for actual favicons
+                        position = getDropPosition(afterElement, e.clientX, e.clientY, true);
+                        targetIndex = calculatePinnedTabIndex(afterElement, position, pinnedFavicons);
+                    }
+                }
                 
                 // Step 1: Pin the tab (this adds it to the end by default)
                 await chrome.tabs.update(tabId, { pinned: true });
@@ -209,6 +248,12 @@ async function updatePinnedFavicons() {
                 
                 // Step 3: Update the favicon display
                 updatePinnedFavicons();
+                
+                // Hide placeholder if this was an empty container
+                if (afterElement && afterElement.classList.contains('pinned-placeholder-container')) {
+                    afterElement.style.display = 'none';
+                }
+                
                 // Remove the tab from its original container
                 draggingElement.remove();
             }
@@ -628,9 +673,15 @@ function createSpaceElement(space) {
     // Set up containers
     const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
     const tempContainer = spaceElement.querySelector('[data-tab-type="temporary"]');
+    const placeholderContainer = spaceElement.querySelector('.placeholder-container');
 
     // Set up drag and drop
     setupDragAndDrop(pinnedContainer, tempContainer);
+    
+    // Set up drag and drop for placeholder container to make entire placeholder area droppable
+    if (placeholderContainer) {
+        setupPlaceholderDragAndDrop(placeholderContainer, pinnedContainer);
+    }
 
     // Set up clean tabs button
     const cleanBtn = spaceElement.querySelector('.clean-tabs-btn');
@@ -889,6 +940,12 @@ function getDragAfterElementSwitcher(container, x) {
 function getDragAfterElement(container, y) {
     const draggableElements = [...container.querySelectorAll('.tab:not(.dragging), .folder:not(.dragging)')]
 
+    // If no draggable elements exist, return the placeholder as a reference for empty containers
+    if (draggableElements.length === 0) {
+        const placeholder = container.querySelector('.tab-placeholder');
+        return placeholder || null;
+    }
+
     return draggableElements.reduce((closest, child) => {
         const box = child.getBoundingClientRect()
         const offset = y - box.top - box.height / 2
@@ -903,6 +960,12 @@ function getDragAfterElement(container, y) {
 
 function getDragAfterElementFavicon(container, x) {
     const draggableElements = [...container.querySelectorAll('.pinned-favicon:not(.dragging)')]
+
+    // If no pinned favicons exist, return the placeholder container as a reference
+    if (draggableElements.length === 0) {
+        const placeholder = container.querySelector('.pinned-placeholder-container');
+        return placeholder || null;
+    }
 
     return draggableElements.reduce((closest, child) => {
         const box = child.getBoundingClientRect()
@@ -976,6 +1039,26 @@ function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
     } else { // position === 'right'
         return afterIndex + 1; // Insert after the target element  
     }
+}
+
+// Helper function to handle empty container drops consistently
+function handleEmptyContainerDrop(container, draggingElement, placeholder) {
+    if (!container || !draggingElement || !placeholder) return false;
+    
+    // Append element to container
+    container.appendChild(draggingElement);
+    
+    // Hide placeholder appropriately based on type
+    if (placeholder.classList.contains('pinned-placeholder-container')) {
+        // For favorites area - use display none
+        placeholder.style.display = 'none';
+    } else if (placeholder.classList.contains('tab-placeholder')) {
+        // For space containers - use hidden class
+        placeholder.classList.add('hidden');
+    }
+    
+    console.log('Handled empty container drop, hiding placeholder');
+    return true;
 }
 
 // Helper function to set up drag event listeners for tab elements
@@ -1439,12 +1522,25 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 // Get the element we're dragging over to show drop indicator
                 const afterElement = getDragAfterElement(targetContainer, e.clientY);
                 if (afterElement && targetContainer.contains(afterElement)) {
-                    // Show drop indicator instead of moving the element
-                    const position = getDropPosition(afterElement, e.clientX, e.clientY, false);
-                    showDropIndicator(afterElement, position, false);
+                    // Check if this is a placeholder (empty container)
+                    if (afterElement.classList.contains('tab-placeholder')) {
+                        // Show visual feedback on the placeholder itself
+                        afterElement.classList.add('drag-over');
+                        hideAllDropIndicators(); // Don't show traditional indicators for placeholders
+                    } else {
+                        // Show traditional drop indicators for actual tabs/folders
+                        const position = getDropPosition(afterElement, e.clientX, e.clientY, false);
+                        showDropIndicator(afterElement, position, false);
+                        // Remove any placeholder drag-over state in this container
+                        const placeholder = targetContainer.querySelector('.tab-placeholder');
+                        if (placeholder) placeholder.classList.remove('drag-over');
+                    }
                 } else {
                     // If no specific element, hide indicators
                     hideAllDropIndicators();
+                    // Remove any placeholder drag-over state in this container
+                    const placeholder = targetContainer.querySelector('.tab-placeholder');
+                    if (placeholder) placeholder.classList.remove('drag-over');
                 }
 
                 // Note: Actual bookmark operations moved to drop event for proper architecture
@@ -1456,6 +1552,9 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
             // Only hide indicators if we're actually leaving the container (not moving to a child)
             if (!container.contains(e.relatedTarget)) {
                 hideAllDropIndicators();
+                // Remove any placeholder drag-over state in this container
+                const placeholder = container.querySelector('.tab-placeholder');
+                if (placeholder) placeholder.classList.remove('drag-over');
                 // Clear folder auto-open timer when leaving the container
                 clearFolderOpenTimer();
             }
@@ -1465,6 +1564,9 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
         container.addEventListener('drop', async e => {
             e.preventDefault();
             hideAllDropIndicators();
+            // Remove any placeholder drag-over state in this container
+            const placeholder = container.querySelector('.tab-placeholder');
+            if (placeholder) placeholder.classList.remove('drag-over');
             // Clear folder auto-open timer on drop
             clearFolderOpenTimer();
             
@@ -1476,17 +1578,25 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 // Calculate drop position using same logic as indicators
                 const afterElement = getDragAfterElement(targetContainer, e.clientY);
                 if (afterElement && targetContainer.contains(afterElement)) {
-                    const position = getDropPosition(afterElement, e.clientX, e.clientY, false);
-                    
-                    // Position element based on indicator logic
-                    if (position === 'above') {
-                        targetContainer.insertBefore(draggingElement, afterElement);
-                    } else { // 'below'
-                        const nextSibling = afterElement.nextElementSibling;
-                        if (nextSibling) {
-                            targetContainer.insertBefore(draggingElement, nextSibling);
-                        } else {
-                            targetContainer.appendChild(draggingElement);
+                    // Check if this is a placeholder (empty container)
+                    if (afterElement.classList.contains('tab-placeholder')) {
+                        // Empty container - append directly and hide placeholder
+                        targetContainer.appendChild(draggingElement);
+                        afterElement.classList.add('hidden');
+                    } else {
+                        // Normal positioning logic for actual tabs/folders
+                        const position = getDropPosition(afterElement, e.clientX, e.clientY, false);
+                        
+                        // Position element based on indicator logic
+                        if (position === 'above') {
+                            targetContainer.insertBefore(draggingElement, afterElement);
+                        } else { // 'below'
+                            const nextSibling = afterElement.nextElementSibling;
+                            if (nextSibling) {
+                                targetContainer.insertBefore(draggingElement, nextSibling);
+                            } else {
+                                targetContainer.appendChild(draggingElement);
+                            }
                         }
                     }
                 } else {
@@ -1498,6 +1608,73 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 await handleBookmarkOperations(e, draggingElement, container, targetFolder);
             }
         });
+    });
+}
+
+// Function to set up drag and drop for placeholder containers to make entire placeholder area droppable
+function setupPlaceholderDragAndDrop(placeholderContainer, pinnedContainer) {
+    console.log('Setting up placeholder drag and drop handlers...');
+    
+    placeholderContainer.addEventListener('dragover', e => {
+        e.preventDefault();
+        const draggingElement = document.querySelector('.dragging');
+        if (draggingElement) {
+            // Check if pinned container is empty (no tabs or folders, only placeholder)
+            const hasContent = pinnedContainer.querySelectorAll('.tab:not(.tab-placeholder), .folder').length > 0;
+            
+            if (!hasContent) {
+                // Container is empty - show visual feedback on placeholder
+                const placeholder = placeholderContainer.querySelector('.tab-placeholder');
+                if (placeholder) {
+                    placeholder.classList.add('drag-over');
+                }
+                hideAllDropIndicators();
+            }
+        }
+    });
+    
+    placeholderContainer.addEventListener('dragleave', e => {
+        // Only hide if leaving the placeholder container entirely
+        if (!placeholderContainer.contains(e.relatedTarget)) {
+            const placeholder = placeholderContainer.querySelector('.tab-placeholder');
+            if (placeholder) {
+                placeholder.classList.remove('drag-over');
+            }
+        }
+    });
+    
+    placeholderContainer.addEventListener('drop', async e => {
+        e.preventDefault();
+        const placeholder = placeholderContainer.querySelector('.tab-placeholder');
+        if (placeholder) {
+            placeholder.classList.remove('drag-over');
+        }
+        hideAllDropIndicators();
+        
+        const draggingElement = document.querySelector('.dragging');
+        if (draggingElement) {
+            // Check if pinned container is empty
+            const hasContent = pinnedContainer.querySelectorAll('.tab:not(.tab-placeholder), .folder').length > 0;
+            
+            if (!hasContent) {
+                // Forward the drop to the pinned container by simulating the drop event
+                console.log('Forwarding placeholder drop to pinned container');
+                
+                // Create a synthetic drop event for the pinned container
+                const syntheticEvent = new DragEvent('drop', {
+                    bubbles: true,
+                    cancelable: true,
+                    dataTransfer: e.dataTransfer,
+                    clientX: e.clientX,
+                    clientY: e.clientY,
+                    screenX: e.screenX,
+                    screenY: e.screenY
+                });
+                
+                // Dispatch the event on the pinned container
+                pinnedContainer.dispatchEvent(syntheticEvent);
+            }
+        }
     });
 }
 
