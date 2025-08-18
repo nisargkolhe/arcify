@@ -102,12 +102,14 @@ async function updatePinnedFavicons() {
             img.alt = tab.title;
 
             faviconElement.appendChild(img);
-            faviconElement.addEventListener('click', () => {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.pinned-favicon').forEach(t => t.classList.remove('active'));
-                // Add active class to clicked tab
-                faviconElement.classList.add('active');
-                chrome.tabs.update(tab.id, { active: true });
+            faviconElement.addEventListener('mousedown', (event) => {
+                if (event.button === MouseButton.LEFT) {
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.pinned-favicon').forEach(t => t.classList.remove('active'));
+                    // Add active class to clicked tab
+                    faviconElement.classList.add('active');
+                    chrome.tabs.update(tab.id, { active: true });
+                }
             });
 
             // Add drag event listeners for pinned favicon
@@ -2269,78 +2271,76 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     // --- Initial Display ---
     await updateDisplay(); // Call initially to set the correct title/domain
 
-    // --- Click Handler ---
-    tabElement.addEventListener('click', async (e) => {
-        // Don't activate tab when clicking input or close button
-        if (e.target === titleInput || e.target === actionButton) return;
 
-        // Remove active class from all tabs and favicons
-        document.querySelectorAll('.tab.active').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.pinned-favicon.active').forEach(t => t.classList.remove('active'));
-
-        let chromeTab = null;
-        try {
-            chromeTab = await chrome.tabs.get(tab.id);
-        } catch(e) {
-            console.log("Tab likely closed during archival.", e, tab);
-        }
-
-        if (isBookmarkOnly || !chromeTab) {
-            console.log('Opening bookmark:', tab);
-            isOpeningBookmark = true; // Set flag
-            try {
-                // Find the space this bookmark belongs to (assuming it's the active one for simplicity)
-                const space = spaces.find(s => s.id === activeSpaceId);
-                if (!space) {
-                    console.error("Cannot open bookmark: Active space not found.");
-                    isOpeningBookmark = false;
-                    return;
-                }
-
-                // Prepare bookmark data for opening
-                const bookmarkData = {
-                    url: tab.url,
-                    title: tab.title,
-                    spaceName: tab.spaceName
-                };
-
-                // Prepare context for BookmarkUtils
-                const context = {
-                    spaces,
-                    activeSpaceId,
-                    currentWindow,
-                    saveSpaces,
-                    createTabElement,
-                    activateTabInDOM,
-                    Utils
-                };
-
-                // Use shared bookmark opening logic
-                await BookmarkUtils.openBookmarkAsTab(bookmarkData, activeSpaceId, tabElement, context, isPinned);
-
-            } catch (error) {
-                console.error("Error opening bookmark:", error);
-            } finally {
-                isOpeningBookmark = false; // Reset flag
-            }
-        } else {
-            // It's a regular tab, just activate it
-            tabElement.classList.add('active');
-            chrome.tabs.update(tab.id, { active: true });
-            // Store last active tab for the space
-            const space = spaces.find(s => s.id === tab.groupId);
-            if (space) {
-                space.lastTab = tab.id;
-                saveSpaces();
-            }
-        }
-    });
-
-    // Close tab on middle click
-    tabElement.addEventListener('mousedown', (event) => {
+    // Handle mousedown events (left-click to open, middle-click to close)
+    tabElement.addEventListener('mousedown', async (event) => {
         if (event.button === MouseButton.MIDDLE) {
             event.preventDefault(); // Prevent default middle-click actions (like autoscroll)
             closeTab(tabElement, tab, isPinned, isBookmarkOnly);
+        } else if (event.button === MouseButton.LEFT) {
+            // Don't activate tab when clicking close button
+            if (event.target === actionButton) return;
+
+            // Remove active class from all tabs and favicons
+            document.querySelectorAll('.tab.active').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.pinned-favicon.active').forEach(t => t.classList.remove('active'));
+
+            let chromeTab = null;
+            try {
+                chromeTab = await chrome.tabs.get(tab.id);
+            } catch(e) {
+                console.log("Tab likely closed during archival.", e, tab);
+            }
+
+            if (isBookmarkOnly || !chromeTab) {
+                console.log('Opening bookmark:', tab);
+                isOpeningBookmark = true; // Set flag
+                try {
+                    // Find the space this bookmark belongs to (assuming it's the active one for simplicity)
+                    const space = spaces.find(s => s.id === activeSpaceId);
+                    if (!space) {
+                        console.error("Cannot open bookmark: Active space not found.");
+                        isOpeningBookmark = false;
+                        return;
+                    }
+
+                    // Prepare bookmark data for opening
+                    const bookmarkData = {
+                        url: tab.url,
+                        title: tab.title,
+                        spaceName: tab.spaceName
+                    };
+
+                    // Prepare context for BookmarkUtils
+                    const context = {
+                        spaces,
+                        activeSpaceId,
+                        currentWindow,
+                        saveSpaces,
+                        createTabElement,
+                        activateTabInDOM,
+                        Utils
+                    };
+
+                    // Use shared bookmark opening logic
+                    await BookmarkUtils.openBookmarkAsTab(bookmarkData, activeSpaceId, tabElement, context, isPinned);
+
+                } catch (error) {
+                    console.error("Error opening bookmark:", error);
+                } finally {
+                    isOpeningBookmark = false; // Reset flag
+                }
+            } else {
+                // It's a regular tab, just activate it
+                tabElement.classList.add('active');
+                chrome.tabs.update(tab.id, { active: true });
+                // Store last active tab for the space
+                const space = spaces.find(s => s.id === tab.groupId);
+                if (space) {
+                    space.lastTab = tab.id;
+                    saveSpaces();
+                }
+            }
         }
     });
 
