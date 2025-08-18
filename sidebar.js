@@ -1316,6 +1316,26 @@ function updateAllFolderPlaceholders() {
     });
 }
 
+// Convert favorite tab (pinned-favicon) to proper tab element
+async function convertFavoriteToTab(draggingElement, targetIsPinned) {
+    const tabId = parseInt(draggingElement.dataset.tabId);
+    
+    // Unpin from Chrome favorites
+    await chrome.tabs.update(tabId, { pinned: false });
+    
+    // Get fresh tab data and create proper UI element
+    const tab = await chrome.tabs.get(tabId);
+    const newTabElement = await createTabElement(tab, targetIsPinned, false);
+    
+    // Replace the small favicon with full tab element
+    draggingElement.replaceWith(newTabElement);
+    
+    // Refresh favorites area to remove the original
+    updatePinnedFavicons();
+    
+    return { tab, newTabElement };
+}
+
 // Handle bookmark operations during drop events
 async function handleBookmarkOperations(event, draggingElement, container, targetFolder) {
     // Validate required elements exist
@@ -1326,6 +1346,12 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
     
     // Handle tab being moved to pinned section or folder (both open tabs and bookmark-only tabs)
     if (container.dataset.tabType === 'pinned' && (draggingElement.dataset.tabId || draggingElement.dataset.url)) {
+        // Handle favorite tab conversion
+        if (draggingElement.classList.contains('pinned-favicon')) {
+            await convertFavoriteToTab(draggingElement, true);
+            return; // Exit early, conversion complete
+        }
+        
         console.log("Tab dropped to pinned section or folder");
         
         // Determine if this is a bookmark-only tab or a regular tab
@@ -1454,6 +1480,14 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             updateAllFolderPlaceholders();
         }
     } else if (container.dataset.tabType === 'temporary' && draggingElement.dataset.tabId) {
+        // Handle favorite tab conversion
+        if (draggingElement.classList.contains('pinned-favicon')) {
+            const { tab } = await convertFavoriteToTab(draggingElement, false);
+            const space = spaces.find(s => s.id === parseInt(activeSpaceId));
+            if (space) moveTabToTemp(space, tab);
+            return; // Exit early, conversion complete
+        }
+        
         console.log("Tab dropped to temporary section");
         const tabId = parseInt(draggingElement.dataset.tabId);
         
@@ -1476,11 +1510,13 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
     } else if (draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
         const tabId = parseInt(draggingElement.dataset.tabId);
         try {
+            // 1. Unpin the tab from Chrome favorites
             await chrome.tabs.update(tabId, { pinned: false });
-            // Update all folder placeholders after unpinning
+            
+            // Update all folder placeholders after conversion
             updateAllFolderPlaceholders();
         } catch (error) {
-            console.error('Error unpinning favicon:', error);
+            console.error('Error converting favorite tab to space tab:', error);
             // Update placeholders even if there was an error
             updateAllFolderPlaceholders();
         }
