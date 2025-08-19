@@ -267,6 +267,15 @@ async function copyCurrentTabUrlWithFallback() {
             });
             
             console.log(`[URLCopy] Script injection completed for: ${tab.url}`);
+            
+            // Notify sidebar of successful URL copy
+            try {
+                chrome.runtime.sendMessage({ action: "urlCopySuccess" });
+                console.log("[URLCopy] Success message sent to sidebar");
+            } catch (notifyError) {
+                console.log("[URLCopy] Could not notify sidebar:", notifyError);
+            }
+            
             return;
             
         } catch (injectionError) {

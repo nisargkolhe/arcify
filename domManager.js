@@ -409,6 +409,26 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     }
 }
 
+// Toast notification for URL copy success
+export function showUrlCopyToast() {
+    const toast = document.getElementById('urlCopyToast');
+    if (!toast) return;
+
+    // Clear any existing timeout
+    if (toast.hideTimeout) {
+        clearTimeout(toast.hideTimeout);
+    }
+
+    // Show the toast
+    toast.classList.add('show');
+
+    // Hide the toast after 2 seconds
+    toast.hideTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+        toast.hideTimeout = null;
+    }, 2000);
+}
+
 export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, currentActiveSpaceId, setActiveSpaceFunc, activatePinnedTabByURL) {
     chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {
@@ -467,6 +487,7 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             if (navigator.clipboard && request.url) {
                 navigator.clipboard.writeText(request.url).then(() => {
                     console.log(`[URLCopy] Sidebar fallback succeeded: ${request.url}`);
+                    showUrlCopyToast(); // Show success toast
                     sendResponse({ success: true });
                 }).catch(err => {
                     console.error("[URLCopy] Sidebar fallback failed:", err);
@@ -477,6 +498,12 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                 sendResponse({ success: false, error: "Clipboard API not available" });
             }
             return true; // Indicate async response
+        } else if (request.action === "urlCopySuccess") {
+            // Show toast when URL copy succeeds via script injection
+            console.log("[URLCopy] Received success message from background script");
+            showUrlCopyToast();
+            sendResponse({ success: true });
+            return false; // Synchronous response
         } else if (request.action === "spotlightOpened") {
             console.log("[Spotlight] Spotlight opened with mode:", request.mode);
             // Highlight new tab button if spotlight is in new-tab mode
