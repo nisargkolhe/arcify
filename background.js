@@ -84,6 +84,8 @@ chrome.commands.onCommand.addListener(async function(command) {
         await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
     } else if (command === "toggleSpotlightNewTab") {
         await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
+    } else if (command === "copyCurrentUrl") {
+        await copyCurrentTabUrlWithFallback();
     }
 });
 
@@ -226,6 +228,78 @@ async function fallbackToChromeTabs(spotlightTabMode) {
         } catch (sidePanelError) {
             console.error("All fallbacks failed:", sidePanelError);
         }
+    }
+}
+
+// Helper function for URL copying via script injection
+async function copyCurrentTabUrlWithFallback() {
+    try {
+        const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+        if (!tab) {
+            console.error("[URLCopy] No active tab found");
+            return;
+        }
+
+        console.log(`[URLCopy] Copying URL via script injection: ${tab.url}`);
+        
+        // PRIMARY: Script injection approach (universal, no permission popups)
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: (url) => {
+                    // This function runs in webpage context but avoids permission issues
+                    // by being injected from extension context
+                    navigator.clipboard.writeText(url).then(() => {
+                        console.log(`[URLCopy] Script injection succeeded: ${url}`);
+                    }).catch(err => {
+                        console.error("[URLCopy] Script injection clipboard failed:", err);
+                        // Fallback to older method if clipboard API fails
+                        const textarea = document.createElement('textarea');
+                        textarea.value = url;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        console.log(`[URLCopy] Fallback copy succeeded: ${url}`);
+                    });
+                },
+                args: [tab.url]
+            });
+            
+            console.log(`[URLCopy] Script injection completed for: ${tab.url}`);
+            return;
+            
+        } catch (injectionError) {
+            console.log("[URLCopy] Script injection failed, trying sidebar fallback:", injectionError);
+        }
+        
+        // FALLBACK: Sidebar approach (works when sidebar is focused)
+        try {
+            const sidebarResponse = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("Sidebar timeout"));
+                }, 1000);
+                
+                chrome.runtime.sendMessage({ 
+                    command: "copyCurrentUrl",
+                    url: tab.url 
+                }, (response) => {
+                    clearTimeout(timeout);
+                    if (chrome.runtime.lastError) {
+                        reject(chrome.runtime.lastError);
+                    } else {
+                        resolve(response);
+                    }
+                });
+            });
+            
+            console.log(`[URLCopy] Sidebar fallback succeeded: ${tab.url}`);
+        } catch (sidebarError) {
+            console.error("[URLCopy] Both script injection and sidebar failed:", sidebarError);
+        }
+        
+    } catch (error) {
+        console.error("[URLCopy] Failed to copy URL:", error);
     }
 }
 
