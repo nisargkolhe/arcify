@@ -15,7 +15,8 @@
     "scripting",
     "search",
     "topSites",
-    "history"
+    "history",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -81,6 +82,9 @@
         "default": "Alt+T"
       },
       "description": "New Tab"
+    },
+    "copyCurrentUrl": {
+      "description": "Copy current tab URL"
     }
   },
   "options_page": "options.html"

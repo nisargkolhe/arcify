@@ -459,6 +459,24 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                     });
                 }
             });
+        } else if (request.command === "copyCurrentUrl") {
+            // SIDEBAR FALLBACK: Handle URL copy when sidebar is focused
+            console.log(`[URLCopy] Sidebar fallback - copying URL: ${request.url}`);
+            
+            // Use clipboard API to copy the URL
+            if (navigator.clipboard && request.url) {
+                navigator.clipboard.writeText(request.url).then(() => {
+                    console.log(`[URLCopy] Sidebar fallback succeeded: ${request.url}`);
+                    sendResponse({ success: true });
+                }).catch(err => {
+                    console.error("[URLCopy] Sidebar fallback failed:", err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            } else {
+                console.error("[URLCopy] Sidebar fallback failed: navigator.clipboard not available or no URL");
+                sendResponse({ success: false, error: "Clipboard API not available" });
+            }
+            return true; // Indicate async response
         } else if (request.action === "spotlightOpened") {
             console.log("[Spotlight] Spotlight opened with mode:", request.mode);
             // Highlight new tab button if spotlight is in new-tab mode
