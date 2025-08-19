@@ -2043,6 +2043,8 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
             });
         }
 
+        // Update folder placeholders after removing bookmark
+        updateAllFolderPlaceholders();
         return;
     }
 
@@ -2719,6 +2721,9 @@ async function handleTabRemove(tabId) {
     });
 
     saveSpaces();
+    
+    // Update pinned favicons to show/hide placeholder when last pinned tab is removed
+    updatePinnedFavicons();
 }
 
 function handleTabMove(tabId, moveInfo) {
