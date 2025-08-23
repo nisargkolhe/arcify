@@ -1338,17 +1338,37 @@ h3 {
     left: 0;
     right: 0;
     height: 3px;
-    background-color: var(--chrome-blue-color);
+    background-color: var(--chrome-grey-color);
     border-radius: 2px;
     z-index: 1000;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    opacity: 0.5;
+}
+
+/* Circle indicator on the left side */
+.drop-indicator-horizontal::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    background-color: var(--chrome-grey-color);
+    border-radius: 50%;
+    z-index: 1001;
 }
 
 .drop-indicator-horizontal.above::before {
+    top: -3px;
+}
+
+.drop-indicator-horizontal.above::after {
     top: -6px;
 }
 
 .drop-indicator-horizontal.below::before {
+    bottom: -3px;
+}
+
+.drop-indicator-horizontal.below::after {
     bottom: -6px;
 }
 
