@@ -1836,6 +1836,9 @@ async function createNewFolder(spaceElement) {
     // Add the new folder to the pinned container
     pinnedContainer.appendChild(folderElement);
     
+    // Set up context menu for the new folder
+    setupFolderContextMenu(folderElement, { name: spaceElement.querySelector('.space-name').value });
+    
     // Ensure new empty folder shows placeholder
     updateFolderPlaceholder(folderElement);
     
@@ -1878,46 +1881,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         const placeHolderElement = folderElement.querySelector('.tab-placeholder');
                         // Set up folder toggle functionality
                         // Add context menu for folder
-                        folderElement.addEventListener('contextmenu', async (e) => {
-                            e.preventDefault();
-                            const contextMenu = document.createElement('div');
-                            contextMenu.classList.add('context-menu');
-                            contextMenu.style.position = 'fixed';
-                            contextMenu.style.left = `${e.clientX}px`;
-                            contextMenu.style.top = `${e.clientY}px`;
-
-                            const deleteOption = document.createElement('div');
-                            deleteOption.classList.add('context-menu-item');
-                            deleteOption.textContent = 'Delete Folder';
-                            deleteOption.addEventListener('click', async () => {
-                                if (confirm('Are you sure you want to delete this folder and all its contents?')) {
-                                    const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-                                    const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-                                    const spaceFolder = spaceFolders.find(f => f.title === space.name);
-                                    if (spaceFolder) {
-                                        const folders = await chrome.bookmarks.getChildren(spaceFolder.id);
-                                        const folder = folders.find(f => f.title === item.title);
-                                        if (folder) {
-                                            await chrome.bookmarks.removeTree(folder.id);
-                                            folderElement.remove();
-                                        }
-                                    }
-                                }
-                                contextMenu.remove();
-                            });
-
-                            contextMenu.appendChild(deleteOption);
-                            document.body.appendChild(contextMenu);
-
-                            // Close context menu when clicking outside
-                            const closeContextMenu = (e) => {
-                                if (!contextMenu.contains(e.target)) {
-                                    contextMenu.remove();
-                                    document.removeEventListener('click', closeContextMenu);
-                                }
-                            };
-                            document.addEventListener('click', closeContextMenu);
-                        });
+                        setupFolderContextMenu(folderElement, space, item);
 
                         folderHeader.addEventListener('click', () => {
                             folderElement.classList.toggle('collapsed');
@@ -3055,4 +3019,51 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
+}
+
+// Reusable function to set up folder context menu
+function setupFolderContextMenu(folderElement, space, item = null) {
+    folderElement.addEventListener('contextmenu', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const contextMenu = document.createElement('div');
+        contextMenu.classList.add('context-menu');
+        contextMenu.style.position = 'fixed';
+        contextMenu.style.left = `${e.clientX}px`;
+        contextMenu.style.top = `${e.clientY}px`;
+
+        const deleteOption = document.createElement('div');
+        deleteOption.classList.add('context-menu-item');
+        deleteOption.textContent = 'Delete Folder';
+        deleteOption.addEventListener('click', async () => {
+            if (confirm('Are you sure you want to delete this folder and all its contents?')) {
+                const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+                const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+                const spaceFolder = spaceFolders.find(f => f.title === space.name);
+                if (spaceFolder) {
+                    const folders = await chrome.bookmarks.getChildren(spaceFolder.id);
+                    // For existing folders, use item.title; for new folders, use the folder name
+                    const folderTitle = item ? item.title : folderElement.querySelector('.folder-title').textContent;
+                    const folder = folders.find(f => f.title === folderTitle);
+                    if (folder) {
+                        await chrome.bookmarks.removeTree(folder.id);
+                        folderElement.remove();
+                    }
+                }
+            }
+            contextMenu.remove();
+        });
+
+        contextMenu.appendChild(deleteOption);
+        document.body.appendChild(contextMenu);
+
+        // Close context menu when clicking outside
+        const closeContextMenu = (e) => {
+            if (!contextMenu.contains(e.target)) {
+                contextMenu.remove();
+                document.removeEventListener('click', closeContextMenu);
+            }
+        };
+        document.addEventListener('click', closeContextMenu);
+    });
 }
