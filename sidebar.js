@@ -710,6 +710,9 @@ function createSpaceElement(space) {
 
     // Load tabs
     loadTabs(space, pinnedContainer, tempContainer);
+    
+    // Update placeholders after loading tabs
+    updatePinnedSectionPlaceholders();
 
     const popup = spaceElement.querySelector('.archived-tabs-popup');
     const archiveButton = spaceElement.querySelector('.sidebar-button');
@@ -1268,6 +1271,9 @@ async function moveTabToPinned(space, tab) {
         const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
         updateChevronState(spaceElement, pinnedContainer);
     }
+    
+    // Update placeholders after moving tab to pinned
+    updatePinnedSectionPlaceholders();
 }
 
 async function moveTabToTemp(space, tab) {
@@ -1317,15 +1323,34 @@ function updateFolderPlaceholder(folderElement) {
     }
 }
 
-// Update all folder placeholders in the current space
-function updateAllFolderPlaceholders() {
+// Update all pinned section placeholders in the current space (folders + main section)
+function updatePinnedSectionPlaceholders() {
     const currentSpace = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
     if (!currentSpace) return;
     
+    // Update folder placeholders
     const folders = currentSpace.querySelectorAll('.folder');
     folders.forEach(folder => {
         updateFolderPlaceholder(folder);
     });
+    
+    // Update main space pinned section placeholder
+    const pinnedContainer = currentSpace.querySelector('[data-tab-type="pinned"]');
+    const placeholderContainer = currentSpace.querySelector('.placeholder-container');
+    
+    if (pinnedContainer && placeholderContainer) {
+        const placeholder = placeholderContainer.querySelector('.tab-placeholder');
+        if (placeholder) {
+            // Check if pinned container has any actual content (tabs or folders, not placeholders)
+            const hasContent = pinnedContainer.querySelectorAll('.tab:not(.tab-placeholder), .folder').length > 0;
+            
+            if (hasContent) {
+                placeholder.classList.add('hidden');
+            } else {
+                placeholder.classList.remove('hidden');
+            }
+        }
+    }
 }
 
 // Convert favorite tab (pinned-favicon) to proper tab element
@@ -1485,11 +1510,11 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             saveSpaces();
             
             // Update all folder placeholders after bookmark operations
-            updateAllFolderPlaceholders();
+            updatePinnedSectionPlaceholders();
         } catch (error) {
             console.error('Error handling pinned tab drop:', error);
             // Update placeholders even if there was an error
-            updateAllFolderPlaceholders();
+            updatePinnedSectionPlaceholders();
         }
     } else if (container.dataset.tabType === 'temporary' && draggingElement.dataset.tabId) {
         // Handle favorite tab conversion
@@ -1512,12 +1537,12 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 moveTabToTemp(space, tab);
                 
                 // Update all folder placeholders after removing bookmark
-                updateAllFolderPlaceholders();
+                updatePinnedSectionPlaceholders();
             }
         } catch (error) {
             console.error('Error handling temporary tab drop:', error);
             // Update placeholders even if there was an error
-            updateAllFolderPlaceholders();
+            updatePinnedSectionPlaceholders();
         }
     } else if (draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
         const tabId = parseInt(draggingElement.dataset.tabId);
@@ -1526,11 +1551,11 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             await chrome.tabs.update(tabId, { pinned: false });
             
             // Update all folder placeholders after conversion
-            updateAllFolderPlaceholders();
+            updatePinnedSectionPlaceholders();
         } catch (error) {
             console.error('Error converting favorite tab to space tab:', error);
             // Update placeholders even if there was an error
-            updateAllFolderPlaceholders();
+            updatePinnedSectionPlaceholders();
         }
     }
 }
@@ -2054,7 +2079,7 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         }
 
         // Update folder placeholders after removing bookmark
-        updateAllFolderPlaceholders();
+        updatePinnedSectionPlaceholders();
         return;
     }
 
