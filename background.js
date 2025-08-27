@@ -508,6 +508,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
     await removeTabLastActivity(tabId);
     
+    // Clean up tab name override for closed tab
+    await Utils.removeTabNameOverride(tabId);
+    
     // Clean up spotlight tracking for closed tab
     if (spotlightOpenTabs.has(tabId)) {
         spotlightOpenTabs.delete(tabId);
