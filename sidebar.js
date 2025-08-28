@@ -709,10 +709,10 @@ function createSpaceElement(space) {
     });
 
     // Load tabs
-    loadTabs(space, pinnedContainer, tempContainer);
-    
-    // Update placeholders after loading tabs
-    updatePinnedSectionPlaceholders();
+    loadTabs(space, pinnedContainer, tempContainer).then(() => {
+        // Update placeholders after loading tabs (ensure this happens after all async operations)
+        updatePinnedSectionPlaceholders();
+    });
 
     const popup = spaceElement.querySelector('.archived-tabs-popup');
     const archiveButton = spaceElement.querySelector('.sidebar-button');
