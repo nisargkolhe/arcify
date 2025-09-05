@@ -48,6 +48,12 @@ class InstallationOnboarding {
     }
 
     nextStep() {
+        if (this.currentStep === 4) {
+            // Redirect to arcify.io when next is clicked on step 4 (Spotlight)
+            window.location.href = 'https://arcify.io';
+            return;
+        }
+        
         if (this.currentStep < this.totalSteps) {
             this.goToStep(this.currentStep + 1);
         } else {
