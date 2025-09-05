@@ -38,7 +38,7 @@ const Utils = {
         const defaultSettings = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
-            autoArchiveIdleMinutes: 30, // Default: 30 minutes
+            autoArchiveIdleMinutes: 360, // Default: 30 minutes
             enableSpotlight: true, // Default: enabled
             // ... other settings ...
         };

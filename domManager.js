@@ -321,19 +321,20 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     toggleLabel.appendChild(document.createTextNode('Enable Archiving'));
     controls.appendChild(toggleLabel);
 
-    // Archive time input (styled)
+    // Archive time input (styled) - display in hours, store in minutes
     const timeContainer = document.createElement('div');
     timeContainer.className = 'archiving-time-container';
     const timeInput = document.createElement('input');
     timeInput.type = 'number';
-    timeInput.min = '1';
-    timeInput.value = archiveTime;
+    timeInput.min = '0.25'; // 15 minutes minimum
+    timeInput.step = '0.25'; // 15 minute increments
+    timeInput.value = (archiveTime / 60).toFixed(2); // Convert minutes to hours
     timeInput.className = 'archiving-time-input';
     timeInput.disabled = !archivingEnabled;
-    const minLabel = document.createElement('span');
-    minLabel.textContent = 'min';
+    const hrLabel = document.createElement('span');
+    hrLabel.textContent = 'hr';
     timeContainer.appendChild(timeInput);
-    timeContainer.appendChild(minLabel);
+    timeContainer.appendChild(hrLabel);
     controls.appendChild(timeContainer);
 
     // Event listeners
@@ -343,10 +344,11 @@ export async function showArchivedTabsPopup(activeSpaceId) {
         await Utils.setArchivingEnabled(enabled);
     });
     timeInput.addEventListener('change', async (e) => {
-        let val = parseInt(timeInput.value, 10);
-        if (isNaN(val) || val < 1) val = 1;
-        timeInput.value = val;
-        await Utils.setArchiveTime(val);
+        let val = parseFloat(timeInput.value);
+        if (isNaN(val) || val < 0.25) val = 0.25; // Minimum 15 minutes
+        timeInput.value = val.toFixed(2);
+        const minutes = Math.round(val * 60); // Convert hours to minutes
+        await Utils.setArchiveTime(minutes);
     });
 
     // --- End Archiving Controls ---

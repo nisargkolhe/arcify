@@ -25,7 +25,7 @@ async function saveOptions() {
   const settings = {
     defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
-    autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 30,
+    autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
   };
 
   try {
