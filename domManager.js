@@ -208,10 +208,10 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
             submenuItem.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 contextMenu.remove(); // Close menu immediately for better UX
-                
+
                 await moveTabToSpace(tab.id, space.id, false);
                 // Set the space as active, but prevent it from auto-activating a different tab
-                await setActiveSpace(space.id, false); 
+                await setActiveSpace(space.id, false);
                 // Explicitly activate the tab that was just moved
                 await chrome.tabs.update(tab.id, { active: true });
             });
@@ -221,7 +221,7 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         // Add inactive spaces
         const activeSpaceNames = new Set(spaces.map(s => s.name));
         const inactiveSpaceFolders = allBookmarkSpaceFolders.filter(f => !f.url && !activeSpaceNames.has(f.title));
-        
+
         if (otherActiveSpaces.length > 0 && inactiveSpaceFolders.length > 0) {
             const separator = document.createElement('div');
             separator.className = 'context-menu-separator';
@@ -445,7 +445,7 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                         return;
                     }
                     console.log("[QuickPin] Toggling pin state for tab:", tabToToggle);
-                    
+
                     const spaceWithTempTab = spaces.find(space =>
                         space.temporaryTabs.includes(tabToToggle.id)
                     );
@@ -533,4 +533,56 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             activatePinnedTabByURL(request.bookmarkUrl, request.spaceId, request.spaceName);
         }
     });
-} 
+}
+
+export function setupTabNavigationInSpaceListener(movToPrevTabInSpace, movToNextTabInSpace) {
+    chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+        if (request.command === "NextTabInSpace" || request.command === "PrevTabInSpace") {
+            console.log(`[TabNavigation] Received command: ${request.command}`, { request });
+            chrome.storage.local.get('spaces', async function(result) {
+                const spaces = result.spaces || [];
+                console.log("[TabNavigation] Loaded spaces from storage:", spaces);
+
+                const getTabSpace = (tabToFind) => {
+                    if (!tabToFind) {
+                        console.error("[TabNavigation] No tab found to navigate from.");
+                        return;
+                    }
+                    console.log("[TabNavigation] navigating from tab:", tabToFind);
+
+                    const spaceWithTempTab = spaces.find(space =>
+                        space.temporaryTabs.includes(tabToFind.id)
+                    );
+
+                    if (spaceWithTempTab) {
+                        console.log(`[TabNavigation] Tab ${tabToFind.id} is a temporary tab in space "${spaceWithTempTab.name}".`);
+                        return spaceWithTempTab;
+                    } else {
+                        const spaceWithBookmark = spaces.find(space =>
+                            space.spaceBookmarks.includes(tabToFind.id)
+                        );
+
+                        if (spaceWithBookmark) {
+                            console.log(`[TabNavigation] Tab ${tabToFind.id} is a bookmarked tab in space "${spaceWithBookmark.name}".`);
+                            return spaceWithBookmark
+                        } else {
+                            console.warn(`[TabNavigation] Tab ${tabToFind.id} not found in any space as temporary or bookmarked.`);
+                        }
+                    }
+                };
+                const foundTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+                const currentTab = foundTabs.length > 0 ? foundTabs[0] : undefined;
+                const currentSpace = getTabSpace(currentTab);
+                if (currentTab === undefined || currentSpace === undefined) {
+                    return;
+                }
+
+                if (request.command === "NextTabInSpace") {
+                    await movToNextTabInSpace(currentTab.id, currentSpace);
+                } else if (request.command === "PrevTabInSpace") {
+                    await movToPrevTabInSpace(currentTab.id, currentSpace);
+                }
+            });
+        }
+    });
+}
