@@ -71,6 +71,11 @@
       },
       "description": "Quick Pin/Unpin Tab"
     },
+    "NextTabInSpace": {
+      "description": "Navigates to next tab in space"
+    },
+    "PrevTabInSpace": {
+      "description": "Navigates to prev tab in space"
     "toggleSpotlight": {
       "suggested_key": {
         "default": "Alt+L"

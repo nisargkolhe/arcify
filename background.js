@@ -80,6 +80,15 @@ chrome.commands.onCommand.addListener(async function(command) {
     if (command === "quickPinToggle") {
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "quickPinToggle" });
+    } else if (command === "NextTabInSpace") {
+        console.log("sending");
+        // Send a message to the sidebar
+        chrome.runtime.sendMessage({ command: "NextTabInSpace" });
+    }
+    else if (command === "PrevTabInSpace") {
+        console.log("sending");
+        // Send a message to the sidebar
+        chrome.runtime.sendMessage({ command: "PrevTabInSpace" });
     } else if (command === "toggleSpotlight") {
         await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
     } else if (command === "toggleSpotlightNewTab") {
