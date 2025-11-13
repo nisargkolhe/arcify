@@ -2,7 +2,7 @@ import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
-import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener, setupTabNavigationInSpaceListener } from './domManager.js';
+import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener } from './domManager.js';
 
 // Constants
 const MouseButton = {
@@ -161,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp);
 
     // Tab navigation listener
-    setupTabNavigationInSpaceListener(movToPrevTabInSpace, movToNextTabInSpace);
     // Add event listener for placeholder close button
     const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');
     const placeholderContainer = document.querySelector('.pinned-placeholder-container');
@@ -1985,56 +1984,4 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
-}
-
-async function movToNextTabInSpace(tabId, sourceSpace) {
-    const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
-    const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
-
-    const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
-    const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
-
-    if (indexInTemporaryTabs != -1) {
-        if (indexInTemporaryTabs < temporaryTabs.length-1) {
-            chrome.tabs.update(temporaryTabs[indexInTemporaryTabs+1], {active: true})
-        } else if (spaceBookmarks.length > 0) {
-            chrome.tabs.update(spaceBookmarks[0], {active: true})
-        } else {
-            chrome.tabs.update(temporaryTabs[0], {active: true})
-        }
-    } else if (indexInBookmarks != -1) {
-        if (indexInBookmarks < spaceBookmarks.length-1) {
-            chrome.tabs.update(spaceBookmarks[indexInBookmarks+1], {active: true})
-        } else if (temporaryTabs.length > 0) {
-            chrome.tabs.update(temporaryTabs[0], {active: true})
-        } else {
-            chrome.tabs.update(spaceBookmarks[0], {active: true})
-        }
-    }
-}
-
-async function movToPrevTabInSpace(tabId, sourceSpace) {
-    const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
-    const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
-
-    const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
-    const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
-
-    if (indexInTemporaryTabs != -1) {
-        if (indexInTemporaryTabs > 0) {
-            chrome.tabs.update(temporaryTabs[indexInTemporaryTabs-1], {active: true})
-        } else if (spaceBookmarks.length > 0) {
-            chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], {active: true})
-        } else {
-            chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], {active: true})
-        }
-    } else if (indexInBookmarks != -1) {
-        if (indexInBookmarks > 0) {
-            chrome.tabs.update(spaceBookmarks[indexInBookmarks-1], {active: true})
-        } else if (temporaryTabs.length > 0) {
-            chrome.tabs.update(temporaryTabs[temporaryTabs.length-1], {active: true})
-        } else {
-            chrome.tabs.update(spaceBookmarks[spaceBookmarks.length-1], {active: true})
-        }
-    }
 }

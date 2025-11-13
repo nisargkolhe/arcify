@@ -27,10 +27,10 @@ const Utils = {
                 bookmarks.push(...subFolderBookmarks);
             }
         }
-        
+
         return bookmarks;
     },
-    
+
     // Helper function to generate UUID (If you want to move this too)
     generateUUID: function() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -113,16 +113,16 @@ const Utils = {
         }
     },
 
-    updateBookmarkTitleIfNeeded: async function(tab, activeSpace, newTitle) {    
+    updateBookmarkTitleIfNeeded: async function(tab, activeSpace, newTitle) {
         console.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
-    
+
         try {
             const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(activeSpace.name);
             if (!spaceFolder) {
                 console.error(`Bookmark folder for space ${activeSpace.name} not found.`);
                 return;
             }
-    
+
             // Recursive function to find and update the bookmark
             const findAndUpdate = async (folderId) => {
                 const items = await chrome.bookmarks.getChildren(folderId);
@@ -145,12 +145,12 @@ const Utils = {
                 }
                 return false; // Not found in this folder
             };
-    
+
             const updated = await findAndUpdate(spaceFolder.id);
             if (!updated) {
                 console.log(`Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
             }
-    
+
         } catch (error) {
             console.error(`Error updating bookmark for tab ${tab.id}:`, error);
         }
@@ -282,11 +282,11 @@ const Utils = {
                     console.log("removing bookmark", item);
                 }
                 await chrome.bookmarks.remove(item.id);
-                
+
                 if (removeTabElement && tabElement) {
                     tabElement.remove();
                 }
-                
+
                 return true; // Bookmark found and removed
             } else if (!item.url) {
                 // This is a folder, search recursively
@@ -296,6 +296,87 @@ const Utils = {
         }
         return false; // Bookmark not found
     },
+    movToNextTabInSpace: async function(tabId, sourceSpace) {
+        const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
+        const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+
+        const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
+        const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+
+        if (indexInTemporaryTabs != -1) {
+            if (indexInTemporaryTabs < temporaryTabs.length-1) {
+                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs+1], {active: true})
+            } else if (spaceBookmarks.length > 0) {
+                chrome.tabs.update(spaceBookmarks[0], {active: true})
+            } else {
+                chrome.tabs.update(temporaryTabs[0], {active: true})
+            }
+        } else if (indexInBookmarks != -1) {
+            if (indexInBookmarks < spaceBookmarks.length-1) {
+                chrome.tabs.update(spaceBookmarks[indexInBookmarks+1], {active: true})
+            } else if (temporaryTabs.length > 0) {
+                chrome.tabs.update(temporaryTabs[0], {active: true})
+            } else {
+                chrome.tabs.update(spaceBookmarks[0], {active: true})
+            }
+        }
+    },
+    movToPrevTabInSpace: async function (tabId, sourceSpace) {
+
+
+        const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
+        const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+
+        const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
+        const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+
+        if (indexInTemporaryTabs != -1) {
+            if (indexInTemporaryTabs > 0) {
+                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs-1], {active: true})
+            } else if (spaceBookmarks.length > 0) {
+                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], {active: true})
+            } else {
+                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], {active: true})
+            }
+        } else if (indexInBookmarks != -1) {
+            if (indexInBookmarks > 0) {
+                chrome.tabs.update(spaceBookmarks[indexInBookmarks-1], {active: true})
+            } else if (temporaryTabs.length > 0) {
+                chrome.tabs.update(temporaryTabs[temporaryTabs.length-1], {active: true})
+            } else {
+                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length-1], {active: true})
+            }
+        }
+    },
+    findActiveSpaceAndTab: async function() {
+        console.log("[TabNavigation] finding space");
+        const spacesResult = await chrome.storage.local.get('spaces');
+        const spaces = spacesResult.spaces || [];
+        console.log("[TabNavigation] Loaded spaces from storage:", spaces);
+        const foundTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (foundTabs.length === 0) {
+            console.log("[TabNavigation] No active tab found!:");
+            return undefined;
+        }
+        const foundTab = foundTabs[0];
+        const spaceWithTempTab = spaces.find(space =>
+            space.temporaryTabs.includes(foundTab.id)
+        );
+        if (spaceWithTempTab) {
+            console.log(`[TabNavigation] Tab ${foundTab.id} is a temporary tab in space "${spaceWithTempTab.name}".`);
+            return {space: spaceWithTempTab, tab: foundTab};
+        }
+
+        const spaceWithBookmark = spaces.find(space =>
+            space.spaceBookmarks.includes(foundTab.id)
+        );
+        if (spaceWithBookmark) {
+            console.log(`[TabNavigation] Tab ${foundTab.id} is a bookmarked tab in space "${spaceWithBookmark.name}".`);
+            return {space: spaceWithBookmark, tab: foundTab};
+        }
+
+        return undefined
+            }
 }
 
 export { Utils };

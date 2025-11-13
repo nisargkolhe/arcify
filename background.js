@@ -8,7 +8,6 @@ chrome.sidePanel.setPanelBehavior({
     openPanelOnActionClick: true
 }).catch(error => console.error(error));
 
-
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install' || details.reason === 'update') {
@@ -46,14 +45,18 @@ chrome.commands.onCommand.addListener(function(command) {
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "quickPinToggle" });
     } else if (command === "NextTabInSpace") {
-        console.log("sending");
-        // Send a message to the sidebar
-        chrome.runtime.sendMessage({ command: "NextTabInSpace" });
+        Utils.findActiveSpaceAndTab().then(async ({space, tab}) => {
+            if (space) {
+                await Utils.movToNextTabInSpace(tab.id, space);
+            }
+        });
     }
     else if (command === "PrevTabInSpace") {
-        console.log("sending");
-        // Send a message to the sidebar
-        chrome.runtime.sendMessage({ command: "PrevTabInSpace" });
+        Utils.findActiveSpaceAndTab().then(async ({space, tab}) => {
+            if (space) {
+                await Utils.movToPrevTabInSpace(tab.id, space);
+            }
+        });
     }
 });
 
