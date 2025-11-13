@@ -54,6 +54,12 @@
         "mac": "Command+D"
       },
       "description": "Quick Pin/Unpin Tab"
+    },
+    "NextTabInSpace": {
+      "description": "Navigates to next tab in space"
+    },
+    "PrevTabInSpace": {
+      "description": "Navigates to prev tab in space"
     }
   },
   "options_page": "options.html"

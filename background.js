@@ -45,6 +45,15 @@ chrome.commands.onCommand.addListener(function(command) {
         console.log("sending");
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "quickPinToggle" });
+    } else if (command === "NextTabInSpace") {
+        console.log("sending");
+        // Send a message to the sidebar
+        chrome.runtime.sendMessage({ command: "NextTabInSpace" });
+    }
+    else if (command === "PrevTabInSpace") {
+        console.log("sending");
+        // Send a message to the sidebar
+        chrome.runtime.sendMessage({ command: "PrevTabInSpace" });
     }
 });
 
