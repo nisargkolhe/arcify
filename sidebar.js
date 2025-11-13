@@ -356,7 +356,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, setActiveSpace, activatePinnedTabByURL);
 
     // Tab navigation listener
-    setupTabNavigationInSpaceListener(movToPrevTabInSpace, movToNextTabInSpace);
     // Add event listener for placeholder close button
     const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');
     const placeholderContainer = document.querySelector('.pinned-placeholder-container');

@@ -18,6 +18,33 @@ const MAX_ARCHIVED_TABS = 100;
 const ARCHIVED_TABS_KEY = 'archivedTabs';
 
 const Utils = {
+
+    processBookmarkFolder: async function(folder, groupId) {
+        const bookmarks = [];
+        const items = await chrome.bookmarks.getChildren(folder.id);
+        const tabs = await chrome.tabs.query({groupId: groupId});
+        for (const item of items) {
+            if (item.url) {
+                // This is a bookmark
+                const tab = tabs.find(t => t.url === item.url);
+                if (tab) {
+                    bookmarks.push(tab.id);
+                    // Set tab name override with the bookmark's title
+                    if (item.title && item.title !== tab.title) { // Only override if bookmark title is present and different
+                        await this.setTabNameOverride(tab.id, tab.url, item.title);
+                        console.log(`Override set for tab ${tab.id} from bookmark: ${item.title}`);
+                    }
+                }
+            } else {
+                // This is a folder, recursively process it
+                const subFolderBookmarks = await this.processBookmarkFolder(item, groupId);
+                bookmarks.push(...subFolderBookmarks);
+            }
+        }
+
+        return bookmarks;
+    },
+
     // Helper function to generate UUID (If you want to move this too)
     generateUUID: function() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -98,6 +125,49 @@ const Utils = {
         } else {
             const randomIndex = Math.floor(Math.random() * chromeTabGroupColors.length);
             return chromeTabGroupColors[randomIndex];
+        }
+    },
+
+    updateBookmarkTitleIfNeeded: async function(tab, activeSpace, newTitle) {
+        console.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
+
+        try {
+            const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(activeSpace.name);
+            if (!spaceFolder) {
+                console.error(`Bookmark folder for space ${activeSpace.name} not found.`);
+                return;
+            }
+
+            // Recursive function to find and update the bookmark
+            const findAndUpdate = async (folderId) => {
+                const items = await chrome.bookmarks.getChildren(folderId);
+                for (const item of items) {
+                    if (item.url && item.url === tab.url) {
+                        // Found the bookmark
+                        // Avoid unnecessary updates if title is already correct
+                        if (item.title !== newTitle) {
+                            console.log(`Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
+                            await chrome.bookmarks.update(item.id, { title: newTitle });
+                        } else {
+                             console.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
+                        }
+                        return true; // Found
+                    } else if (!item.url) {
+                        // It's a subfolder, search recursively
+                        const found = await findAndUpdate(item.id);
+                        if (found) return true; // Stop searching if found in subfolder
+                    }
+                }
+                return false; // Not found in this folder
+            };
+
+            const updated = await findAndUpdate(spaceFolder.id);
+            if (!updated) {
+                console.log(`Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
+            }
+
+        } catch (error) {
+            console.error(`Error updating bookmark for tab ${tab.id}:`, error);
         }
     },
 
@@ -224,6 +294,116 @@ const Utils = {
         await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
     },
 
+    // Search and remove bookmark by URL from a folder structure recursively
+    searchAndRemoveBookmark: async function(folderId, tabUrl, options = {}) {
+        const {
+            removeTabElement = false, // Whether to also remove the tab element from DOM
+            tabElement = null, // The tab element to remove if removeTabElement is true
+            logRemoval = false // Whether to log the removal
+        } = options;
+
+        const items = await chrome.bookmarks.getChildren(folderId);
+        for (const item of items) {
+            if (item.url === tabUrl) {
+                if (logRemoval) {
+                    console.log("removing bookmark", item);
+                }
+                await chrome.bookmarks.remove(item.id);
+
+                if (removeTabElement && tabElement) {
+                    tabElement.remove();
+                }
+
+                return true; // Bookmark found and removed
+            } else if (!item.url) {
+                // This is a folder, search recursively
+                const found = await this.searchAndRemoveBookmark(item.id, tabUrl, options);
+                if (found) return true;
+            }
+        }
+        return false; // Bookmark not found
+    },
+    movToNextTabInSpace: async function(tabId, sourceSpace) {
+        const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
+        const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+
+        const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
+        const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+
+        if (indexInTemporaryTabs != -1) {
+            if (indexInTemporaryTabs < temporaryTabs.length-1) {
+                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs+1], {active: true})
+            } else if (spaceBookmarks.length > 0) {
+                chrome.tabs.update(spaceBookmarks[0], {active: true})
+            } else {
+                chrome.tabs.update(temporaryTabs[0], {active: true})
+            }
+        } else if (indexInBookmarks != -1) {
+            if (indexInBookmarks < spaceBookmarks.length-1) {
+                chrome.tabs.update(spaceBookmarks[indexInBookmarks+1], {active: true})
+            } else if (temporaryTabs.length > 0) {
+                chrome.tabs.update(temporaryTabs[0], {active: true})
+            } else {
+                chrome.tabs.update(spaceBookmarks[0], {active: true})
+            }
+        }
+    },
+    movToPrevTabInSpace: async function (tabId, sourceSpace) {
+
+
+        const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
+        const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+
+        const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
+        const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+
+        if (indexInTemporaryTabs != -1) {
+            if (indexInTemporaryTabs > 0) {
+                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs-1], {active: true})
+            } else if (spaceBookmarks.length > 0) {
+                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], {active: true})
+            } else {
+                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], {active: true})
+            }
+        } else if (indexInBookmarks != -1) {
+            if (indexInBookmarks > 0) {
+                chrome.tabs.update(spaceBookmarks[indexInBookmarks-1], {active: true})
+            } else if (temporaryTabs.length > 0) {
+                chrome.tabs.update(temporaryTabs[temporaryTabs.length-1], {active: true})
+            } else {
+                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length-1], {active: true})
+            }
+        }
+    },
+    findActiveSpaceAndTab: async function() {
+        console.log("[TabNavigation] finding space");
+        const spacesResult = await chrome.storage.local.get('spaces');
+        const spaces = spacesResult.spaces || [];
+        console.log("[TabNavigation] Loaded spaces from storage:", spaces);
+        const foundTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (foundTabs.length === 0) {
+            console.log("[TabNavigation] No active tab found!:");
+            return undefined;
+        }
+        const foundTab = foundTabs[0];
+        const spaceWithTempTab = spaces.find(space =>
+            space.temporaryTabs.includes(foundTab.id)
+        );
+        if (spaceWithTempTab) {
+            console.log(`[TabNavigation] Tab ${foundTab.id} is a temporary tab in space "${spaceWithTempTab.name}".`);
+            return {space: spaceWithTempTab, tab: foundTab};
+        }
+
+        const spaceWithBookmark = spaces.find(space =>
+            space.spaceBookmarks.includes(foundTab.id)
+        );
+        if (spaceWithBookmark) {
+            console.log(`[TabNavigation] Tab ${foundTab.id} is a bookmarked tab in space "${spaceWithBookmark.name}".`);
+            return {space: spaceWithBookmark, tab: foundTab};
+        }
+
+        return undefined
+            }
 }
 
 export { Utils };
