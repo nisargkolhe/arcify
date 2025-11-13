@@ -2,7 +2,7 @@ import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
-import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener } from './domManager.js';
+import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener, setupTabNavigationInSpaceListener } from './domManager.js';
 
 // Constants
 const MouseButton = {
@@ -78,8 +78,8 @@ async function updatePinnedFavicons() {
 
             const img = document.createElement('img');
             img.src = Utils.getFaviconUrl(tab.url, "96");
-            img.onerror = () => { 
-                img.src = tab.favIconUrl; 
+            img.onerror = () => {
+                img.src = tab.favIconUrl;
                 img.onerror = () => { img.src = 'assets/default_icon.png'; }; // Fallback favicon
             };
             img.alt = tab.title;
@@ -160,6 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup Quick Pin listener
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp);
 
+    // Tab navigation listener
+    setupTabNavigationInSpaceListener(movToPrevTabInSpace, movToNextTabInSpace);
     // Add event listener for placeholder close button
     const closePlaceholderBtn = document.querySelector('.placeholder-close-btn');
     const placeholderContainer = document.querySelector('.pinned-placeholder-container');
@@ -198,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // deltaX < 0 means swiping left (finger moves left, content moves right) -> next space
                 nextIndex = (currentIndex + 1) % spaces.length;
             }
-            
+
             const nextSpace = spaces[nextIndex];
             if (nextSpace) {
                 await setActiveSpace(nextSpace.id);
@@ -774,14 +776,14 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
         };
 
         // Remove the moved tab from its old space
-        const oldSpace = spaces.find(s => 
+        const oldSpace = spaces.find(s =>
             s.temporaryTabs.includes(tabToMove.id) || s.spaceBookmarks.includes(tabToMove.id)
         );
         if (oldSpace) {
             oldSpace.temporaryTabs = oldSpace.temporaryTabs.filter(id => id !== tabToMove.id);
             oldSpace.spaceBookmarks = oldSpace.spaceBookmarks.filter(id => id !== tabToMove.id);
         }
-        
+
         // Remove the tab's DOM element from the old space's UI
         const tabElementToRemove = document.querySelector(`[data-tab-id="${tabToMove.id}"]`);
         if (tabElementToRemove) {
@@ -1240,8 +1242,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     const favicon = document.createElement('img');
     favicon.src = Utils.getFaviconUrl(tab.url);
     favicon.classList.add('tab-favicon');
-    favicon.onerror = () => { 
-        favicon.src = tab.favIconUrl; 
+    favicon.onerror = () => {
+        favicon.src = tab.favIconUrl;
         favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; }; // Fallback favicon
     }; // Fallback favicon
 
@@ -1659,8 +1661,8 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                 const img = tabElement.querySelector('img');
                 if (img) {
                     img.src = tab.favIconUrl;
-                    img.onerror = () => { 
-                        img.src = tab.favIconUrl; 
+                    img.onerror = () => {
+                        img.src = tab.favIconUrl;
                         img.onerror = () => { img.src = 'assets/default_icon.png'; }; // Fallback favicon
                     };
                 }
@@ -1678,18 +1680,18 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                         space.spaceBookmarks.includes(tabId) ||
                         space.temporaryTabs.includes(tabId)
                     );
-                    
+
                     // If tab was in a space and was bookmarked, remove it from bookmarks
                     if (spaceWithTab && spaceWithTab.spaceBookmarks.includes(tabId)) {
                         const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
                         const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
                         const spaceFolder = spaceFolders.find(f => f.title === spaceWithTab.name);
-                        
+
                         if (spaceFolder) {
                             await Utils.searchAndRemoveBookmark(spaceFolder.id, tab.url);
                         }
                     }
-                    
+
                     // Remove tab from all spaces data when it becomes pinned
                     spaces.forEach(space => {
                         space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
@@ -1917,14 +1919,14 @@ async function deleteSpace(spaceId) {
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
     // Remove tab from its original space data first
-    const sourceSpace = spaces.find(s => 
+    const sourceSpace = spaces.find(s =>
         s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
     );
     if (sourceSpace && sourceSpace.id !== spaceId) {
         sourceSpace.temporaryTabs = sourceSpace.temporaryTabs.filter(id => id !== tabId);
         sourceSpace.spaceBookmarks = sourceSpace.spaceBookmarks.filter(id => id !== tabId);
     }
-    
+
     // 1. Find the target space
     const space = spaces.find(s => s.id === spaceId);
     if (!space) {
@@ -1983,4 +1985,56 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
+}
+
+async function movToNextTabInSpace(tabId, sourceSpace) {
+    const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
+    const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+
+    const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
+    const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+
+    if (indexInTemporaryTabs != -1) {
+        if (indexInTemporaryTabs < temporaryTabs.length-1) {
+            chrome.tabs.update(temporaryTabs[indexInTemporaryTabs+1], {active: true})
+        } else if (spaceBookmarks.length > 0) {
+            chrome.tabs.update(spaceBookmarks[0], {active: true})
+        } else {
+            chrome.tabs.update(temporaryTabs[0], {active: true})
+        }
+    } else if (indexInBookmarks != -1) {
+        if (indexInBookmarks < spaceBookmarks.length-1) {
+            chrome.tabs.update(spaceBookmarks[indexInBookmarks+1], {active: true})
+        } else if (temporaryTabs.length > 0) {
+            chrome.tabs.update(temporaryTabs[0], {active: true})
+        } else {
+            chrome.tabs.update(spaceBookmarks[0], {active: true})
+        }
+    }
+}
+
+async function movToPrevTabInSpace(tabId, sourceSpace) {
+    const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
+    const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+
+    const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
+    const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+
+    if (indexInTemporaryTabs != -1) {
+        if (indexInTemporaryTabs > 0) {
+            chrome.tabs.update(temporaryTabs[indexInTemporaryTabs-1], {active: true})
+        } else if (spaceBookmarks.length > 0) {
+            chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], {active: true})
+        } else {
+            chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], {active: true})
+        }
+    } else if (indexInBookmarks != -1) {
+        if (indexInBookmarks > 0) {
+            chrome.tabs.update(spaceBookmarks[indexInBookmarks-1], {active: true})
+        } else if (temporaryTabs.length > 0) {
+            chrome.tabs.update(temporaryTabs[temporaryTabs.length-1], {active: true})
+        } else {
+            chrome.tabs.update(spaceBookmarks[spaceBookmarks.length-1], {active: true})
+        }
+    }
 }
