@@ -2297,25 +2297,121 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 console.log('Opening bookmark:', tab);
                 isOpeningBookmark = true; // Set flag
                 try {
-                    // Find the space this bookmark belongs to (assuming it's the active one for simplicity)
-                    const space = spaces.find(s => s.id === activeSpaceId);
+                    // Get URL from dataset if tab object doesn't have it (archived tab case)
+                    const tabUrl = tab.url || tabElement.dataset.url;
+                    if (!tabUrl) {
+                        console.error("Cannot open bookmark: No URL found for archived tab.");
+                        isOpeningBookmark = false;
+                        return;
+                    }
+
+                    // Check if tab exists by URL (might be open but in different window/state)
+                    const allTabs = await chrome.tabs.query({});
+                    const existingTab = BookmarkUtils.findTabByUrl(allTabs, tabUrl);
+                    
+                    if (existingTab) {
+                        // Tab exists, just activate it
+                        console.log('Found existing tab with same URL, activating:', existingTab.id);
+                        chrome.tabs.update(existingTab.id, { active: true });
+                        activateTabInDOM(existingTab.id);
+                        
+                        // Update space data if needed
+                        const space = spaces.find(s => s.id === existingTab.groupId);
+                        if (space) {
+                            space.lastTab = existingTab.id;
+                            // If this was a pinned tab, ensure it's in spaceBookmarks
+                            if (isPinned && !space.spaceBookmarks.includes(existingTab.id)) {
+                                space.spaceBookmarks.push(existingTab.id);
+                            }
+                            saveSpaces();
+                        }
+                        
+                        // Replace the element with the active tab element
+                        const updatedTabElement = await createTabElement(existingTab, isPinned, false);
+                        tabElement.replaceWith(updatedTabElement);
+                        isOpeningBookmark = false;
+                        return;
+                    }
+
+                    // Check if tab is in archive and restore it
+                    const archivedTabs = await Utils.getArchivedTabs();
+                    const archivedTab = archivedTabs.find(t => t.url === tabUrl);
+                    
+                    let targetSpaceId = activeSpaceId;
+                    let bookmarkTitle = tab.title || tabElement.querySelector('.tab-title-display')?.textContent || 'Bookmark';
+                    
+                    if (archivedTab) {
+                        console.log('Found archived tab, restoring from archive:', archivedTab);
+                        targetSpaceId = archivedTab.spaceId || activeSpaceId;
+                        bookmarkTitle = archivedTab.name || bookmarkTitle;
+                        
+                        // Restore the archived tab
+                        const restoredTab = await Utils.restoreArchivedTab(archivedTab);
+                        
+                        if (restoredTab) {
+                            // Pin the restored tab if it was originally pinned
+                            if (isPinned) {
+                                await chrome.tabs.update(restoredTab.id, { pinned: true });
+                            }
+                            
+                            // Tab is already active from restore, but ensure it's activated
+                            chrome.tabs.update(restoredTab.id, { active: true });
+                            activateTabInDOM(restoredTab.id);
+                            
+                            // Update space data
+                            const space = spaces.find(s => s.id === targetSpaceId);
+                            if (space) {
+                                space.lastTab = restoredTab.id;
+                                // If this was a pinned tab, ensure it's in spaceBookmarks
+                                if (isPinned) {
+                                    // Remove any stale tabId references (in case old tabId was still in array)
+                                    if (tab.id) {
+                                        space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tab.id);
+                                    }
+                                    // Add the new restored tabId
+                                    if (!space.spaceBookmarks.includes(restoredTab.id)) {
+                                        space.spaceBookmarks.push(restoredTab.id);
+                                    }
+                                }
+                                saveSpaces();
+                            }
+                            
+                            // Replace the element with the active tab element
+                            const updatedTabElement = await createTabElement(restoredTab, isPinned, false);
+                            tabElement.replaceWith(updatedTabElement);
+                            isOpeningBookmark = false;
+                            return;
+                        }
+                    }
+
+                    // Tab not found and not in archive, open as new bookmark
+                    const space = spaces.find(s => s.id === targetSpaceId);
                     if (!space) {
                         console.error("Cannot open bookmark: Active space not found.");
                         isOpeningBookmark = false;
                         return;
                     }
 
+                    // Get bookmark title from Chrome bookmarks if available
+                    if (!tab.spaceName) {
+                        // Try to find space name from targetSpaceId
+                        const spaceWithTab = spaces.find(s => s.id === targetSpaceId);
+                        if (spaceWithTab) {
+                            tab.spaceName = spaceWithTab.name;
+                        }
+                    }
+
                     // Prepare bookmark data for opening
                     const bookmarkData = {
-                        url: tab.url,
-                        title: tab.title,
-                        spaceName: tab.spaceName
+                        url: tabUrl,
+                        title: bookmarkTitle,
+                        spaceName: tab.spaceName || space.name
                     };
 
                     // Prepare context for BookmarkUtils
                     const context = {
                         spaces,
-                        activeSpaceId,
+                        activeSpaceId: targetSpaceId,
                         currentWindow,
                         saveSpaces,
                         createTabElement,
@@ -2324,7 +2420,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                     };
 
                     // Use shared bookmark opening logic
-                    await BookmarkUtils.openBookmarkAsTab(bookmarkData, activeSpaceId, tabElement, context, isPinned);
+                    await BookmarkUtils.openBookmarkAsTab(bookmarkData, targetSpaceId, tabElement, context, isPinned);
 
                 } catch (error) {
                     console.error("Error opening bookmark:", error);

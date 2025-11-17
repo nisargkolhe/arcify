@@ -187,17 +187,28 @@ const Utils = {
                 // windowId: currentWindow.id // Ensure it's in the current window
             });
 
-            // Immediately group the new tab into the correct space
-            await chrome.tabs.group({ tabIds: [newTab.id] });
+            // Immediately group the new tab into the correct space (if spaceId is valid)
+            if (archivedTabData.spaceId && archivedTabData.spaceId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+                try {
+                    // Check if the group still exists
+                    await chrome.tabGroups.get(archivedTabData.spaceId);
+                    // Group exists, add tab to it
+                    await chrome.tabs.group({ tabIds: [newTab.id], groupId: archivedTabData.spaceId });
+                } catch (e) {
+                    // Group doesn't exist, create a new one or leave ungrouped
+                    console.warn(`Space ${archivedTabData.spaceId} no longer exists, tab restored without grouping`);
+                }
+            }
 
             // Remove from archive storage
             await this.removeArchivedTab(archivedTabData.url, archivedTabData.spaceId);
 
-            // The handleTabCreated and handleTabUpdate listeners should add the tab to the UI.
-            // If not, you might need to manually add it or refresh the space view.
+            // Return the created tab so caller can pin it if needed
+            return newTab;
 
         } catch (error) {
             console.error(`Error restoring archived tab ${archivedTabData.url}:`, error);
+            throw error;
         }
     },
 
