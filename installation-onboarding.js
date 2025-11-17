@@ -7,6 +7,12 @@ class InstallationOnboarding {
             archiving: false,
             spotlight: true
         };
+        this.shortcuts = {
+            '_execute_action': 'Alt+S',
+            'quickPinToggle': 'Alt+D',
+            'toggleSpotlight': 'Alt+L',
+            'toggleSpotlightNewTab': 'Alt+T'
+        };
         
         this.init();
     }
@@ -50,7 +56,29 @@ class InstallationOnboarding {
     nextStep() {
         if (this.currentStep === 4) {
             // Redirect to arcify.io when next is clicked on step 4 (Spotlight)
-            window.location.href = 'https://arcify.io';
+            // Pass keyboard shortcuts as URL parameters
+            const urlParams = new URLSearchParams();
+            
+            // Map extension command names to URL parameter names
+            if (this.shortcuts['_execute_action']) {
+                urlParams.set('toggle-sidepanel', this.shortcuts['_execute_action']);
+            }
+            if (this.shortcuts['toggleSpotlight']) {
+                urlParams.set('spotlight-search', this.shortcuts['toggleSpotlight']);
+            }
+            if (this.shortcuts['quickPinToggle']) {
+                urlParams.set('switch-spaces', this.shortcuts['quickPinToggle']);
+            }
+            if (this.shortcuts['toggleSpotlightNewTab']) {
+                urlParams.set('new-tab', this.shortcuts['toggleSpotlightNewTab']);
+            }
+            
+            const queryString = urlParams.toString();
+            const redirectUrl = queryString 
+                ? `https://arcify.io?${queryString}`
+                : 'https://arcify.io';
+            
+            window.location.href = redirectUrl;
             return;
         }
         
@@ -171,17 +199,26 @@ class InstallationOnboarding {
                 }
             });
 
+            // Store shortcuts in instance for URL parameter passing
+            this.shortcuts = {
+                '_execute_action': shortcuts['_execute_action'] || 'Alt+S',
+                'quickPinToggle': shortcuts['quickPinToggle'] || 'Alt+D',
+                'toggleSpotlight': shortcuts['toggleSpotlight'] || 'Alt+L',
+                'toggleSpotlightNewTab': shortcuts['toggleSpotlightNewTab'] || 'Alt+T'
+            };
+
             // Update the shortcut display in step 5
             this.updateShortcutDisplay(shortcuts);
         } catch (error) {
             console.error('Error loading keyboard shortcuts:', error);
             // Fallback to default shortcuts
-            this.updateShortcutDisplay({
+            this.shortcuts = {
                 '_execute_action': 'Alt+S',
                 'quickPinToggle': 'Alt+D',
                 'toggleSpotlight': 'Alt+L',
                 'toggleSpotlightNewTab': 'Alt+T'
-            });
+            };
+            this.updateShortcutDisplay(this.shortcuts);
         }
     }
 
