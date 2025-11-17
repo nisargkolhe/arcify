@@ -11,7 +11,15 @@
     "bookmarks",
     "alarms",
     "commands",
-    "favicon"
+    "favicon",
+    "scripting",
+    "search",
+    "topSites",
+    "history",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "side_panel": {
     "default_path": "sidebar.html"
@@ -21,13 +29,23 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["spotlight/overlay.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [
         "sidebar.js",
         "onboarding.js",
+        "installation-onboarding.js",
         "assets/*",
-        "_favicon/*"
+        "_favicon/*",
+        "spotlight/shared/*"
       ],
       "matches": [
         "<all_urls>"
@@ -43,17 +61,30 @@
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Ctrl+E",
-        "mac": "Command+E"
+        "default": "Alt+S"
       },
       "description": "Toggle side panel"
     },
     "quickPinToggle": {
       "suggested_key": {
-        "default": "Ctrl+D",
-        "mac": "Command+D"
+        "default": "Alt+D"
       },
       "description": "Quick Pin/Unpin Tab"
+    },
+    "toggleSpotlight": {
+      "suggested_key": {
+        "default": "Alt+L"
+      },
+      "description": "Current Tab URL"
+    },
+    "toggleSpotlightNewTab": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "New Tab"
+    },
+    "copyCurrentUrl": {
+      "description": "Copy current tab URL"
     }
   },
   "options_page": "options.html"

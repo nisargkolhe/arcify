@@ -9,16 +9,11 @@
         <h1 class="options-title">Arcify Settings</h1> 
 
         <div class="options-setting-item"> 
-            <label for="defaultSpaceName" class="options-label">Default Space Name:</label> 
-            <input type="text" id="defaultSpaceName" class="options-input"> 
-        </div>
-
-        <div class="options-setting-item options-setting-toggle">
-             <label for="autoArchiveEnabled" class="options-label">Enable Auto-Archiving:</label>
-             <div class="toggle-switch-container">
-                 <input type="checkbox" id="autoArchiveEnabled" class="ios-toggle">
-                 <label for="autoArchiveEnabled" class="toggle-label"></label> <!-- Visual part of the toggle -->
-             </div>
+            <label for="defaultSpaceName" class="options-label">Default Space:</label> 
+            <select id="defaultSpaceName" class="options-input">
+                <option value="">Loading spaces...</option>
+            </select>
+            <small class="options-description">On startup with no tab groups, Arcify will put all the open tabs into this space.</small>
         </div>
 
         <div class="options-setting-item">
@@ -26,6 +21,14 @@
            <input type="number" id="autoArchiveIdleMinutes" class="options-input" min="1" step="1">
            <small class="options-description">Tabs inactive for this duration (and not pinned or audible) will be archived.</small>
         </div>
+
+        <div class="options-setting-item options-setting-toggle">
+            <label for="autoArchiveEnabled" class="options-label">Enable Auto-Archiving:</label>
+            <div class="toggle-switch-container">
+                <input type="checkbox" id="autoArchiveEnabled" class="ios-toggle">
+                <label for="autoArchiveEnabled" class="toggle-label"></label> <!-- Visual part of the toggle -->
+            </div>
+       </div>
 
         <button id="save" class="options-button">Save Settings</button>
         <div id="status" class="options-status"></div>

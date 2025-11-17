@@ -1,3 +1,17 @@
+/**
+ * LocalStorage - Bookmark-based persistence and Chrome storage utilities
+ * 
+ * Purpose: Manages space bookmarks and provides legacy storage compatibility
+ * Key Functions: Arcify bookmark folder management, space bookmark operations, storage synchronization
+ * Architecture: Static utility object for bookmark-based data persistence
+ * 
+ * Critical Notes:
+ * - Creates and manages "Arcify" bookmark folder for space persistence
+ * - Provides bookmark-based storage as alternative to chrome.storage
+ * - Used for space bookmark functionality (separate from main space data in chrome.storage)
+ * - Handles bookmark folder creation and organization automatically
+ */
+
 const LocalStorage = {
     getOrCreateArcifyFolder: async function () {
         let [ folder ] = await chrome.bookmarks.search({ title: 'Arcify' });
@@ -129,6 +143,46 @@ const LocalStorage = {
             const v = c === 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
+    },
+
+    // Get all space names from Arcify bookmark folders (source of truth)
+    getSpaceNames: async function() {
+        let spaceNames = new Set(); // Use Set to automatically deduplicate
+        
+        try {
+            // Get the Arcify folder
+            const arcifyFolder = await this.getOrCreateArcifyFolder();
+            if (arcifyFolder) {
+                // Get all children of the Arcify folder
+                const children = await chrome.bookmarks.getChildren(arcifyFolder.id);
+                
+                // Filter for folders only (not bookmarks) and extract names
+                const folders = children.filter(item => !item.url);
+                folders.forEach(folder => {
+                    spaceNames.add(folder.title);
+                });
+                
+                console.log('Found spaces from Arcify bookmark folders:', spaceNames.size);
+            }
+        } catch (bookmarkError) {
+            console.log('Could not get spaces from bookmark folders:', bookmarkError);
+        }
+        
+        // If no spaces found in bookmarks, try fallback to tab groups
+        if (spaceNames.size === 0) {
+            try {
+                const tabGroups = await chrome.tabGroups.query({});
+                tabGroups.forEach(group => {
+                    spaceNames.add(group.title);
+                });
+                console.log('Found spaces from tab groups (fallback):', spaceNames.size);
+            } catch (tabGroupError) {
+                console.log('Could not query tab groups:', tabGroupError);
+            }
+        }
+        
+        // Return sorted array of unique space names
+        return Array.from(spaceNames).sort();
     }
 }
 

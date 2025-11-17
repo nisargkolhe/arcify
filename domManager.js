@@ -1,3 +1,17 @@
+/**
+ * DOMManager - Sidebar DOM manipulation and UI component management
+ * 
+ * Purpose: Handles dynamic DOM creation, updates, and event handling for sidebar interface
+ * Key Functions: Space/tab DOM rendering, context menus, input dialogs, drag-and-drop visual feedback
+ * Architecture: Collection of utility functions for DOM manipulation and UI state management
+ * 
+ * Critical Notes:
+ * - Separates DOM manipulation logic from business logic in sidebar.js
+ * - Handles complex UI interactions like drag-and-drop visual feedback
+ * - Manages context menus and modal dialogs for user interactions
+ * - Provides reusable UI components for consistent user experience
+ */
+
 import { Utils } from './utils.js';
 import { RESTORE_ICON } from './icons.js';
 
@@ -8,7 +22,7 @@ const addSpaceBtn = document.getElementById('addSpaceBtn');
 const newTabBtn = document.getElementById('newTabBtn');
 const spaceTemplate = document.getElementById('spaceTemplate');
 
-export function setupDOMElements(createNewSpace, createNewTab) {
+export function setupDOMElements(createNewSpace) {
     spaceSwitcher.addEventListener('wheel', (event) => {
         event.preventDefault();
 
@@ -39,7 +53,10 @@ export function setupDOMElements(createNewSpace, createNewTab) {
     });
 
     document.getElementById('createSpaceBtn').addEventListener('click', createNewSpace);
-    newTabBtn.addEventListener('click', createNewTab);
+    newTabBtn.addEventListener('click', () => {
+        // Trigger spotlight instead of creating a new tab
+        chrome.runtime.sendMessage({ command: "toggleSpotlightNewTab" });
+    });
 
     const createSpaceColorSwatch = document.getElementById('createSpaceColorSwatch');
     createSpaceColorSwatch.addEventListener('click', (e) => {
@@ -116,7 +133,7 @@ export function activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher) {
     document.querySelectorAll('.space').forEach(s => {
         const isActive = s.dataset.spaceId === String(spaceId);
         s.classList.toggle('active', isActive);
-        s.style.display = isActive ? 'block' : 'none';
+        s.style.display = isActive ? 'flex' : 'none';
     });
 
     // Get space color and update sidebar container background
@@ -304,19 +321,20 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     toggleLabel.appendChild(document.createTextNode('Enable Archiving'));
     controls.appendChild(toggleLabel);
 
-    // Archive time input (styled)
+    // Archive time input (styled) - display in hours, store in minutes
     const timeContainer = document.createElement('div');
     timeContainer.className = 'archiving-time-container';
     const timeInput = document.createElement('input');
     timeInput.type = 'number';
-    timeInput.min = '1';
-    timeInput.value = archiveTime;
+    timeInput.min = '0.25'; // 15 minutes minimum
+    timeInput.step = '0.25'; // 15 minute increments
+    timeInput.value = (archiveTime / 60).toFixed(2); // Convert minutes to hours
     timeInput.className = 'archiving-time-input';
     timeInput.disabled = !archivingEnabled;
-    const minLabel = document.createElement('span');
-    minLabel.textContent = 'min';
+    const hrLabel = document.createElement('span');
+    hrLabel.textContent = 'hr';
     timeContainer.appendChild(timeInput);
-    timeContainer.appendChild(minLabel);
+    timeContainer.appendChild(hrLabel);
     controls.appendChild(timeContainer);
 
     // Event listeners
@@ -326,10 +344,11 @@ export async function showArchivedTabsPopup(activeSpaceId) {
         await Utils.setArchivingEnabled(enabled);
     });
     timeInput.addEventListener('change', async (e) => {
-        let val = parseInt(timeInput.value, 10);
-        if (isNaN(val) || val < 1) val = 1;
-        timeInput.value = val;
-        await Utils.setArchiveTime(val);
+        let val = parseFloat(timeInput.value);
+        if (isNaN(val) || val < 0.25) val = 0.25; // Minimum 15 minutes
+        timeInput.value = val.toFixed(2);
+        const minutes = Math.round(val * 60); // Convert hours to minutes
+        await Utils.setArchiveTime(minutes);
     });
 
     // --- End Archiving Controls ---
@@ -374,7 +393,7 @@ export async function showArchivedTabsPopup(activeSpaceId) {
             restoreButton.innerHTML = RESTORE_ICON;
             restoreButton.className = 'tab-restore';
             restoreButton.style.marginLeft = 'auto';
-            restoreButton.addEventListener('click', (e) => {
+            item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 Utils.restoreArchivedTab(archivedTab);
                 item.remove();
@@ -392,7 +411,27 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     }
 }
 
-export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp) {
+// Toast notification for URL copy success
+export function showUrlCopyToast() {
+    const toast = document.getElementById('urlCopyToast');
+    if (!toast) return;
+
+    // Clear any existing timeout
+    if (toast.hideTimeout) {
+        clearTimeout(toast.hideTimeout);
+    }
+
+    // Show the toast
+    toast.classList.add('show');
+
+    // Hide the toast after 2 seconds
+    toast.hideTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+        toast.hideTimeout = null;
+    }, 2000);
+}
+
+export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, currentActiveSpaceId, setActiveSpaceFunc, activatePinnedTabByURL) {
     chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {
             console.log(`[QuickPin] Received command: ${request.command}`, { request });
@@ -442,6 +481,56 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                     });
                 }
             });
+        } else if (request.command === "copyCurrentUrl") {
+            // SIDEBAR FALLBACK: Handle URL copy when sidebar is focused
+            console.log(`[URLCopy] Sidebar fallback - copying URL: ${request.url}`);
+            
+            // Use clipboard API to copy the URL
+            if (navigator.clipboard && request.url) {
+                navigator.clipboard.writeText(request.url).then(() => {
+                    console.log(`[URLCopy] Sidebar fallback succeeded: ${request.url}`);
+                    showUrlCopyToast(); // Show success toast
+                    sendResponse({ success: true });
+                }).catch(err => {
+                    console.error("[URLCopy] Sidebar fallback failed:", err);
+                    sendResponse({ success: false, error: err.message });
+                });
+            } else {
+                console.error("[URLCopy] Sidebar fallback failed: navigator.clipboard not available or no URL");
+                sendResponse({ success: false, error: "Clipboard API not available" });
+            }
+            return true; // Indicate async response
+        } else if (request.action === "urlCopySuccess") {
+            // Show toast when URL copy succeeds via script injection
+            console.log("[URLCopy] Received success message from background script");
+            showUrlCopyToast();
+            sendResponse({ success: true });
+            return false; // Synchronous response
+        } else if (request.action === "spotlightOpened") {
+            console.log("[Spotlight] Spotlight opened with mode:", request.mode);
+            // Highlight new tab button if spotlight is in new-tab mode
+            const newTabBtn = document.getElementById('newTabBtn');
+            if (request.mode === 'new-tab' && newTabBtn) {
+                newTabBtn.classList.add('spotlight-active');
+            }
+        } else if (request.action === "spotlightClosed") {
+            console.log("[Spotlight] Spotlight closed");
+            // Remove highlighting from new tab button
+            const newTabBtn = document.getElementById('newTabBtn');
+            if (newTabBtn) {
+                newTabBtn.classList.remove('spotlight-active');
+            }
+        } else if (request.action === "activatePinnedTab") {
+            console.log("[Spotlight] Activating pinned tab:", request);
+            
+            // Switch to the space if needed
+            if (request.spaceId && currentActiveSpaceId !== request.spaceId) {
+                console.log("[Spotlight] Switching to space:", request.spaceId, request.spaceName);
+                setActiveSpaceFunc(request.spaceId);
+            }
+            
+            // Use the utility function to handle pinned tab activation
+            activatePinnedTabByURL(request.bookmarkUrl, request.spaceId, request.spaceName);
         }
     });
 } 

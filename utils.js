@@ -1,36 +1,23 @@
-import { LocalStorage } from './localstorage.js';
+/**
+ * Utils - Shared utility functions and storage management
+ * 
+ * Purpose: Provides common utilities and centralized settings/storage management across the extension
+ * Key Functions: Settings CRUD, archived tabs management, space data operations, default configurations
+ * Architecture: Static utility class with async storage operations
+ * 
+ * Critical Notes:
+ * - Central source of truth for extension settings and defaults
+ * - Handles both chrome.storage.sync (settings) and chrome.storage.local (spaces/tabs data)
+ * - Used by both background script and UI components for consistent data access
+ * - Settings changes automatically sync across extension contexts
+ */
+
+import { BookmarkUtils } from './bookmark-utils.js';
 
 const MAX_ARCHIVED_TABS = 100;
 const ARCHIVED_TABS_KEY = 'archivedTabs';
 
 const Utils = {
-
-    processBookmarkFolder: async function(folder, groupId) {
-        const bookmarks = [];
-        const items = await chrome.bookmarks.getChildren(folder.id);
-        const tabs = await chrome.tabs.query({groupId: groupId});
-        for (const item of items) {
-            if (item.url) {
-                // This is a bookmark
-                const tab = tabs.find(t => t.url === item.url);
-                if (tab) {
-                    bookmarks.push(tab.id);
-                    // Set tab name override with the bookmark's title
-                    if (item.title && item.title !== tab.title) { // Only override if bookmark title is present and different
-                        await this.setTabNameOverride(tab.id, tab.url, item.title);
-                        console.log(`Override set for tab ${tab.id} from bookmark: ${item.title}`);
-                    }
-                }
-            } else {
-                // This is a folder, recursively process it
-                const subFolderBookmarks = await this.processBookmarkFolder(item, groupId);
-                bookmarks.push(...subFolderBookmarks);
-            }
-        }
-        
-        return bookmarks;
-    },
-    
     // Helper function to generate UUID (If you want to move this too)
     generateUUID: function() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -51,7 +38,8 @@ const Utils = {
         const defaultSettings = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
-            autoArchiveIdleMinutes: 30, // Default: 30 minutes
+            autoArchiveIdleMinutes: 360, // Default: 30 minutes
+            enableSpotlight: true, // Default: enabled
             // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);
@@ -113,49 +101,6 @@ const Utils = {
         }
     },
 
-    updateBookmarkTitleIfNeeded: async function(tab, activeSpace, newTitle) {    
-        console.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
-    
-        try {
-            const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(activeSpace.name);
-            if (!spaceFolder) {
-                console.error(`Bookmark folder for space ${activeSpace.name} not found.`);
-                return;
-            }
-    
-            // Recursive function to find and update the bookmark
-            const findAndUpdate = async (folderId) => {
-                const items = await chrome.bookmarks.getChildren(folderId);
-                for (const item of items) {
-                    if (item.url && item.url === tab.url) {
-                        // Found the bookmark
-                        // Avoid unnecessary updates if title is already correct
-                        if (item.title !== newTitle) {
-                            console.log(`Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
-                            await chrome.bookmarks.update(item.id, { title: newTitle });
-                        } else {
-                             console.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
-                        }
-                        return true; // Found
-                    } else if (!item.url) {
-                        // It's a subfolder, search recursively
-                        const found = await findAndUpdate(item.id);
-                        if (found) return true; // Stop searching if found in subfolder
-                    }
-                }
-                return false; // Not found in this folder
-            };
-    
-            const updated = await findAndUpdate(spaceFolder.id);
-            if (!updated) {
-                console.log(`Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
-            }
-    
-        } catch (error) {
-            console.error(`Error updating bookmark for tab ${tab.id}:`, error);
-        }
-    },
-
     // Function to get if archiving is enabled
     isArchivingEnabled: async function() {
         const settings = await this.getSettings();
@@ -179,10 +124,11 @@ const Utils = {
 
         const archivedTabs = await this.getArchivedTabs();
 
-        const exists = archivedTabs.some(t => t.url === tabData.url && t.spaceId === tabData.spaceId);
-        if (exists) {
-            console.log(`Tab already archived: ${tabData.name}`);
-            return; // Don't add duplicates
+        // Check if URL already exists in archive (regardless of space)
+        const existingTab = archivedTabs.find(t => t.url === tabData.url);
+        if (existingTab) {
+            console.log(`Tab with URL already archived: ${tabData.name} (${tabData.url})`);
+            return; // Don't add duplicates based on URL
         }
 
         // Add new tab with timestamp
@@ -241,17 +187,28 @@ const Utils = {
                 // windowId: currentWindow.id // Ensure it's in the current window
             });
 
-            // Immediately group the new tab into the correct space
-            await chrome.tabs.group({ tabIds: [newTab.id] });
+            // Immediately group the new tab into the correct space (if spaceId is valid)
+            if (archivedTabData.spaceId && archivedTabData.spaceId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+                try {
+                    // Check if the group still exists
+                    await chrome.tabGroups.get(archivedTabData.spaceId);
+                    // Group exists, add tab to it
+                    await chrome.tabs.group({ tabIds: [newTab.id], groupId: archivedTabData.spaceId });
+                } catch (e) {
+                    // Group doesn't exist, create a new one or leave ungrouped
+                    console.warn(`Space ${archivedTabData.spaceId} no longer exists, tab restored without grouping`);
+                }
+            }
 
             // Remove from archive storage
             await this.removeArchivedTab(archivedTabData.url, archivedTabData.spaceId);
 
-            // The handleTabCreated and handleTabUpdate listeners should add the tab to the UI.
-            // If not, you might need to manually add it or refresh the space view.
+            // Return the created tab so caller can pin it if needed
+            return newTab;
 
         } catch (error) {
             console.error(`Error restoring archived tab ${archivedTabData.url}:`, error);
+            throw error;
         }
     },
 
@@ -267,35 +224,6 @@ const Utils = {
         await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
     },
 
-    // Search and remove bookmark by URL from a folder structure recursively
-    searchAndRemoveBookmark: async function(folderId, tabUrl, options = {}) {
-        const {
-            removeTabElement = false, // Whether to also remove the tab element from DOM
-            tabElement = null, // The tab element to remove if removeTabElement is true
-            logRemoval = false // Whether to log the removal
-        } = options;
-
-        const items = await chrome.bookmarks.getChildren(folderId);
-        for (const item of items) {
-            if (item.url === tabUrl) {
-                if (logRemoval) {
-                    console.log("removing bookmark", item);
-                }
-                await chrome.bookmarks.remove(item.id);
-                
-                if (removeTabElement && tabElement) {
-                    tabElement.remove();
-                }
-                
-                return true; // Bookmark found and removed
-            } else if (!item.url) {
-                // This is a folder, search recursively
-                const found = await this.searchAndRemoveBookmark(item.id, tabUrl, options);
-                if (found) return true;
-            }
-        }
-        return false; // Bookmark not found
-    },
 }
 
 export { Utils };
