@@ -76,6 +76,7 @@
     },
     "PrevTabInSpace": {
       "description": "Navigates to prev tab in space"
+    },
     "toggleSpotlight": {
       "suggested_key": {
         "default": "Alt+L"
