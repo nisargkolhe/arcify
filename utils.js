@@ -149,7 +149,7 @@ const Utils = {
                             console.log(`Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
                             await chrome.bookmarks.update(item.id, { title: newTitle });
                         } else {
-                             console.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
+                            console.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
                         }
                         return true; // Found
                     } else if (!item.url) {
@@ -403,7 +403,46 @@ const Utils = {
         }
 
         return undefined
-            }
+    },
+
+    // Helper function to adjust menu position to keep it within viewport
+    adjustMenuPosition: function (menu, x, y) {
+        // Ensure menu is in DOM to get dimensions
+        if (!menu.isConnected) {
+            console.warn('Menu must be in DOM to adjust position');
+            return;
+        }
+
+        const rect = menu.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        let left = x;
+        let top = y;
+
+        // Check right edge
+        if (left + rect.width > viewportWidth) {
+            left = viewportWidth - rect.width - 5; // 5px padding
+        }
+
+        // Check bottom edge
+        if (top + rect.height > viewportHeight) {
+            top = viewportHeight - rect.height - 5; // 5px padding
+        }
+
+        // Check left edge (unlikely but possible)
+        if (left < 0) {
+            left = 5;
+        }
+
+        // Check top edge
+        if (top < 0) {
+            top = 5;
+        }
+
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+    }
 }
 
 export { Utils };

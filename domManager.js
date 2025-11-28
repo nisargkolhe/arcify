@@ -272,6 +272,9 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     // --- Add to DOM and setup closing ---
     document.body.appendChild(contextMenu);
 
+    // Adjust position to keep within viewport
+    Utils.adjustMenuPosition(contextMenu, x, y);
+
     // Close context menu when clicking outside
     const closeContextMenu = (e) => {
         if (!contextMenu.contains(e.target)) {
@@ -484,7 +487,7 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
         } else if (request.command === "copyCurrentUrl") {
             // SIDEBAR FALLBACK: Handle URL copy when sidebar is focused
             console.log(`[URLCopy] Sidebar fallback - copying URL: ${request.url}`);
-            
+
             // Use clipboard API to copy the URL
             if (navigator.clipboard && request.url) {
                 navigator.clipboard.writeText(request.url).then(() => {
@@ -522,13 +525,13 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             }
         } else if (request.action === "activatePinnedTab") {
             console.log("[Spotlight] Activating pinned tab:", request);
-            
+
             // Switch to the space if needed
             if (request.spaceId && currentActiveSpaceId !== request.spaceId) {
                 console.log("[Spotlight] Switching to space:", request.spaceId, request.spaceName);
                 setActiveSpaceFunc(request.spaceId);
             }
-            
+
             // Use the utility function to handle pinned tab activation
             activatePinnedTabByURL(request.bookmarkUrl, request.spaceId, request.spaceName);
         }
