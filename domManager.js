@@ -244,6 +244,37 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         if (submenu.hasChildNodes()) {
             moveToSpaceItem.appendChild(submenu);
             contextMenu.appendChild(moveToSpaceItem);
+
+            // Adjust submenu position when it becomes visible
+            moveToSpaceItem.addEventListener('mouseenter', () => {
+                // Wait for next frame to ensure submenu is rendered
+                requestAnimationFrame(() => {
+                    const submenuRect = submenu.getBoundingClientRect();
+                    const parentRect = moveToSpaceItem.getBoundingClientRect();
+                    const viewportWidth = window.innerWidth;
+                    const viewportHeight = window.innerHeight;
+
+                    // Reset any previous adjustments
+                    submenu.style.left = '';
+                    submenu.style.right = '';
+                    submenu.style.top = '';
+                    submenu.style.bottom = '';
+
+                    // Check if submenu overflows right edge
+                    if (parentRect.right + submenuRect.width > viewportWidth) {
+                        // Position to the left of parent instead
+                        submenu.style.left = 'auto';
+                        submenu.style.right = '100%';
+                    }
+
+                    // Check if submenu overflows bottom edge
+                    if (parentRect.top + submenuRect.height > viewportHeight) {
+                        // Align to bottom instead of top
+                        submenu.style.top = 'auto';
+                        submenu.style.bottom = '0';
+                    }
+                });
+            });
         }
     }
 
