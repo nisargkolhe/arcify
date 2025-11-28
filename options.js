@@ -21,11 +21,13 @@ async function saveOptions() {
   const defaultSpaceName = defaultSpaceNameSelect.value;
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+  const syncChromeTabPositionsCheckbox = document.getElementById('syncChromeTabPositions');
 
   const settings = {
     defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
+    syncChromeTabPositions: syncChromeTabPositionsCheckbox.checked,
   };
 
   try {
@@ -52,12 +54,14 @@ async function restoreOptions() {
   const settings = await Utils.getSettings();
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+  const syncChromeTabPositionsCheckbox = document.getElementById('syncChromeTabPositions');
 
   // Populate spaces dropdown
   await populateSpacesDropdown(settings.defaultSpaceName);
 
   autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
+  syncChromeTabPositionsCheckbox.checked = settings.syncChromeTabPositions || false;
 }
 
 // Function to populate the spaces dropdown

@@ -67,6 +67,7 @@ const Utils = {
             autoArchiveEnabled: false, // Default: disabled
             autoArchiveIdleMinutes: 360, // Default: 30 minutes
             enableSpotlight: true, // Default: enabled
+            syncChromeTabPositions: false, // Default: disabled
             // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);
@@ -292,6 +293,17 @@ const Utils = {
         const settings = await this.getSettings();
         settings.autoArchiveIdleMinutes = minutes;
         await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
+    },
+
+    // Get Chrome tab position sync setting
+    getSyncChromeTabPositions: async function () {
+        const settings = await this.getSettings();
+        return settings.syncChromeTabPositions;
+    },
+
+    // Set Chrome tab position sync setting
+    setSyncChromeTabPositions: async function (enabled) {
+        await chrome.storage.sync.set({ syncChromeTabPositions: enabled });
     },
 
     // Search and remove bookmark by URL from a folder structure recursively

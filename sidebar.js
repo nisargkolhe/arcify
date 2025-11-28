@@ -348,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tab.pinned) updatePinnedFavicons(); // Update favicons when a tab is pinned/unpinned
     });
     chrome.tabs.onRemoved.addListener(handleTabRemove);
-    // chrome.tabs.onMoved.addListener(handleTabMove);
+    chrome.tabs.onMoved.addListener(handleTabMove);
     chrome.tabs.onActivated.addListener(handleTabActivated);
     chrome.tabGroups.onRemoved.addListener(handleTabGroupRemoved);
 
@@ -2823,22 +2823,25 @@ async function handleTabRemove(tabId) {
     updatePinnedFavicons();
 }
 
+
 function handleTabMove(tabId, moveInfo) {
     if (isOpeningBookmark) {
         return;
     }
     chrome.windows.getCurrent({ populate: false }, async (currentWindow) => {
-
-        if (tab.windowId !== currentWindow.id) {
-            console.log('New tab is in a different window, ignoring...');
-            return;
-        }
-        console.log('Tab moved:', tabId, moveInfo);
-
-        // Get the tab's current information
+        // Get the tab's current information first
         chrome.tabs.get(tabId, async (tab) => {
+            if (tab.windowId !== currentWindow.id) {
+                console.log('New tab is in a different window, ignoring...');
+                return;
+            }
+            console.log('Tab moved:', tabId, moveInfo);
+
             const newGroupId = tab.groupId;
             console.log('Tab moved to group:', newGroupId);
+
+            // Check if position syncing is enabled
+            const syncEnabled = await Utils.getSyncChromeTabPositions();
 
             // Find the source and destination spaces
             const sourceSpace = spaces.find(s =>
@@ -2864,22 +2867,58 @@ function handleTabMove(tabId, moveInfo) {
                     const destSpaceElement = document.querySelector(`[data-space-id="${destSpace.id}"]`);
                     if (destSpaceElement) {
                         const destTempContainer = destSpaceElement.querySelector('[data-tab-type="temporary"]');
-                        if (destTempContainer) {
+                        if (destTempContainer && syncEnabled) {
+                            // Get all tabs in the destination group to find correct position
+                            const groupTabs = await chrome.tabs.query({ groupId: newGroupId });
+                            const tabIndex = groupTabs.findIndex(t => t.id === tabId);
+
+                            if (tabIndex !== -1) {
+                                // Find the tab element that should come after this one
+                                const nextTab = groupTabs[tabIndex + 1];
+                                if (nextTab) {
+                                    const nextTabElement = destTempContainer.querySelector(`[data-tab-id="${nextTab.id}"]`);
+                                    if (nextTabElement) {
+                                        destTempContainer.insertBefore(tabElement, nextTabElement);
+                                    } else {
+                                        destTempContainer.appendChild(tabElement);
+                                    }
+                                } else {
+                                    // This is the last tab, append to end
+                                    destTempContainer.appendChild(tabElement);
+                                }
+                            } else {
+                                destTempContainer.appendChild(tabElement);
+                            }
+                        } else if (destTempContainer) {
+                            // Sync disabled, just append to end
                             destTempContainer.appendChild(tabElement);
                         }
                     }
                 }
 
                 saveSpaces();
-            } else {
+            } else if (syncEnabled && sourceSpace) {
                 // Handle regular tab position updates within the same space
                 const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
                 if (tabElement) {
                     const container = tabElement.parentElement;
-                    const tabs = Array.from(container.children);
-                    const currentIndex = tabs.indexOf(tabElement);
-                    if (currentIndex !== moveInfo.toIndex) {
-                        container.insertBefore(tabElement, container.children[moveInfo.toIndex]);
+
+                    // Get all tabs in the group to determine correct position
+                    const groupTabs = await chrome.tabs.query({ groupId: tab.groupId });
+                    const tabIndex = groupTabs.findIndex(t => t.id === tabId);
+
+                    if (tabIndex !== -1) {
+                        // Find the tab element that should come after this one
+                        const nextTab = groupTabs[tabIndex + 1];
+                        if (nextTab) {
+                            const nextTabElement = container.querySelector(`[data-tab-id="${nextTab.id}"]`);
+                            if (nextTabElement && nextTabElement !== tabElement) {
+                                container.insertBefore(tabElement, nextTabElement);
+                            }
+                        } else {
+                            // This is the last tab, append to end
+                            container.appendChild(tabElement);
+                        }
                     }
                 }
             }
