@@ -17,7 +17,7 @@ import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
-import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener, setupTabNavigationInSpaceListener } from './domManager.js';
+import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener } from './domManager.js';
 import { BookmarkUtils } from './bookmark-utils.js';
 
 // Constants
