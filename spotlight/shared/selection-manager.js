@@ -16,13 +16,13 @@ export class SelectionManager {
 
     moveSelection(direction) {
         const maxIndex = this.results.length - 1;
-        
+
         if (direction === 'down') {
             this.selectedIndex = Math.min(this.selectedIndex + 1, maxIndex);
         } else if (direction === 'up') {
             this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
         }
-        
+
         this.updateVisualSelection();
     }
 
@@ -45,7 +45,7 @@ export class SelectionManager {
         items.forEach((item, index) => {
             item.classList.toggle('selected', index === this.selectedIndex);
         });
-        
+
         // Auto-scroll selected item into view
         if (items[this.selectedIndex]) {
             items[this.selectedIndex].scrollIntoView({

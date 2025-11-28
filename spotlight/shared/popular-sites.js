@@ -26,7 +26,7 @@ export const POPULAR_SITES = {
     "copilot.microsoft.com": "Copilot",
     "bard.google.com": "Bard",
     "perplexity.ai": "Perplexity",
-    
+
     // Social Media
     "facebook.com": "Facebook",
     "meta.com": "Meta",
@@ -43,7 +43,7 @@ export const POPULAR_SITES = {
     "telegram.org": "Telegram",
     "whatsapp.com": "WhatsApp",
     "signal.org": "Signal",
-    
+
     // Tech & Development
     "github.com": "GitHub",
     "gitlab.com": "GitLab",
@@ -61,7 +61,7 @@ export const POPULAR_SITES = {
     "cloud.google.com": "Google Cloud",
     "azure.microsoft.com": "Azure",
     "digitalocean.com": "DigitalOcean",
-    
+
     // Video & Entertainment
     "youtube.com": "YouTube",
     "netflix.com": "Netflix",
@@ -78,7 +78,7 @@ export const POPULAR_SITES = {
     "music.youtube.com": "YouTube Music",
     "soundcloud.com": "SoundCloud",
     "pandora.com": "Pandora",
-    
+
     // Shopping & E-commerce
     "amazon.com": "Amazon",
     "ebay.com": "eBay",
@@ -93,7 +93,7 @@ export const POPULAR_SITES = {
     "squarespace.com": "Squarespace",
     "wix.com": "Wix",
     "wordpress.com": "WordPress",
-    
+
     // News & Media
     "cnn.com": "CNN",
     "bbc.com": "BBC",
@@ -111,7 +111,7 @@ export const POPULAR_SITES = {
     "techcrunch.com": "TechCrunch",
     "theverge.com": "The Verge",
     "ars-technica.com": "Ars Technica",
-    
+
     // Professional & Business
     "microsoft.com": "Microsoft",
     "apple.com": "Apple",
@@ -131,7 +131,7 @@ export const POPULAR_SITES = {
     "box.com": "Box",
     "onedrive.live.com": "OneDrive",
     "drive.google.com": "Google Drive",
-    
+
     // Design & Creative
     "figma.com": "Figma",
     "sketch.com": "Sketch",
@@ -142,7 +142,7 @@ export const POPULAR_SITES = {
     "pexels.com": "Pexels",
     "shutterstock.com": "Shutterstock",
     "gettyimages.com": "Getty Images",
-    
+
     // Finance & Payments
     "paypal.com": "PayPal",
     "venmo.com": "Venmo",
@@ -154,7 +154,7 @@ export const POPULAR_SITES = {
     "etrade.com": "E*TRADE",
     "fidelity.com": "Fidelity",
     "schwab.com": "Charles Schwab",
-    
+
     // Travel & Transportation
     "expedia.com": "Expedia",
     "booking.com": "Booking.com",
@@ -166,7 +166,7 @@ export const POPULAR_SITES = {
     "tripadvisor.com": "TripAdvisor",
     "kayak.com": "Kayak",
     "priceline.com": "Priceline",
-    
+
     // Education & Learning
     "coursera.org": "Coursera",
     "udemy.com": "Udemy",
@@ -177,14 +177,14 @@ export const POPULAR_SITES = {
     "masterclass.com": "MasterClass",
     "pluralsight.com": "Pluralsight",
     "linkedin.com/learning": "LinkedIn Learning",
-    
+
     // Email & Communication
     "gmail.com": "Gmail",
     "outlook.com": "Outlook",
     "mail.yahoo.com": "Yahoo Mail",
     "protonmail.com": "ProtonMail",
     "tutanota.com": "Tutanota",
-    
+
     // Reference & Information
     "wikipedia.org": "Wikipedia",
     "wikimedia.org": "Wikimedia",
@@ -193,7 +193,7 @@ export const POPULAR_SITES = {
     "merriam-webster.com": "Merriam-Webster",
     "translate.google.com": "Google Translate",
     "deepl.com": "DeepL",
-    
+
     // Gaming
     "steam.com": "Steam",
     "epicgames.com": "Epic Games",
@@ -203,7 +203,7 @@ export const POPULAR_SITES = {
     "nintendo.com": "Nintendo",
     "roblox.com": "Roblox",
     "minecraft.net": "Minecraft",
-    
+
     // Health & Fitness
     "webmd.com": "WebMD",
     "mayoclinic.org": "Mayo Clinic",
@@ -224,11 +224,11 @@ export const findMatchingDomains = (partial, maxResults = 10) => {
     const partialLower = partial.toLowerCase();
     const domains = getAllDomains();
     const matches = [];
-    
+
     for (const domain of domains) {
         const domainLower = domain.toLowerCase();
         const domainWithoutTld = domainLower.split('.')[0]; // e.g., "squarespace" from "squarespace.com"
-        
+
         // Exact start match gets highest score
         if (domainWithoutTld.startsWith(partialLower)) {
             matches.push({
@@ -257,7 +257,7 @@ export const findMatchingDomains = (partial, maxResults = 10) => {
             });
         }
     }
-    
+
     // Sort by score (highest first) and return top results
     return matches
         .sort((a, b) => b.score - a.score)

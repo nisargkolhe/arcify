@@ -13,7 +13,7 @@ class InstallationOnboarding {
             'toggleSpotlight': 'Alt+L',
             'toggleSpotlightNewTab': 'Alt+T'
         };
-        
+
         this.init();
     }
 
@@ -58,7 +58,7 @@ class InstallationOnboarding {
             // Redirect to arcify.io when next is clicked on step 4 (Spotlight)
             // Pass keyboard shortcuts as URL parameters
             const urlParams = new URLSearchParams();
-            
+
             // Map extension command names to URL parameter names
             if (this.shortcuts['_execute_action']) {
                 urlParams.set('toggle-sidepanel', this.shortcuts['_execute_action']);
@@ -72,16 +72,16 @@ class InstallationOnboarding {
             if (this.shortcuts['toggleSpotlightNewTab']) {
                 urlParams.set('new-tab', this.shortcuts['toggleSpotlightNewTab']);
             }
-            
+
             const queryString = urlParams.toString();
-            const redirectUrl = queryString 
+            const redirectUrl = queryString
                 ? `https://arcify.io?${queryString}`
                 : 'https://arcify.io';
-            
+
             window.location.href = redirectUrl;
             return;
         }
-        
+
         if (this.currentStep < this.totalSteps) {
             this.goToStep(this.currentStep + 1);
         } else {
@@ -128,7 +128,7 @@ class InstallationOnboarding {
         document.querySelectorAll('.progress-dot').forEach((dot, index) => {
             const stepNumber = index + 1;
             dot.classList.remove('active', 'completed');
-            
+
             if (stepNumber === this.currentStep) {
                 dot.classList.add('active');
             } else if (stepNumber < this.currentStep) {
@@ -192,7 +192,7 @@ class InstallationOnboarding {
         try {
             const commands = await chrome.commands.getAll();
             const shortcuts = {};
-            
+
             commands.forEach(command => {
                 if (command.shortcut) {
                     shortcuts[command.name] = command.shortcut;

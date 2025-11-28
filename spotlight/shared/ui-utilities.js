@@ -69,7 +69,7 @@ export class SpotlightUtils {
     // Generate instant suggestion based on current input (consolidated from overlay.js and popup.js)
     static generateInstantSuggestion(query) {
         const trimmedQuery = query.trim();
-        
+
         if (!trimmedQuery) {
             return null;
         }
@@ -118,12 +118,12 @@ export class SpotlightUtils {
                 const normalizedUrl = SpotlightUtils.normalizeURL(url);
                 const urlObj = new URL(normalizedUrl);
                 let hostname = urlObj.hostname;
-                
+
                 // Remove www. prefix for cleaner display
                 if (hostname.startsWith('www.')) {
                     hostname = hostname.substring(4);
                 }
-                
+
                 // Capitalize first letter for better presentation
                 return hostname.charAt(0).toUpperCase() + hostname.slice(1);
             } catch {
@@ -138,7 +138,7 @@ export class SpotlightUtils {
         if (result.favicon && result.favicon.startsWith('http')) {
             return result.favicon;
         }
-        
+
         // Special handling for autocomplete suggestions
         if (result.type === ResultType.AUTOCOMPLETE_SUGGESTION) {
             if (result.metadata?.isUrl && result.url) {
@@ -152,7 +152,7 @@ export class SpotlightUtils {
             // For search autocomplete suggestions, use search icon
             return `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>')}`;
         }
-        
+
         if (result.url) {
             try {
                 return Utils.getFaviconUrl(result.url, "64");
@@ -247,19 +247,19 @@ export class SpotlightUtils {
     // Check if two results are duplicates based on URL (for deduplication)
     static areResultsDuplicate(result1, result2) {
         if (!result1 || !result2) return false;
-        
+
         // Compare normalized URLs for URL-based results
         if (result1.url && result2.url) {
             const url1 = result1.url.toLowerCase().replace(/\/+$/, ''); // Remove trailing slashes
             const url2 = result2.url.toLowerCase().replace(/\/+$/, '');
             return url1 === url2;
         }
-        
+
         // Compare titles for search queries
         if (result1.type === 'search-query' && result2.type === 'search-query') {
             return result1.title === result2.title;
         }
-        
+
         return false;
     }
 
@@ -267,7 +267,7 @@ export class SpotlightUtils {
     static setupFaviconErrorHandling(container) {
         const faviconImages = container.querySelectorAll('.arcify-spotlight-result-favicon[data-fallback-icon="true"]');
         faviconImages.forEach(img => {
-            img.addEventListener('error', function() {
+            img.addEventListener('error', function () {
                 this.src = SpotlightUtils.getFaviconUrl({ url: null, favicon: null });
             });
         });
@@ -277,15 +277,15 @@ export class SpotlightUtils {
     static formatDebugInfo(result) {
         // Use environment variable for debug mode (false by default, true for dev builds)
         const DEBUG_ENABLED = false;
-        
+
         if (!DEBUG_ENABLED) {
             return '';
         }
-        
+
         const score = result.score || 0;
         const type = result.type || 'unknown';
         const fuzzyMatch = result.metadata?.fuzzyMatch ? ' (fuzzy)' : '';
-        
+
         return `<span style="color: #888; font-size: 10px; margin-left: 8px;">[${type}:${score}${fuzzyMatch}]</span>`;
     }
 }

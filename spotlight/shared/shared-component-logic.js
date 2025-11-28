@@ -15,7 +15,7 @@
 import { SpotlightUtils } from './ui-utilities.js';
 
 export class SharedSpotlightLogic {
-    
+
     /**
      * Combine instant and async suggestions with deduplication
      * @param {Object} instantSuggestion - The instant suggestion object (may be null)
@@ -24,12 +24,12 @@ export class SharedSpotlightLogic {
      */
     static combineResults(instantSuggestion, asyncSuggestions) {
         const combined = [];
-        
+
         // Add instant suggestion first (if exists)
         if (instantSuggestion) {
             combined.push(instantSuggestion);
         }
-        
+
         // Add async suggestions, filtering out duplicates of the instant suggestion
         for (const asyncResult of asyncSuggestions) {
             const isDuplicate = instantSuggestion && SpotlightUtils.areResultsDuplicate(instantSuggestion, asyncResult);
@@ -37,7 +37,7 @@ export class SharedSpotlightLogic {
                 combined.push(asyncResult);
             }
         }
-        
+
         return combined;
     }
 
@@ -55,7 +55,7 @@ export class SharedSpotlightLogic {
         return results.map((result, index) => {
             const formatted = SpotlightUtils.formatResult(result, mode);
             const isSelected = index === 0; // First result is always selected by default
-            
+
             return `
                 <button class="arcify-spotlight-result-item ${isSelected ? 'selected' : ''}" 
                         data-index="${index}">
@@ -84,7 +84,7 @@ export class SharedSpotlightLogic {
         // For now, we'll do a simple full update, but this can be optimized later for incremental updates
         const html = SharedSpotlightLogic.generateResultsHTML(newResults, mode);
         resultsContainer.innerHTML = html;
-        
+
         // Setup favicon error handling for new images
         SpotlightUtils.setupFaviconErrorHandling(resultsContainer);
     }
@@ -103,7 +103,7 @@ export class SharedSpotlightLogic {
             if (selectionManager.handleKeyDown(e, skipContainerCheck)) {
                 return; // Event was handled by selection manager
             }
-            
+
             // Handle additional keys not covered by selection manager
             switch (e.key) {
                 case 'Enter':

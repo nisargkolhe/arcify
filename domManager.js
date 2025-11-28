@@ -466,10 +466,10 @@ export function showUrlCopyToast() {
 }
 
 export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, currentActiveSpaceId, setActiveSpaceFunc, activatePinnedTabByURL) {
-    chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {
             console.log(`[QuickPin] Received command: ${request.command}`, { request });
-            chrome.storage.local.get('spaces', function(result) {
+            chrome.storage.local.get('spaces', function (result) {
                 const spaces = result.spaces || [];
                 console.log("[QuickPin] Loaded spaces from storage:", spaces);
 
@@ -505,12 +505,12 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                 if (request.command === "quickPinToggle") {
                     console.log("[QuickPin] Handling quickPinToggle for active tab.");
-                    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+                    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
                         getTabAndToggle(tabs[0]);
                     });
                 } else if (request.command === "toggleSpacePin" && request.tabId) {
                     console.log(`[QuickPin] Handling toggleSpacePin for tabId: ${request.tabId}`);
-                    chrome.tabs.get(request.tabId, function(tab) {
+                    chrome.tabs.get(request.tabId, function (tab) {
                         getTabAndToggle(tab);
                     });
                 }

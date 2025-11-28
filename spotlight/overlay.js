@@ -45,7 +45,7 @@ if (!window.arcifySpotlightTabMode) {
             window.arcifySpotlightTabMode = message.mode;
             window.arcifyCurrentTabUrl = message.tabUrl;
             window.arcifyCurrentTabId = message.tabId;
-            
+
             // Instantly activate spotlight (no injection delay!)
             activateSpotlight(message.mode);
             sendResponse({ success: true });
@@ -55,7 +55,7 @@ if (!window.arcifySpotlightTabMode) {
 
 // Main spotlight activation function
 async function activateSpotlight(spotlightTabMode = 'current-tab') {
-    
+
     // Handle toggle functionality for existing spotlight
     const existingDialog = document.getElementById('arcify-spotlight-dialog');
     if (existingDialog) {
@@ -63,10 +63,10 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             existingDialog.close();
         } else {
             existingDialog.showModal();
-            
+
             // Notify background that spotlight opened in this tab
             SpotlightMessageClient.notifyOpened();
-            
+
             const input = existingDialog.querySelector('.arcify-spotlight-input');
             if (input) {
                 setTimeout(() => {
@@ -78,13 +78,13 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
         }
         return;
     }
-    
+
     // Mark as injected only when creating new dialog
     window.arcifySpotlightInjected = true;
 
     // Start with default color - will update asynchronously
     let activeSpaceColor = 'purple'; // Default fallback
-    
+
     // CSS styles with default accent color (will be updated)
     const accentColorDefinitions = SpotlightUtils.getAccentColorCSS(activeSpaceColor);
     const spotlightCSS = `
@@ -332,7 +332,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Create spotlight dialog
     const dialog = document.createElement('dialog');
     dialog.id = 'arcify-spotlight-dialog';
-    
+
     dialog.innerHTML = `
         <div class="arcify-spotlight-container">
             <div class="arcify-spotlight-input-wrapper">
@@ -361,7 +361,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Get references to key elements
     const input = dialog.querySelector('.arcify-spotlight-input');
     const resultsContainer = dialog.querySelector('.arcify-spotlight-results');
-    
+
     // Initialize spotlight state
     let currentResults = [];
     let instantSuggestion = null; // The real-time first suggestion
@@ -385,7 +385,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
         try {
             // Clear instant suggestion when loading initial results
             instantSuggestion = null;
-            
+
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
             const results = await sendGetSuggestionsMessage('', mode);
             asyncSuggestions = results || [];
@@ -413,7 +413,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Handle instant suggestion update (no debouncing)
     function handleInstantInput() {
         const query = input.value.trim();
-        
+
         if (!query) {
             instantSuggestion = null;
             loadInitialResults();
@@ -428,7 +428,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Handle async search (debounced)
     async function handleAsyncSearch() {
         const query = input.value.trim();
-        
+
         if (!query) {
             asyncSuggestions = [];
             updateDisplay();
@@ -495,10 +495,10 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
 
         try {
             const mode = spotlightTabMode === SpotlightTabMode.NEW_TAB ? 'new-tab' : 'current-tab';
-            
+
             // Add immediate visual feedback - close spotlight immediately for faster perceived performance
             closeSpotlight();
-            
+
             // Navigate in background
             await handleResultActionViaMessage(result, mode);
         } catch (error) {
@@ -524,9 +524,9 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Close spotlight function
     function closeSpotlight() {
         dialog.close();
-        
+
         SpotlightMessageClient.notifyClosed();
-        
+
         setTimeout(() => {
             if (dialog.parentNode) {
                 dialog.parentNode.removeChild(dialog);
@@ -555,17 +555,17 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
 
     // Show dialog and focus input
     dialog.showModal();
-    
+
     // Notify background that spotlight opened in this tab
     SpotlightMessageClient.notifyOpened();
-    
+
     // Focus input immediately
     setTimeout(() => {
         input.focus();
         input.select();
         input.scrollLeft = 0;
     }, 50);
-    
+
     /**
      * PHASE 2: NON-BLOCKING INITIALIZATION OPTIMIZATIONS
      * 
@@ -578,7 +578,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
      * 
      * Benefits: Additional 20-50ms improvement in perceived performance
      */
-    
+
     // Async Phase 2 improvements: Update color and load initial results non-blocking
     (async () => {
         try {
@@ -602,7 +602,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
         } catch (error) {
             console.error('[Spotlight] Error updating active space color:', error);
         }
-        
+
         // Load initial results after color update (if input is still empty)
         if (!input.value.trim()) {
             loadInitialResults();

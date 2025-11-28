@@ -19,10 +19,10 @@ const ARCHIVED_TABS_KEY = 'archivedTabs';
 
 const Utils = {
 
-    processBookmarkFolder: async function(folder, groupId) {
+    processBookmarkFolder: async function (folder, groupId) {
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folder.id);
-        const tabs = await chrome.tabs.query({groupId: groupId});
+        const tabs = await chrome.tabs.query({ groupId: groupId });
         for (const item of items) {
             if (item.url) {
                 // This is a bookmark
@@ -46,22 +46,22 @@ const Utils = {
     },
 
     // Helper function to generate UUID (If you want to move this too)
-    generateUUID: function() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    generateUUID: function () {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
     },
 
     // Helper function to fetch favicon
-    getFaviconUrl: function(u, size = "16") {
+    getFaviconUrl: function (u, size = "16") {
         const url = new URL(chrome.runtime.getURL("/_favicon/"));
         url.searchParams.set("pageUrl", u);
         url.searchParams.set("size", size);
         return url.toString();
     },
 
-    getSettings: async function() {
+    getSettings: async function () {
         const defaultSettings = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
@@ -75,7 +75,7 @@ const Utils = {
     },
 
     // Get all overrides (keyed by tabId)
-    getTabNameOverrides: async function() {
+    getTabNameOverrides: async function () {
         const result = await chrome.storage.local.get('tabNameOverridesById'); // Changed key
         return result.tabNameOverridesById || {}; // Changed key
     },
@@ -128,7 +128,7 @@ const Utils = {
         }
     },
 
-    updateBookmarkTitleIfNeeded: async function(tab, activeSpace, newTitle) {
+    updateBookmarkTitleIfNeeded: async function (tab, activeSpace, newTitle) {
         console.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
 
         try {
@@ -172,24 +172,24 @@ const Utils = {
     },
 
     // Function to get if archiving is enabled
-    isArchivingEnabled: async function() {
+    isArchivingEnabled: async function () {
         const settings = await this.getSettings();
         return settings.autoArchiveEnabled;
     },
 
     // Get all archived tabs
-    getArchivedTabs: async function() {
+    getArchivedTabs: async function () {
         const result = await chrome.storage.local.get(ARCHIVED_TABS_KEY);
         return result[ARCHIVED_TABS_KEY] || [];
     },
 
     // Save all archived tabs
-    saveArchivedTabs: async function(tabs) {
+    saveArchivedTabs: async function (tabs) {
         await chrome.storage.local.set({ [ARCHIVED_TABS_KEY]: tabs });
     },
 
     // Add a tab to the archive
-    addArchivedTab: async function(tabData) { // tabData = { url, name, spaceId, archivedAt }
+    addArchivedTab: async function (tabData) { // tabData = { url, name, spaceId, archivedAt }
         if (!tabData || !tabData.url || !tabData.name || !tabData.spaceId) return;
 
         const archivedTabs = await this.getArchivedTabs();
@@ -218,7 +218,7 @@ const Utils = {
     },
 
     // Function to archive a tab (likely called from context menu)
-    archiveTab: async function(tabId) {
+    archiveTab: async function (tabId) {
         try {
             const tab = await chrome.tabs.get(tabId);
             if (!tab || !activeSpaceId) return;
@@ -239,7 +239,7 @@ const Utils = {
     },
 
     // Remove a tab from the archive (e.g., after restoration)
-    removeArchivedTab: async function(url, spaceId) {
+    removeArchivedTab: async function (url, spaceId) {
         if (!url || !spaceId) return;
 
         let archivedTabs = await this.getArchivedTabs();
@@ -248,7 +248,7 @@ const Utils = {
         console.log(`Removed archived tab: ${url} from space ${spaceId}`);
     },
 
-    restoreArchivedTab: async function(archivedTabData) {
+    restoreArchivedTab: async function (archivedTabData) {
         try {
             // Create the tab in the original space's group
             const newTab = await chrome.tabs.create({
@@ -282,20 +282,20 @@ const Utils = {
         }
     },
 
-    setArchivingEnabled: async function(enabled) {
+    setArchivingEnabled: async function (enabled) {
         const settings = await this.getSettings();
         settings.autoArchiveEnabled = enabled;
         await chrome.storage.sync.set({ autoArchiveEnabled: enabled });
     },
 
-    setArchiveTime: async function(minutes) {
+    setArchiveTime: async function (minutes) {
         const settings = await this.getSettings();
         settings.autoArchiveIdleMinutes = minutes;
         await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
     },
 
     // Search and remove bookmark by URL from a folder structure recursively
-    searchAndRemoveBookmark: async function(folderId, tabUrl, options = {}) {
+    searchAndRemoveBookmark: async function (folderId, tabUrl, options = {}) {
         const {
             removeTabElement = false, // Whether to also remove the tab element from DOM
             tabElement = null, // The tab element to remove if removeTabElement is true
@@ -323,7 +323,7 @@ const Utils = {
         }
         return false; // Bookmark not found
     },
-    movToNextTabInSpace: async function(tabId, sourceSpace) {
+    movToNextTabInSpace: async function (tabId, sourceSpace) {
         const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
         const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
 
@@ -331,20 +331,20 @@ const Utils = {
         const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
 
         if (indexInTemporaryTabs != -1) {
-            if (indexInTemporaryTabs < temporaryTabs.length-1) {
-                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs+1], {active: true})
+            if (indexInTemporaryTabs < temporaryTabs.length - 1) {
+                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs + 1], { active: true })
             } else if (spaceBookmarks.length > 0) {
-                chrome.tabs.update(spaceBookmarks[0], {active: true})
+                chrome.tabs.update(spaceBookmarks[0], { active: true })
             } else {
-                chrome.tabs.update(temporaryTabs[0], {active: true})
+                chrome.tabs.update(temporaryTabs[0], { active: true })
             }
         } else if (indexInBookmarks != -1) {
-            if (indexInBookmarks < spaceBookmarks.length-1) {
-                chrome.tabs.update(spaceBookmarks[indexInBookmarks+1], {active: true})
+            if (indexInBookmarks < spaceBookmarks.length - 1) {
+                chrome.tabs.update(spaceBookmarks[indexInBookmarks + 1], { active: true })
             } else if (temporaryTabs.length > 0) {
-                chrome.tabs.update(temporaryTabs[0], {active: true})
+                chrome.tabs.update(temporaryTabs[0], { active: true })
             } else {
-                chrome.tabs.update(spaceBookmarks[0], {active: true})
+                chrome.tabs.update(spaceBookmarks[0], { active: true })
             }
         }
     },
@@ -359,23 +359,23 @@ const Utils = {
 
         if (indexInTemporaryTabs != -1) {
             if (indexInTemporaryTabs > 0) {
-                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs-1], {active: true})
+                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs - 1], { active: true })
             } else if (spaceBookmarks.length > 0) {
-                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], {active: true})
+                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], { active: true })
             } else {
-                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], {active: true})
+                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], { active: true })
             }
         } else if (indexInBookmarks != -1) {
             if (indexInBookmarks > 0) {
-                chrome.tabs.update(spaceBookmarks[indexInBookmarks-1], {active: true})
+                chrome.tabs.update(spaceBookmarks[indexInBookmarks - 1], { active: true })
             } else if (temporaryTabs.length > 0) {
-                chrome.tabs.update(temporaryTabs[temporaryTabs.length-1], {active: true})
+                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], { active: true })
             } else {
-                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length-1], {active: true})
+                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], { active: true })
             }
         }
     },
-    findActiveSpaceAndTab: async function() {
+    findActiveSpaceAndTab: async function () {
         console.log("[TabNavigation] finding space");
         const spacesResult = await chrome.storage.local.get('spaces');
         const spaces = spacesResult.spaces || [];
@@ -391,7 +391,7 @@ const Utils = {
         );
         if (spaceWithTempTab) {
             console.log(`[TabNavigation] Tab ${foundTab.id} is a temporary tab in space "${spaceWithTempTab.name}".`);
-            return {space: spaceWithTempTab, tab: foundTab};
+            return { space: spaceWithTempTab, tab: foundTab };
         }
 
         const spaceWithBookmark = spaces.find(space =>
@@ -399,7 +399,7 @@ const Utils = {
         );
         if (spaceWithBookmark) {
             console.log(`[TabNavigation] Tab ${foundTab.id} is a bookmarked tab in space "${spaceWithBookmark.name}".`);
-            return {space: spaceWithBookmark, tab: foundTab};
+            return { space: spaceWithBookmark, tab: foundTab };
         }
 
         return undefined

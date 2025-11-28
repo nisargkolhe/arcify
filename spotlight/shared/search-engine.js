@@ -25,7 +25,7 @@ export class SearchEngine {
         this.suggestionsTimeout = null;
         this.DEBOUNCE_DELAY = 150;
         this.CACHE_TTL = 30000;
-        
+
         // Detect if we're running in background script context
         this.isBackgroundContext = this.dataProvider.constructor.name === 'BackgroundDataProvider';
     }
@@ -47,7 +47,7 @@ export class SearchEngine {
             this.suggestionsTimeout = setTimeout(async () => {
                 try {
                     const results = await this.getSuggestionsImpl(query, mode);
-                    
+
                     this.cache.set(cacheKey, {
                         results,
                         timestamp: Date.now()
@@ -77,7 +77,7 @@ export class SearchEngine {
     // Internal suggestions implementation
     async getSuggestionsImpl(query, mode) {
         const trimmedQuery = query.trim();
-        
+
         // Delegate to data provider which has all the business logic
         const results = await this.dataProvider.getSpotlightSuggestions(trimmedQuery, mode);
         return results;
@@ -93,7 +93,7 @@ export class SearchEngine {
                         if (!result.metadata?.tabId) {
                             throw new Error('OPEN_TAB result missing tabId in metadata');
                         }
-                        
+
                         if (this.isBackgroundContext) {
                             await chrome.tabs.update(result.metadata.tabId, { active: true });
                             if (result.metadata.windowId) {
@@ -113,14 +113,14 @@ export class SearchEngine {
                         if (!result.url) {
                             throw new Error('OPEN_TAB result missing URL for current tab navigation');
                         }
-                        
+
                         if (this.isBackgroundContext) {
                             if (currentTabId) {
                                 // Use provided tab ID for faster navigation
                                 await chrome.tabs.update(currentTabId, { url: result.url });
                             } else {
                                 // Fallback to query
-                                const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+                                const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                                 if (activeTab) {
                                     await chrome.tabs.update(activeTab.id, { url: result.url });
                                 } else {
@@ -144,7 +144,7 @@ export class SearchEngine {
                     if (!result.metadata?.spaceId) {
                         throw new Error('PINNED_TAB result missing spaceId in metadata');
                     }
-                    
+
                     const pinnedTabMessage = {
                         action: 'activatePinnedTab',
                         spaceId: result.metadata.spaceId,
@@ -153,7 +153,7 @@ export class SearchEngine {
                         mode: mode
                     };
                     console.log('[SearchEngine] Sending activatePinnedTab message:', pinnedTabMessage);
-                    
+
                     // Send message to sidebar to handle pinned tab activation
                     if (this.isBackgroundContext) {
                         // Send message to sidebar via runtime messaging
@@ -177,7 +177,7 @@ export class SearchEngine {
                     if (!result.url) {
                         throw new Error(`${result.type} result missing URL`);
                     }
-                    
+
                     if (mode === SpotlightTabMode.NEW_TAB) {
                         if (this.isBackgroundContext) {
                             await chrome.tabs.create({ url: result.url });
@@ -197,7 +197,7 @@ export class SearchEngine {
                                 await chrome.tabs.update(currentTabId, { url: result.url });
                             } else {
                                 // Fallback to query
-                                const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
+                                const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
                                 if (activeTab) {
                                     await chrome.tabs.update(activeTab.id, { url: result.url });
                                 } else {
@@ -220,7 +220,7 @@ export class SearchEngine {
                     if (!result.metadata?.query) {
                         throw new Error('SEARCH_QUERY result missing query in metadata');
                     }
-                    
+
                     if (this.isBackgroundContext) {
                         const disposition = mode === SpotlightTabMode.NEW_TAB ? 'NEW_TAB' : 'CURRENT_TAB';
                         await chrome.search.query({

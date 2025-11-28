@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -116,6 +117,7 @@
         .changelog-changes li:last-child {
             margin-bottom: 0;
         }
+
         .faq-container {
             max-width: 800px;
             margin: 4rem auto;
@@ -185,6 +187,7 @@
             color: #aa3333;
             text-decoration: underline;
         }
+
         .roadmap-container {
             max-width: 800px;
             margin: 4rem auto;
@@ -271,9 +274,11 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container" style="margin-bottom: 2rem;">
-        <img src="assets/intro.png" alt="Arc-Style Sidebar Introduction" class="intro" data-scroll-to="tutorial-container">
+        <img src="assets/intro.png" alt="Arc-Style Sidebar Introduction" class="intro"
+            data-scroll-to="tutorial-container">
         <div class="screenshots">
             <img src="assets/left.png" alt="Arc-Style Sidebar Overview" class="screenshot annotation">
             <img src="assets/extension.gif" alt="Spaces and Pinned Tabs" class="screenshot">
@@ -282,7 +287,8 @@
         <div class="tutorial-container" id="tutorial-container">
             <div class="tutorial-content">
                 <h2 class="tutorial-title">Recommended Chrome Settings</h2>
-                <p class="tutorial-subtitle">Change sidepanel position and keyboard shortcuts to match Arc in chrome://settings</p>
+                <p class="tutorial-subtitle">Change sidepanel position and keyboard shortcuts to match Arc in
+                    chrome://settings</p>
                 <img src="assets/chrometutorial.gif" alt="Chrome Tutorial" class="tutorial-gif">
             </div>
         </div>
@@ -316,7 +322,8 @@
                 <div class="faq-item">
                     <div class="faq-question">How can I change the default space when Chrome opens?</div>
                     <div class="faq-answer">
-                        <p>You can either follow the steps below or <a href="#" id="open-options">click here to open extension options directly</a>.</p>
+                        <p>You can either follow the steps below or <a href="#" id="open-options">click here to open
+                                extension options directly</a>.</p>
                         <ol>
                             <li>Go to Chrome Settings (⋮ menu > Settings)</li>
                             <li>Click on "Extensions" in the sidebar</li>
@@ -335,13 +342,15 @@
                 <div class="faq-item">
                     <div class="faq-question">Where can I see my stored pinned tabs in spaces?</div>
                     <div class="faq-answer">
-                        Your pinned tabs are stored in your Chrome bookmarks under the "Arcify" folder. Each space has its own subfolder containing its pinned tabs for easy access and organization.
+                        Your pinned tabs are stored in your Chrome bookmarks under the "Arcify" folder. Each space has
+                        its own subfolder containing its pinned tabs for easy access and organization.
                     </div>
                 </div>
                 <div class="faq-item">
                     <div class="faq-question">Are my spaces and pinned tabs synced across devices?</div>
                     <div class="faq-answer">
-                        Yes! Since your spaces and pinned tabs are stored in Chrome bookmarks, they automatically sync across all your devices where you're signed into Chrome with the same account.
+                        Yes! Since your spaces and pinned tabs are stored in Chrome bookmarks, they automatically sync
+                        across all your devices where you're signed into Chrome with the same account.
                     </div>
                 </div>
             </div>
@@ -352,7 +361,8 @@
                 <div class="roadmap-item">
                     <div class="roadmap-content">
                         <h3>Missing feature X</h3>
-                        <p>Something which is still missing? Send feedback to contact@nisarg.me and I'll try to add it to the roadmap. :)</p>
+                        <p>Something which is still missing? Send feedback to contact@nisarg.me and I'll try to add it
+                            to the roadmap. :)</p>
                     </div>
                 </div>
             </div>
@@ -374,9 +384,11 @@
                 <div class="changelog-item">
                     <div class="changelog-version">Version 3.0</div>
                     <ul class="changelog-changes">
-                        <li><b>Persistent Spaces:</b> Spaces now persist between sessions! Source of truth is now only bookmarks under Arcify folder.</li>
+                        <li><b>Persistent Spaces:</b> Spaces now persist between sessions! Source of truth is now only
+                            bookmarks under Arcify folder.</li>
                         <li><b>Tab Renaming:</b> Double click to rename tabs, just like Arc!</li>
-                        <li><b>Auto-Archiving:</b> Automatically archive inactive tabs (non-pinned, non-audible, not bookmarked) after a configurable idle time (10 hours by default).</li>
+                        <li><b>Auto-Archiving:</b> Automatically archive inactive tabs (non-pinned, non-audible, not
+                            bookmarked) after a configurable idle time (10 hours by default).</li>
                         <li>Default space can now be customized in settings.</li>
                         <li>Spaces can be rearranged with drag and drop.</li>
                         <li>Minor bug fixes and improvements to background processes.</li>
@@ -392,18 +404,24 @@
                 <div class="changelog-item">
                     <div class="changelog-version">Version 2.1</div>
                     <ul class="changelog-changes">
-                        <li>Keyboard shortcut to quick pin/unpin tabs! This needs to be manually set in <a href="chrome://extensions/shortcuts">Chrome keyboard extension shortcuts settings</a></li>
+                        <li>Keyboard shortcut to quick pin/unpin tabs! This needs to be manually set in <a
+                                href="chrome://extensions/shortcuts">Chrome keyboard extension shortcuts settings</a>
+                        </li>
                         <li>Tab groups in Chrome nav bar now collapse and expand based on the active space.</li>
                         <li>Fixed tab switching when toggling extension.</li>
-                        <li>Spaces now persist last tab opened, so switching between spaces will go to last tab used in that space.</li>
-                        <li>Updated tab insertion logic. Like Arc, tabs opened through link in an existing tab will be inserted below that tab, while new tabs are at the top.</li>
+                        <li>Spaces now persist last tab opened, so switching between spaces will go to last tab used in
+                            that space.</li>
+                        <li>Updated tab insertion logic. Like Arc, tabs opened through link in an existing tab will be
+                            inserted below that tab, while new tabs are at the top.</li>
                     </ul>
                 </div>
                 <div class="changelog-item">
                     <div class="changelog-version">Version 2.0</div>
                     <ul class="changelog-changes">
-                        <li><b>Space customization is here!</b> Personalize your spaces with primary colors from the Chrome tab groups.</li>
-                        <li>Space switcher can now be scrolled in any scroll direction, and the UI is improved to emphasize active space.</li>
+                        <li><b>Space customization is here!</b> Personalize your spaces with primary colors from the
+                            Chrome tab groups.</li>
+                        <li>Space switcher can now be scrolled in any scroll direction, and the UI is improved to
+                            emphasize active space.</li>
                         <li>Fixed drag and drop behavior for spaces</li>
                         <li>Improved multi window support</li>
                     </ul>
@@ -431,4 +449,5 @@
     </div>
     <script src="onboarding-script.js"></script>
 </body>
+
 </html>

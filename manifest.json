@@ -31,8 +31,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["spotlight/overlay.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "spotlight/overlay.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }

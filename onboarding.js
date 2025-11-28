@@ -12,18 +12,18 @@
  * - Designed to be lightweight and accessible
  */
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     // Handle smooth scrolling for elements with data-scroll-to attribute
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', function (e) {
         if (e.target.hasAttribute('data-scroll-to')) {
             e.preventDefault();
             const targetClass = e.target.getAttribute('data-scroll-to');
             const targetElement = document.querySelector('.' + targetClass);
             if (targetElement) {
-                targetElement.scrollIntoView({behavior: 'smooth'});
+                targetElement.scrollIntoView({ behavior: 'smooth' });
             }
         }
-        
+
         // Handle opening extension options
         if (e.target.id === 'open-options') {
             e.preventDefault();

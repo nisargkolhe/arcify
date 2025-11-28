@@ -10,9 +10,9 @@ export class SpotlightMessageClient {
                 query: query.trim(),
                 mode: mode
             };
-            
+
             const response = await chrome.runtime.sendMessage(message);
-            
+
             if (response && response.success) {
                 return response.results;
             } else {
@@ -34,9 +34,9 @@ export class SpotlightMessageClient {
                 mode: mode,
                 tabId: window.arcifyCurrentTabId || null  // Include tab ID for optimization
             };
-            
+
             const response = await chrome.runtime.sendMessage(message);
-            
+
             if (!response || response.success === false) {
                 console.error('[SpotlightMessageClient] Result action failed:', response?.error || 'No response');
                 return false;
@@ -55,7 +55,7 @@ export class SpotlightMessageClient {
             const response = await chrome.runtime.sendMessage({
                 action: 'getActiveSpaceColor'
             });
-            
+
             if (response && response.success && response.color) {
                 return response.color;
             } else {
@@ -154,7 +154,7 @@ export class SpotlightMessageClient {
         };
 
         chrome.runtime.onMessage.addListener(messageListener);
-        
+
         // Return cleanup function
         return () => {
             chrome.runtime.onMessage.removeListener(messageListener);

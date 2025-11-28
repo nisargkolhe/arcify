@@ -17,7 +17,7 @@ export const BASE_SCORES = {
     // Instant suggestions (always first)
     INSTANT_SEARCH_QUERY: 1000,
     INSTANT_URL_SUGGESTION: 1000,
-    
+
     // Regular search results hierarchy
     SEARCH_QUERY: 100,
     URL_SUGGESTION: 95,
@@ -26,7 +26,7 @@ export const BASE_SCORES = {
     BOOKMARK: 80,
     HISTORY: 70,
     TOP_SITE: 60,
-    
+
     // Top site Fuzzy match scores (positioned above autocomplete, between history and top sites)
     FUZZY_MATCH_START: 65,      // Exact start matches (e.g., "squaresp" → "squarespace.com")
     FUZZY_MATCH_CONTAINS: 63,   // Contains matches (e.g., "space" → "squarespace.com")
@@ -53,7 +53,7 @@ export const getAutocompleteScore = (index) => {
 // Fuzzy match score calculation with domain length penalty
 export const getFuzzyMatchScore = (matchType, domainLength = 0, queryLength = 0) => {
     let score = BASE_SCORES.FUZZY_MATCH_DEFAULT;
-    
+
     switch (matchType) {
         case 'start':
             // Prefer shorter domains for start matches
@@ -68,6 +68,6 @@ export const getFuzzyMatchScore = (matchType, domainLength = 0, queryLength = 0)
         default:
             score = BASE_SCORES.FUZZY_MATCH_DEFAULT;
     }
-    
+
     return Math.max(score, BASE_SCORES.FUZZY_MATCH_NAME); // Ensure minimum score
 };

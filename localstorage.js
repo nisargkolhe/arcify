@@ -14,13 +14,13 @@
 
 const LocalStorage = {
     getOrCreateArcifyFolder: async function () {
-        let [ folder ] = await chrome.bookmarks.search({ title: 'Arcify' });
+        let [folder] = await chrome.bookmarks.search({ title: 'Arcify' });
         if (!folder) {
             folder = await chrome.bookmarks.create({ title: 'Arcify' });
         }
         return folder;
     },
-    getOrCreateSpaceFolder: async function(spaceName) {
+    getOrCreateSpaceFolder: async function (spaceName) {
         const arcifyFolder = await this.getOrCreateArcifyFolder();
         const children = await chrome.bookmarks.getChildren(arcifyFolder.id);
         let spaceFolder = children.find((f) => f.title === spaceName);
@@ -35,7 +35,7 @@ const LocalStorage = {
     },
 
     // --- Recursive Helper Function to Merge Contents ---
-    _mergeFolderContentsRecursive: async function(sourceFolderId, targetFolderId) {
+    _mergeFolderContentsRecursive: async function (sourceFolderId, targetFolderId) {
         console.log(`Recursively merging contents from ${sourceFolderId} into ${targetFolderId}`);
         try {
             const sourceChildren = await chrome.bookmarks.getChildren(sourceFolderId);
@@ -75,10 +75,10 @@ const LocalStorage = {
     },
 
     // --- Updated Function to Merge Duplicate Space Folders ---
-    mergeDuplicateSpaceFolders: async function() {
+    mergeDuplicateSpaceFolders: async function () {
         console.log("Checking for duplicate space folders...");
         try {
-            const [ arcifyFolder ] = await chrome.bookmarks.search({ title: 'Arcify' });
+            const [arcifyFolder] = await chrome.bookmarks.search({ title: 'Arcify' });
             if (!arcifyFolder) {
                 console.log("Arcify folder not found.");
                 return;
@@ -137,8 +137,8 @@ const LocalStorage = {
     // --- End of Updated Function ---
 
     // Helper function to generate UUID
-    generateUUID: function() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    generateUUID: function () {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             const r = Math.random() * 16 | 0;
             const v = c === 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
@@ -146,28 +146,28 @@ const LocalStorage = {
     },
 
     // Get all space names from Arcify bookmark folders (source of truth)
-    getSpaceNames: async function() {
+    getSpaceNames: async function () {
         let spaceNames = new Set(); // Use Set to automatically deduplicate
-        
+
         try {
             // Get the Arcify folder
             const arcifyFolder = await this.getOrCreateArcifyFolder();
             if (arcifyFolder) {
                 // Get all children of the Arcify folder
                 const children = await chrome.bookmarks.getChildren(arcifyFolder.id);
-                
+
                 // Filter for folders only (not bookmarks) and extract names
                 const folders = children.filter(item => !item.url);
                 folders.forEach(folder => {
                     spaceNames.add(folder.title);
                 });
-                
+
                 console.log('Found spaces from Arcify bookmark folders:', spaceNames.size);
             }
         } catch (bookmarkError) {
             console.log('Could not get spaces from bookmark folders:', bookmarkError);
         }
-        
+
         // If no spaces found in bookmarks, try fallback to tab groups
         if (spaceNames.size === 0) {
             try {
@@ -180,7 +180,7 @@ const LocalStorage = {
                 console.log('Could not query tab groups:', tabGroupError);
             }
         }
-        
+
         // Return sorted array of unique space names
         return Array.from(spaceNames).sort();
     }

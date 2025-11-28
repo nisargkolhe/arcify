@@ -45,12 +45,12 @@ export class WebsiteNameExtractor {
             const normalizedUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) ? url : `https://${url}`;
             const urlObj = new URL(normalizedUrl);
             let hostname = urlObj.hostname.toLowerCase();
-            
+
             // Remove www. prefix for consistent mapping
             if (hostname.startsWith('www.')) {
                 hostname = hostname.substring(4);
             }
-            
+
             return hostname;
         } catch {
             // Fallback for invalid URLs - extract hostname-like pattern
@@ -72,17 +72,17 @@ export class WebsiteNameExtractor {
         try {
             // Remove common subdomains
             let name = hostname.replace(/^(www|m|mobile|app|api|cdn|static)\./, '');
-            
+
             // Remove TLD for cleaner display
             name = name.replace(/\.(com|org|net|edu|gov|mil|int|co|io|ly|me|tv|app|dev|ai)$/, '');
-            
+
             // Handle special cases
             if (name.includes('.')) {
                 // For multi-part domains, use the main part
                 const parts = name.split('.');
                 name = parts[parts.length - 1]; // Last part before TLD
             }
-            
+
             // Capitalize first letter
             return name.charAt(0).toUpperCase() + name.slice(1);
         } catch {

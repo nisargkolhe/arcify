@@ -111,7 +111,8 @@ h3 {
     background-color: rgba(255, 255, 255, 0.2);
 }
 
-.pinned-favicon.active, .pinned-favicon.active:hover {
+.pinned-favicon.active,
+.pinned-favicon.active:hover {
     background-color: #ECEFF1;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -175,12 +176,14 @@ h3 {
     display: none;
     position: absolute;
     left: 100%;
-    top: -5px; /* Adjust as needed for vertical alignment */
-    z-index: 101; /* Ensure submenu appears above the parent menu */
+    top: -5px;
+    /* Adjust as needed for vertical alignment */
+    z-index: 101;
+    /* Ensure submenu appears above the parent menu */
     min-width: 150px;
 }
 
-.context-menu-item.with-submenu:hover > .context-menu.submenu {
+.context-menu-item.with-submenu:hover>.context-menu.submenu {
     display: block;
 }
 
@@ -395,14 +398,38 @@ h3 {
     border-color: rgba(0, 0, 0, 0.3);
 }
 
-.color-swatch[data-color="grey"] { background-color: #9CA3AF; }
-.color-swatch[data-color="blue"] { background-color: #60A5FA; }
-.color-swatch[data-color="red"] { background-color: #F87171; }
-.color-swatch[data-color="yellow"] { background-color: #FBBF24; }
-.color-swatch[data-color="green"] { background-color: #34D399; }
-.color-swatch[data-color="pink"] { background-color: #F472B6; }
-.color-swatch[data-color="purple"] { background-color: #A78BFA; }
-.color-swatch[data-color="cyan"] { background-color: #22D3EE; }
+.color-swatch[data-color="grey"] {
+    background-color: #9CA3AF;
+}
+
+.color-swatch[data-color="blue"] {
+    background-color: #60A5FA;
+}
+
+.color-swatch[data-color="red"] {
+    background-color: #F87171;
+}
+
+.color-swatch[data-color="yellow"] {
+    background-color: #FBBF24;
+}
+
+.color-swatch[data-color="green"] {
+    background-color: #34D399;
+}
+
+.color-swatch[data-color="pink"] {
+    background-color: #F472B6;
+}
+
+.color-swatch[data-color="purple"] {
+    background-color: #A78BFA;
+}
+
+.color-swatch[data-color="cyan"] {
+    background-color: #22D3EE;
+}
+
 .folder {
     margin: 8px 0;
     /* background-color: rgba(255, 255, 255, 0.1); */
@@ -709,8 +736,10 @@ h3 {
     justify-content: flex-start;
     padding: 8px 48px 0 0;
     overflow-x: auto;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
     opacity: 1;
     visibility: visible;
     transition: opacity 0.2s ease, visibility 0.2s ease;
@@ -718,7 +747,8 @@ h3 {
 }
 
 .space-switcher::-webkit-scrollbar {
-    display: none; /* Chrome, Safari and Opera */
+    display: none;
+    /* Chrome, Safari and Opera */
 }
 
 .space-switcher button {
@@ -782,29 +812,40 @@ h3 {
 
 
 .tab-details {
-    flex-grow: 1; /* Allow details to take up space */
-    overflow: hidden; /* Prevent long text overflow */
-    display: flex; /* Use flex for vertical alignment if needed */
-    flex-direction: column; /* Stack title and domain */
-    justify-content: center; /* Center vertically */
-    margin-left: 8px; /* Space from favicon */
+    flex-grow: 1;
+    /* Allow details to take up space */
+    overflow: hidden;
+    /* Prevent long text overflow */
+    display: flex;
+    /* Use flex for vertical alignment if needed */
+    flex-direction: column;
+    /* Stack title and domain */
+    justify-content: center;
+    /* Center vertically */
+    margin-left: 8px;
+    /* Space from favicon */
 }
 
 .tab-title-display,
 .tab-title-input {
-    white-space: nowrap; /* Prevent wrapping */
+    white-space: nowrap;
+    /* Prevent wrapping */
     overflow: hidden;
-    text-overflow: ellipsis; /* Add ellipsis (...) for overflow */
-    display: block; /* Ensure they take full width */
+    text-overflow: ellipsis;
+    /* Add ellipsis (...) for overflow */
+    display: block;
+    /* Ensure they take full width */
     width: 100%;
 }
 
 .tab-title-input {
     /* Style the input to look integrated */
     border: none;
-    background-color: rgba(255, 255, 255, 0.2); /* Slight background */
+    background-color: rgba(255, 255, 255, 0.2);
+    /* Slight background */
     padding: 2px 4px;
-    margin: -2px -4px; /* Adjust to align with display text */
+    margin: -2px -4px;
+    /* Adjust to align with display text */
     font-family: inherit;
     font-size: inherit;
     color: inherit;
@@ -812,18 +853,22 @@ h3 {
 }
 
 .tab-title-input:focus {
-    outline: 1px solid var(--chrome-blue-color); /* Simple focus indicator */
+    outline: 1px solid var(--chrome-blue-color);
+    /* Simple focus indicator */
     background-color: rgba(255, 255, 255, 0.5);
 }
 
 .tab-domain-display {
-    font-size: 0.75em; /* Smaller font size */
+    font-size: 0.75em;
+    /* Smaller font size */
     opacity: 0.8;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: block; /* Takes its own line */
-    margin-top: 2px; /* Space below title */
+    display: block;
+    /* Takes its own line */
+    margin-top: 2px;
+    /* Space below title */
     font-weight: 800;
 }
 
@@ -873,7 +918,8 @@ h3 {
 }
 
 .tab-close:hover,
-.tab-remove:hover, .tab-restore:hover {
+.tab-remove:hover,
+.tab-restore:hover {
     background-color: rgba(0, 0, 0, 0.1);
 }
 
@@ -881,6 +927,7 @@ h3 {
 .tab-remove:active {
     background-color: rgba(0, 0, 0, 0.15);
 }
+
 .tab-item.dragging {
     opacity: 0.5;
 }
@@ -1022,16 +1069,32 @@ h3 {
 }
 
 @keyframes fadeInOut {
-    0% { opacity: 0; transform: translate(-50%, 10px); }
-    15% { opacity: 1; transform: translate(-50%, 0); }
-    85% { opacity: 1; transform: translate(-50%, 0); }
-    100% { opacity: 0; transform: translate(-50%, -10px); }
+    0% {
+        opacity: 0;
+        transform: translate(-50%, 10px);
+    }
+
+    15% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    85% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -10px);
+    }
 }
 
 /* Options Page Styles */
 .options-page {
     --options-bg-color: #f5f7fa;
-    --options-primary-color: #cc4444; /* Example primary color from onboarding */
+    --options-primary-color: #cc4444;
+    /* Example primary color from onboarding */
     --options-text-color: #333;
     --options-input-bg: #fff;
     --options-button-bg: var(--options-primary-color);
@@ -1043,11 +1106,15 @@ h3 {
     background-color: var(--options-bg-color);
     min-height: 100vh;
     display: flex;
-    justify-content: center; /* Center horizontally */
-    align-items: center;    /* Center vertically */
+    justify-content: center;
+    /* Center horizontally */
+    align-items: center;
+    /* Center vertically */
     padding: 2rem;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif; /* Ensure font is applied */
-    color: var(--options-text-color); /* Ensure base text color */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    /* Ensure font is applied */
+    color: var(--options-text-color);
+    /* Ensure base text color */
 }
 
 .options-container {
@@ -1055,27 +1122,34 @@ h3 {
     border-radius: var(--options-border-radius);
     padding: 2rem;
     box-shadow: var(--options-box-shadow);
-    max-width: 500px; /* Limit width */
-    width: 100%;      /* Take available width up to max-width */
-    text-align: center; /* Center text inside container */
+    max-width: 500px;
+    /* Limit width */
+    width: 100%;
+    /* Take available width up to max-width */
+    text-align: center;
+    /* Center text inside container */
 }
 
 .options-title {
     text-align: center;
     margin-bottom: 2rem;
     color: var(--options-primary-color);
-    font-size: 1.8rem; /* Adjusted size */
+    font-size: 1.8rem;
+    /* Adjusted size */
     font-weight: 600;
 }
 
-.options-setting-item { /* Wrapper for label and input */
-     margin-bottom: 1.5rem;
-     text-align: left; /* Align label text left */
+.options-setting-item {
+    /* Wrapper for label and input */
+    margin-bottom: 1.5rem;
+    text-align: left;
+    /* Align label text left */
 }
 
 .options-label {
     display: block;
-    margin-bottom: 0.5rem; /* Space between label and input */
+    margin-bottom: 0.5rem;
+    /* Space between label and input */
     font-weight: 600;
     color: var(--options-text-color);
     font-size: 1rem;
@@ -1083,70 +1157,88 @@ h3 {
 
 .options-input {
     width: 100%;
-    padding: 0.8rem 1rem; /* More padding */
-    margin-bottom: 0; /* Remove default margin */
+    padding: 0.8rem 1rem;
+    /* More padding */
+    margin-bottom: 0;
+    /* Remove default margin */
     box-sizing: border-box;
-    border: 1px solid #ddd; /* Subtle border */
-    border-radius: 8px; /* Rounded corners */
+    border: 1px solid #ddd;
+    /* Subtle border */
+    border-radius: 8px;
+    /* Rounded corners */
     font-size: 1rem;
     background-color: var(--options-input-bg);
     color: var(--options-text-color);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Added box-shadow transition */
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    /* Added box-shadow transition */
 }
 
 .options-input:focus {
     outline: none;
     border-color: var(--options-primary-color);
-    box-shadow: 0 0 0 2px rgba(204, 68, 68, 0.2); /* Focus ring */
+    box-shadow: 0 0 0 2px rgba(204, 68, 68, 0.2);
+    /* Focus ring */
 }
 
 .options-button {
-    padding: 0.8rem 1.5rem; /* Adjusted padding */
+    padding: 0.8rem 1.5rem;
+    /* Adjusted padding */
     cursor: pointer;
     background-color: var(--options-button-bg);
     color: var(--options-button-text);
     border: none;
-    border-radius: 8px; /* Rounded corners */
+    border-radius: 8px;
+    /* Rounded corners */
     font-size: 1rem;
     font-weight: 600;
     transition: background-color 0.3s ease;
-    display: inline-block; /* Allow centering */
-    margin-top: 1rem; /* Space above button */
+    display: inline-block;
+    /* Allow centering */
+    margin-top: 1rem;
+    /* Space above button */
 }
 
 .options-button:hover {
-    background-color: #b33636; /* Darker shade on hover */
+    background-color: #b33636;
+    /* Darker shade on hover */
 }
 
 .options-status {
-    margin-top: 1.5rem; /* More space */
+    margin-top: 1.5rem;
+    /* More space */
     color: var(--options-status-color);
     font-size: 0.9rem;
-    min-height: 1.2em; /* Prevent layout shift */
+    min-height: 1.2em;
+    /* Prevent layout shift */
     text-align: center;
 }
 
 /* Archive Section Styles */
 .archive-section {
     width: 100%;
-    margin-top: auto; /* Push to the bottom */
+    margin-top: auto;
+    /* Push to the bottom */
     display: flex;
-    justify-content: flex-start; /* Align button to the left */
+    justify-content: flex-start;
+    /* Align button to the left */
     transition: all 0.2s ease;
     overflow: hidden;
 }
 
-.sidebar-button { /* General style for buttons like archive */
+.sidebar-button {
+    /* General style for buttons like archive */
     display: flex;
     align-items: center;
     justify-content: center;
     background: none;
     border: none;
-    font-size: 20px; /* Adjust icon size */
+    font-size: 20px;
+    /* Adjust icon size */
     padding: 4px 2px;
     cursor: pointer;
     border-radius: 8px;
-    color: #101010bd; /* Adjust icon color */
+    color: #101010bd;
+    /* Adjust icon color */
     transition: background-color 0.3s ease;
 }
 
@@ -1155,14 +1247,16 @@ h3 {
 }
 
 .archived-tabs-popup {
-    display: flex; /* Hidden by default */
+    display: flex;
+    /* Hidden by default */
     flex-direction: column;
     height: 0;
     opacity: 0;
     margin-top: 0;
     width: 100%;
     overflow-y: auto;
-    z-index: 0; /* Ensure it's above other elements */
+    z-index: 0;
+    /* Ensure it's above other elements */
     transition: opacity 0.3s ease;
     /* padding: 8px; */
     /* font-size: 13px; */
@@ -1220,6 +1314,7 @@ h3 {
 .archived-tabs-popup::-webkit-scrollbar {
     width: 5px;
 }
+
 .archived-tabs-popup::-webkit-scrollbar-thumb {
     background-color: #ccc;
     border-radius: 3px;
@@ -1234,16 +1329,20 @@ h3 {
 
 /* iOS Toggle Switch Styles */
 .options-setting-toggle {
-    display: flex; /* Align label and toggle horizontally */
-    align-items: end; 
-    justify-content: space-between; /* Push toggle to the right */
+    display: flex;
+    /* Align label and toggle horizontally */
+    align-items: end;
+    justify-content: space-between;
+    /* Push toggle to the right */
 }
 
 .toggle-switch-container {
     position: relative;
     display: inline-block;
-    width: 51px;  /* Standard iOS toggle width */
-    height: 31px; /* Standard iOS toggle height */
+    width: 51px;
+    /* Standard iOS toggle width */
+    height: 31px;
+    /* Standard iOS toggle height */
 }
 
 /* Hide the default checkbox */
@@ -1262,37 +1361,47 @@ h3 {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #ccc; /* Default track color (off) */
+    background-color: #ccc;
+    /* Default track color (off) */
     transition: .4s;
-    border-radius: 34px; /* Make it rounded */
+    border-radius: 34px;
+    /* Make it rounded */
 }
 
 /* Style the knob (the circle) */
 .toggle-label:before {
     position: absolute;
     content: "";
-    height: 27px; /* Knob height */
-    width: 27px;  /* Knob width */
-    left: 2px;    /* Initial position (off) */
-    bottom: 2px;  /* Position from bottom */
+    height: 27px;
+    /* Knob height */
+    width: 27px;
+    /* Knob width */
+    left: 2px;
+    /* Initial position (off) */
+    bottom: 2px;
+    /* Position from bottom */
     background-color: white;
     transition: .4s;
-    border-radius: 50%; /* Make it a circle */
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Subtle shadow */
+    border-radius: 50%;
+    /* Make it a circle */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    /* Subtle shadow */
 }
 
 /* Change track color when checked */
-.ios-toggle:checked + .toggle-label {
-    background-color: #4CD964; /* iOS green */
+.ios-toggle:checked+.toggle-label {
+    background-color: #4CD964;
+    /* iOS green */
 }
 
 /* Move the knob when checked */
-.ios-toggle:checked + .toggle-label:before {
-    transform: translateX(20px); /* Move knob to the right */
+.ios-toggle:checked+.toggle-label:before {
+    transform: translateX(20px);
+    /* Move knob to the right */
 }
 
 /* Optional: Add focus style for accessibility */
-.ios-toggle:focus + .toggle-label {
+.ios-toggle:focus+.toggle-label {
     box-shadow: 0 0 1px #4CD964;
 }
 
@@ -1313,12 +1422,14 @@ h3 {
 
 /* Class to add margin *before* an element */
 .drag-over-placeholder-before {
-    margin-left: 50px; /* Adjust size as needed */
+    margin-left: 50px;
+    /* Adjust size as needed */
 }
 
 /* Class to add margin *after* an element (for dropping at the end) */
 .drag-over-placeholder-after {
-     margin-right: 50px; /* Adjust size as needed */
+    margin-right: 50px;
+    /* Adjust size as needed */
 }
 
 /* Optional: Style for the button being dragged */
@@ -1397,79 +1508,91 @@ h3 {
 }
 
 .archiving-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  padding: 0 16px 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding: 0 16px 0 8px;
 }
 
 .archiving-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--sidebar-text-color, #222);
-  cursor: pointer;
-  user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--sidebar-text-color, #222);
+    cursor: pointer;
+    user-select: none;
 }
 
 /* Toggle Switch */
 .archiving-toggle {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  display: inline-block;
+    position: relative;
+    width: 36px;
+    height: 20px;
+    display: inline-block;
 }
+
 .archiving-toggle input[type='checkbox'] {
-  opacity: 0;
-  width: 0;
-  height: 0;
+    opacity: 0;
+    width: 0;
+    height: 0;
 }
+
 .archiving-toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: #ccc;
-  border-radius: 20px;
-  transition: background 0.2s;
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #ccc;
+    border-radius: 20px;
+    transition: background 0.2s;
 }
-.archiving-toggle input:checked + .archiving-toggle-slider {
-  background: #4caf50;
+
+.archiving-toggle input:checked+.archiving-toggle-slider {
+    background: #4caf50;
 }
+
 .archiving-toggle-slider:before {
-  content: '';
-  position: absolute;
-  left: 3px; top: 3px;
-  width: 14px; height: 14px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.2s;
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
 }
-.archiving-toggle input:checked + .archiving-toggle-slider:before {
-  transform: translateX(16px);
+
+.archiving-toggle input:checked+.archiving-toggle-slider:before {
+    transform: translateX(16px);
 }
 
 .archiving-time-container {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
+
 .archiving-time-input {
-  width: 64px;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 2px 6px;
-  font-size: 14px;
-  background: var(--sidebar-bg, #f7f7f7);
-  color: var(--sidebar-text-color, #222);
-  outline: none;
-  transition: border 0.2s;
+    width: 64px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 2px 6px;
+    font-size: 14px;
+    background: var(--sidebar-bg, #f7f7f7);
+    color: var(--sidebar-text-color, #222);
+    outline: none;
+    transition: border 0.2s;
 }
+
 .archiving-time-input:disabled {
-  background: #f0f0f0;
-  color: #aaa;
-  border-color: #eee;
+    background: #f0f0f0;
+    color: #aaa;
+    border-color: #eee;
 }
 
 .pinned-placeholder-container {
@@ -1593,7 +1716,7 @@ h3 {
     }
 
     .folder-toggle {
-        color: rgba(255, 255, 255, 0.8);    
+        color: rgba(255, 255, 255, 0.8);
     }
 
     .tab-placeholder {
