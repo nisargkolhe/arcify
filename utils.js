@@ -67,7 +67,7 @@ const Utils = {
             autoArchiveEnabled: false, // Default: disabled
             autoArchiveIdleMinutes: 360, // Default: 30 minutes
             enableSpotlight: true, // Default: enabled
-            syncChromeTabPositions: false, // Default: disabled
+            useArcLikePositioning: false, // Default: disabled (Chrome sync is default)
             // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);
@@ -295,15 +295,15 @@ const Utils = {
         await chrome.storage.sync.set({ autoArchiveIdleMinutes: minutes });
     },
 
-    // Get Chrome tab position sync setting
-    getSyncChromeTabPositions: async function () {
+    // Get Arc-like positioning setting (when enabled, tabs append to end instead of syncing with Chrome)
+    getUseArcLikePositioning: async function () {
         const settings = await this.getSettings();
-        return settings.syncChromeTabPositions;
+        return settings.useArcLikePositioning;
     },
 
-    // Set Chrome tab position sync setting
-    setSyncChromeTabPositions: async function (enabled) {
-        await chrome.storage.sync.set({ syncChromeTabPositions: enabled });
+    // Set Arc-like positioning setting
+    setUseArcLikePositioning: async function (enabled) {
+        await chrome.storage.sync.set({ useArcLikePositioning: enabled });
     },
 
     // Search and remove bookmark by URL from a folder structure recursively

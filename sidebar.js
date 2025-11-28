@@ -2823,38 +2823,77 @@ async function handleTabRemove(tabId) {
     updatePinnedFavicons();
 }
 
+// Track pending tab moves to debounce rapid successive moves
+const pendingTabMoves = new Map();
+const processingTabMoves = new Set();
 
 function handleTabMove(tabId, moveInfo) {
     if (isOpeningBookmark) {
         return;
     }
+
+    // If we're already processing a move for this tab, ignore new events
+    if (processingTabMoves.has(tabId)) {
+        console.log('[TabMove] ⚠️ Ignoring move event - already processing tab', tabId, 'toIndex:', moveInfo.toIndex);
+        return;
+    }
+
+    // Store the latest move info for this tab
+    const existingData = pendingTabMoves.get(tabId);
+    if (existingData) {
+        clearTimeout(existingData.timeoutId);
+        console.log('[TabMove] 🔄 Updating pending move for tab', tabId, '- Old toIndex:', existingData.moveInfo.toIndex, 'New toIndex:', moveInfo.toIndex);
+    } else {
+        console.log('[TabMove] 📝 New move event for tab', tabId, 'toIndex:', moveInfo.toIndex);
+    }
+
+    // Debounce: wait 250ms before processing the move
+    // This ensures we only process after all rapid events have finished
+    const timeoutId = setTimeout(async () => {
+        const data = pendingTabMoves.get(tabId);
+        if (data) {
+            console.log('[TabMove] ✅ Processing final move for tab', tabId, 'toIndex:', data.moveInfo.toIndex);
+            pendingTabMoves.delete(tabId);
+            processingTabMoves.add(tabId);
+            await processTabMove(tabId, data.moveInfo);
+            processingTabMoves.delete(tabId);
+            console.log('[TabMove] ✅ Finished processing tab', tabId);
+        }
+    }, 250);
+
+    pendingTabMoves.set(tabId, { moveInfo, timeoutId });
+}
+
+async function processTabMove(tabId, moveInfo) {
     chrome.windows.getCurrent({ populate: false }, async (currentWindow) => {
         // Get the tab's current information first
         chrome.tabs.get(tabId, async (tab) => {
             if (tab.windowId !== currentWindow.id) {
-                console.log('New tab is in a different window, ignoring...');
+                console.log('[TabMove] New tab is in a different window, ignoring...');
                 return;
             }
-            console.log('Tab moved:', tabId, moveInfo);
+            console.log('[TabMove] Tab moved:', tabId, moveInfo);
 
             const newGroupId = tab.groupId;
-            console.log('Tab moved to group:', newGroupId);
-
-            // Check if position syncing is enabled
-            const syncEnabled = await Utils.getSyncChromeTabPositions();
-
-            // Find the source and destination spaces
             const sourceSpace = spaces.find(s =>
                 s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
             );
+            console.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace.id);
+
+            // Check if Arc-like positioning is enabled (append to end instead of syncing)
+            const useArcLikePositioning = await Utils.getUseArcLikePositioning();
+
+            // Find the source and destination spaces
+
             const destSpace = spaces.find(s => s.id === newGroupId);
 
             if (sourceSpace && destSpace && sourceSpace.id !== destSpace.id) {
-                console.log('Moving tab between spaces:', sourceSpace.name, '->', destSpace.name);
+                console.log('[TabMove] Moving tab between spaces:', sourceSpace.name, '->', destSpace.name);
 
                 // Remove from source space
                 sourceSpace.temporaryTabs = sourceSpace.temporaryTabs.filter(id => id !== tabId);
                 sourceSpace.spaceBookmarks = sourceSpace.spaceBookmarks.filter(id => id !== tabId);
+                sourceSpace.lastTab = null;
 
                 // Add to destination space's temporary tabs
                 if (!destSpace.temporaryTabs.includes(tabId)) {
@@ -2867,14 +2906,14 @@ function handleTabMove(tabId, moveInfo) {
                     const destSpaceElement = document.querySelector(`[data-space-id="${destSpace.id}"]`);
                     if (destSpaceElement) {
                         const destTempContainer = destSpaceElement.querySelector('[data-tab-type="temporary"]');
-                        if (destTempContainer && syncEnabled) {
-                            // Get all tabs in the destination group to find correct position
+                        if (destTempContainer && !useArcLikePositioning) {
+                            // Chrome sync mode (default): position tab to match Chrome's order
                             const groupTabs = await chrome.tabs.query({ groupId: newGroupId });
                             const tabIndex = groupTabs.findIndex(t => t.id === tabId);
 
                             if (tabIndex !== -1) {
                                 // Find the tab element that should come after this one
-                                const nextTab = groupTabs[tabIndex + 1];
+                                const nextTab = groupTabs[tabIndex - 1];
                                 if (nextTab) {
                                     const nextTabElement = destTempContainer.querySelector(`[data-tab-id="${nextTab.id}"]`);
                                     if (nextTabElement) {
@@ -2890,38 +2929,79 @@ function handleTabMove(tabId, moveInfo) {
                                 destTempContainer.appendChild(tabElement);
                             }
                         } else if (destTempContainer) {
-                            // Sync disabled, just append to end
+                            // Arc-like positioning: just append to end
                             destTempContainer.appendChild(tabElement);
                         }
                     }
                 }
 
                 saveSpaces();
-            } else if (syncEnabled && sourceSpace) {
-                // Handle regular tab position updates within the same space
+            } else if (!useArcLikePositioning && sourceSpace) {
+                // Chrome sync mode (default): handle tab position updates within the same space
                 const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
                 if (tabElement) {
                     const container = tabElement.parentElement;
 
-                    // Get all tabs in the group to determine correct position
+                    // Get all tabs in the group - Chrome's order is the source of truth
                     const groupTabs = await chrome.tabs.query({ groupId: tab.groupId });
-                    const tabIndex = groupTabs.findIndex(t => t.id === tabId);
+                    const currentTabIndex = groupTabs.findIndex(t => t.id === tabId);
 
-                    if (tabIndex !== -1) {
-                        // Find the tab element that should come after this one
-                        const nextTab = groupTabs[tabIndex + 1];
+                    // Log current DOM order
+                    const domTabElements = Array.from(container.querySelectorAll('[data-tab-id]'));
+                    const domOrder = domTabElements.map(el => {
+                        const id = parseInt(el.getAttribute('data-tab-id'));
+                        const tab = groupTabs.find(t => t.id === id);
+                        return tab ? tab.title.substring(0, 20) : 'Unknown';
+                    });
+
+                    console.log('[TabMove] Moving within same space:', {
+                        tabId,
+                        currentTabIndex,
+                        moveInfoToIndex: moveInfo.toIndex,
+                        totalTabs: groupTabs.length,
+                        chromeOrder: groupTabs.map(t => t.title.substring(0, 20)),
+                        domOrder: domOrder
+                    });
+
+                    if (currentTabIndex !== -1) {
+                        // Find the tab that should come AFTER the moved tab in Chrome's current order
+                        const nextTab = groupTabs[currentTabIndex - 1];
+                        console.log('[TabMove] Next tab (index ' + (currentTabIndex - 1) + '):', nextTab ? nextTab.title + ' (id: ' + nextTab.id + ')' : 'NONE (last tab)');
+
                         if (nextTab) {
                             const nextTabElement = container.querySelector(`[data-tab-id="${nextTab.id}"]`);
+                            console.log('[TabMove] Next tab element found:', !!nextTabElement);
+
                             if (nextTabElement && nextTabElement !== tabElement) {
+                                console.log('[TabMove] ✓ Inserting before next tab:', nextTab.title);
                                 container.insertBefore(tabElement, nextTabElement);
+                            } else if (!nextTabElement) {
+                                // Next tab element not found, try to find any later tab
+                                console.log('[TabMove] Next tab element not found, searching for later tabs...');
+                                let inserted = false;
+                                for (let i = currentTabIndex; i < groupTabs.length; i++) {
+                                    const laterTab = container.querySelector(`[data-tab-id="${groupTabs[i].id}"]`);
+                                    if (laterTab) {
+                                        console.log('[TabMove] ✓ Inserting before later tab at index', i, ':', groupTabs[i].title);
+                                        container.insertBefore(tabElement, laterTab);
+                                        inserted = true;
+                                        break;
+                                    }
+                                }
+                                if (!inserted) {
+                                    console.log('[TabMove] ✓ No later tabs found, appending to end');
+                                    container.appendChild(tabElement);
+                                }
                             }
                         } else {
                             // This is the last tab, append to end
+                            console.log('[TabMove] ✓ Last tab in group, appending to end');
                             container.appendChild(tabElement);
                         }
                     }
                 }
             }
+            // If Arc-like positioning is enabled and moving within same space, do nothing (keep current order)
         });
     });
 }
@@ -3084,6 +3164,7 @@ async function handleTabGroupRemoved(groupId) {
 }
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
+    processingTabMoves.add(tabId);
     // Remove tab from its original space data first
     const sourceSpace = spaces.find(s =>
         s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
@@ -3091,6 +3172,7 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
     if (sourceSpace && sourceSpace.id !== spaceId) {
         sourceSpace.temporaryTabs = sourceSpace.temporaryTabs.filter(id => id !== tabId);
         sourceSpace.spaceBookmarks = sourceSpace.spaceBookmarks.filter(id => id !== tabId);
+        sourceSpace.lastTab = null;
     }
 
     // 1. Find the target space
@@ -3111,6 +3193,7 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
     // Remove tab from both arrays just in case
     space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
     space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
+    space.lastTab = tabId;
 
     if (pinned) {
         space.spaceBookmarks.push(tabId);
@@ -3156,6 +3239,7 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
+    processingTabMoves.delete(tabId);
 }
 
 async function movToNextTabInSpace(tabId, sourceSpace) {
