@@ -1334,6 +1334,17 @@ h3 {
     align-items: end;
     justify-content: space-between;
     /* Push toggle to the right */
+    flex-wrap: wrap;
+    /* Allow items to wrap to new line */
+}
+
+.options-setting-toggle .options-description {
+    width: 100%;
+    /* Take full width to appear on new line */
+    margin-top: 0.5rem;
+    /* Add spacing above description */
+    display: block;
+    /* Ensure it's displayed as block */
 }
 
 .toggle-switch-container {
@@ -1667,7 +1678,7 @@ h3 {
         --chrome-grey-color: #546E7A;
         --chrome-blue-color: #235d8b;
         --chrome-red-color: #963d3d;
-        --chrome-yellow-color: #aa822a;
+        --chrome-yellow-color: #a38e54;
         --chrome-green-color: #4f8057;
         --chrome-pink-color: #b06c92;
         --chrome-purple-color: #8d75a1;
