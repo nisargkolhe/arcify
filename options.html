@@ -44,6 +44,77 @@
                 default, tab positions sync with Chrome tab groups.</small>
         </div>
 
+        <!-- Advanced Options Section -->
+        <div class="advanced-options-section">
+            <button type="button" class="advanced-options-toggle" id="advancedOptionsToggle">
+                <span class="advanced-options-toggle-text">Advanced Options</span>
+                <span class="advanced-options-chevron">▼</span>
+            </button>
+            <div class="advanced-options-content" id="advancedOptionsContent" style="display: none;">
+                <h3 class="advanced-options-title">Color Overrides</h3>
+                <small class="options-description">Override the default colors used throughout the extension. Dark variants will be automatically generated.</small>
+                
+                <div class="color-overrides-grid">
+                    <div class="color-override-item">
+                        <label for="colorGrey" class="color-override-label">Grey:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorGrey" class="color-picker" value="#cccccc">
+                            <button type="button" class="color-reset-btn" data-color="grey">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorBlue" class="color-override-label">Blue:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorBlue" class="color-picker" value="#8bb3f3">
+                            <button type="button" class="color-reset-btn" data-color="blue">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorRed" class="color-override-label">Red:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorRed" class="color-picker" value="#ff9e97">
+                            <button type="button" class="color-reset-btn" data-color="red">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorYellow" class="color-override-label">Yellow:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorYellow" class="color-picker" value="#ffe29f">
+                            <button type="button" class="color-reset-btn" data-color="yellow">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorGreen" class="color-override-label">Green:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorGreen" class="color-picker" value="#8bda99">
+                            <button type="button" class="color-reset-btn" data-color="green">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorPink" class="color-override-label">Pink:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorPink" class="color-picker" value="#fbaad7">
+                            <button type="button" class="color-reset-btn" data-color="pink">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorPurple" class="color-override-label">Purple:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorPurple" class="color-picker" value="#d6a6ff">
+                            <button type="button" class="color-reset-btn" data-color="purple">Reset</button>
+                        </div>
+                    </div>
+                    <div class="color-override-item">
+                        <label for="colorCyan" class="color-override-label">Cyan:</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="colorCyan" class="color-picker" value="#a5e2ea">
+                            <button type="button" class="color-reset-btn" data-color="cyan">Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <button id="save" class="options-button">Save Settings</button>
         <div id="status" class="options-status"></div>
     </div>

@@ -67,6 +67,71 @@ async function updateBookmarkForTab(tab, bookmarkTitle) {
 
 console.log("hi");
 
+// Function to apply color overrides from settings
+async function applyColorOverrides() {
+  try {
+    const settings = await Utils.getSettings();
+    console.log('Applying color overrides, settings:', settings);
+    
+    const root = document.documentElement;
+    
+    // Clear any existing overrides first
+    const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+    colorNames.forEach(colorName => {
+      root.style.removeProperty(`--user-chrome-${colorName}-color`);
+    });
+    
+    // Apply new overrides if they exist
+    if (settings.colorOverrides && Object.keys(settings.colorOverrides).length > 0) {
+      console.log('Found color overrides:', settings.colorOverrides);
+      Object.keys(settings.colorOverrides).forEach(colorName => {
+        const colorValue = settings.colorOverrides[colorName];
+        if (colorValue) {
+          root.style.setProperty(`--user-chrome-${colorName}-color`, colorValue);
+          console.log(`Applied color override: --user-chrome-${colorName}-color = ${colorValue}`);
+        }
+      });
+    } else {
+      console.log('No color overrides found in settings');
+    }
+    
+    // Re-apply colors to all existing spaces
+    reapplySpaceColors();
+  } catch (error) {
+    console.error('Error applying color overrides:', error);
+  }
+}
+
+// Function to re-apply colors to the active space
+function reapplySpaceColors() {
+  const sidebarContainer = document.getElementById('sidebar-container');
+  if (!sidebarContainer || !activeSpaceId || spaces.length === 0) return;
+  
+  // Find the active space
+  const activeSpace = spaces.find(space => space.id === activeSpaceId);
+  if (!activeSpace) return;
+  
+  const root = document.documentElement;
+  const colorVar = `--chrome-${activeSpace.color}-color`;
+  const colorDarkVar = `--chrome-${activeSpace.color}-color-dark`;
+  
+  // Get computed values
+  const computedStyle = getComputedStyle(root);
+  let colorValue = computedStyle.getPropertyValue(colorVar).trim();
+  let colorDarkValue = computedStyle.getPropertyValue(colorDarkVar).trim();
+  
+  // Fallback if variables aren't set yet
+  if (!colorValue) {
+    colorValue = `var(--chrome-${activeSpace.color}-color, rgba(255, 255, 255, 0.1))`;
+  }
+  if (!colorDarkValue) {
+    colorDarkValue = `var(--chrome-${activeSpace.color}-color-dark, rgba(255, 255, 255, 0.1))`;
+  }
+  
+  sidebarContainer.style.setProperty('--space-bg-color', colorValue);
+  sidebarContainer.style.setProperty('--space-bg-color-dark', colorDarkValue);
+}
+
 // Function to update pinned favicons
 async function updatePinnedFavicons() {
     const pinnedFavicons = document.getElementById('pinnedFavicons');
@@ -336,8 +401,18 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
 }
 
 // Initialize the sidebar when the DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('DOM loaded, initializing sidebar...');
+    await applyColorOverrides();
+    
+    // Listen for storage changes to re-apply colors when they're updated
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName === 'sync' && changes.colorOverrides) {
+            console.log('Color overrides changed, re-applying...');
+            applyColorOverrides();
+        }
+    });
+    
     initSidebar();
     updatePinnedFavicons(); // Initial load of pinned favicons
 
@@ -536,6 +611,9 @@ async function initSidebar() {
             spaces.forEach(space => createSpaceElement(space));
             console.log("initial save", spaces);
             saveSpaces();
+            
+            // Re-apply colors to all spaces after they're created
+            reapplySpaceColors();
 
             let activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
             if (activeTabs.length > 0) {
@@ -573,8 +651,26 @@ function createSpaceElement(space) {
     spaceContainer.dataset.spaceUuid = space.id;
 
     // Set space background color based on the tab group color
-    sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`);
-    sidebarContainer.style.setProperty('--space-bg-color-dark', `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`);
+    // Get the computed value from :root to ensure overrides are applied
+    const root = document.documentElement;
+    const colorVar = `--chrome-${space.color}-color`;
+    const colorDarkVar = `--chrome-${space.color}-color-dark`;
+    
+    // Get computed values - this will resolve the CSS variable chain
+    const computedStyle = getComputedStyle(root);
+    let colorValue = computedStyle.getPropertyValue(colorVar).trim();
+    let colorDarkValue = computedStyle.getPropertyValue(colorDarkVar).trim();
+    
+    // Fallback if variables aren't set yet
+    if (!colorValue) {
+        colorValue = `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`;
+    }
+    if (!colorDarkValue) {
+        colorDarkValue = `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`;
+    }
+    
+    sidebarContainer.style.setProperty('--space-bg-color', colorValue);
+    sidebarContainer.style.setProperty('--space-bg-color-dark', colorDarkValue);
 
     // Set up color select
     const colorSelect = spaceElement.getElementById('spaceColorSelect');

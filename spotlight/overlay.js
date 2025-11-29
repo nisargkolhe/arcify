@@ -86,7 +86,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     let activeSpaceColor = 'purple'; // Default fallback
 
     // CSS styles with default accent color (will be updated)
-    const accentColorDefinitions = SpotlightUtils.getAccentColorCSS(activeSpaceColor);
+    const accentColorDefinitions = await SpotlightUtils.getAccentColorCSS(activeSpaceColor);
     const spotlightCSS = `
         ${accentColorDefinitions}
         
@@ -586,7 +586,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             const realActiveSpaceColor = await SpotlightMessageClient.getActiveSpaceColor();
             if (realActiveSpaceColor !== activeSpaceColor) {
                 // Update CSS variables for smooth color transition
-                const newColorDefinitions = SpotlightUtils.getAccentColorCSS(realActiveSpaceColor);
+                const newColorDefinitions = await SpotlightUtils.getAccentColorCSS(realActiveSpaceColor);
                 const styleElement = document.querySelector('#arcify-spotlight-styles');
                 if (styleElement) {
                     // Extract just the color definitions and update them

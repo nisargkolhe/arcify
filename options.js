@@ -15,6 +15,33 @@
 import { Utils } from './utils.js';
 import { LocalStorage } from './localstorage.js';
 
+// Default color values (must be 6-digit hex for color picker compatibility)
+const DEFAULT_COLORS = {
+  grey: '#cccccc',
+  blue: '#8bb3f3',
+  red: '#ff9e97',
+  yellow: '#ffe29f',
+  green: '#8bda99',
+  pink: '#fbaad7',
+  purple: '#d6a6ff',
+  cyan: '#a5e2ea'
+};
+
+// Function to apply color overrides to CSS variables
+function applyColorOverrides(colorOverrides) {
+  if (!colorOverrides) return;
+  
+  const root = document.documentElement;
+  Object.keys(colorOverrides).forEach(colorName => {
+    const colorValue = colorOverrides[colorName];
+    if (colorValue) {
+      root.style.setProperty(`--user-chrome-${colorName}-color`, colorValue);
+    } else {
+      root.style.removeProperty(`--user-chrome-${colorName}-color`);
+    }
+  });
+}
+
 // Function to save options to chrome.storage
 async function saveOptions() {
   const defaultSpaceNameSelect = document.getElementById('defaultSpaceName');
@@ -23,16 +50,30 @@ async function saveOptions() {
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const useArcLikePositioningCheckbox = document.getElementById('useArcLikePositioning');
 
+  // Get color overrides
+  const colorOverrides = {};
+  const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+  colorNames.forEach(colorName => {
+    const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+    if (colorPicker && colorPicker.value !== DEFAULT_COLORS[colorName]) {
+      colorOverrides[colorName] = colorPicker.value;
+    }
+  });
+
   const settings = {
     defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
     useArcLikePositioning: useArcLikePositioningCheckbox.checked,
+    colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
   };
 
   try {
     await chrome.storage.sync.set(settings);
     console.log('Settings saved:', settings);
+
+    // Apply color overrides immediately
+    applyColorOverrides(colorOverrides);
 
     // Notify background script to update the alarm immediately
     await chrome.runtime.sendMessage({ action: 'updateAutoArchiveSettings' });
@@ -62,6 +103,17 @@ async function restoreOptions() {
   autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
   useArcLikePositioningCheckbox.checked = settings.useArcLikePositioning || false;
+
+  // Restore color overrides
+  if (settings.colorOverrides && typeof settings.colorOverrides === 'object') {
+    Object.keys(settings.colorOverrides).forEach(colorName => {
+      const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+      if (colorPicker && settings.colorOverrides[colorName]) {
+        colorPicker.value = settings.colorOverrides[colorName];
+      }
+    });
+    applyColorOverrides(settings.colorOverrides);
+  }
 }
 
 // Function to populate the spaces dropdown
@@ -102,5 +154,34 @@ async function populateSpacesDropdown(selectedSpaceName) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', restoreOptions);
+// Function to setup advanced options toggle
+function setupAdvancedOptions() {
+  const toggle = document.getElementById('advancedOptionsToggle');
+  const content = document.getElementById('advancedOptionsContent');
+  
+  if (toggle && content) {
+    toggle.addEventListener('click', () => {
+      const isExpanded = content.style.display !== 'none';
+      content.style.display = isExpanded ? 'none' : 'block';
+      toggle.classList.toggle('expanded', !isExpanded);
+    });
+  }
+
+  // Setup color reset buttons
+  const resetButtons = document.querySelectorAll('.color-reset-btn');
+  resetButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const colorName = button.dataset.color;
+      const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+      if (colorPicker && DEFAULT_COLORS[colorName]) {
+        colorPicker.value = DEFAULT_COLORS[colorName];
+      }
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  restoreOptions();
+  setupAdvancedOptions();
+});
 document.getElementById('save').addEventListener('click', saveOptions);

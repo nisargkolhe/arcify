@@ -68,6 +68,7 @@ const Utils = {
             autoArchiveIdleMinutes: 360, // Default: 30 minutes
             enableSpotlight: true, // Default: enabled
             useArcLikePositioning: false, // Default: disabled (Chrome sync is default)
+            colorOverrides: null, // Default: no color overrides
             // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);

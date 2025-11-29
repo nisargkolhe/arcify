@@ -5,22 +5,25 @@
 }
 
 :root {
-    --chrome-grey-color: #ccc;
-    --chrome-blue-color: #8bb3f3;
-    --chrome-red-color: #ff9e97;
-    --chrome-yellow-color: #ffe29f;
-    --chrome-green-color: #8bda99;
-    --chrome-pink-color: #fbaad7;
-    --chrome-purple-color: #d6a6ff;
-    --chrome-cyan-color: #a5e2ea;
-    --chrome-grey-color-dark: #c2c2c2;
-    --chrome-blue-color-dark: #84a9e7;
-    --chrome-red-color-dark: #f4968f;
-    --chrome-yellow-color-dark: #f1d698;
-    --chrome-green-color-dark: #54cb70;
-    --chrome-pink-color-dark: #f881c2;
-    --chrome-purple-color-dark: #dfb8ff;
-    --chrome-cyan-color-dark: #b7e8ee;
+    /* User color overrides (set via JavaScript, fallback to defaults) */
+    --chrome-grey-color: var(--user-chrome-grey-color, #cccccc);
+    --chrome-blue-color: var(--user-chrome-blue-color, #8bb3f3);
+    --chrome-red-color: var(--user-chrome-red-color, #ff9e97);
+    --chrome-yellow-color: var(--user-chrome-yellow-color, #ffe29f);
+    --chrome-green-color: var(--user-chrome-green-color, #8bda99);
+    --chrome-pink-color: var(--user-chrome-pink-color, #fbaad7);
+    --chrome-purple-color: var(--user-chrome-purple-color, #d6a6ff);
+    --chrome-cyan-color: var(--user-chrome-cyan-color, #a5e2ea);
+    
+    /* Dark variants - auto-generated from base colors using color-mix */
+    --chrome-grey-color-dark: color-mix(in srgb, var(--chrome-grey-color) 85%, black);
+    --chrome-blue-color-dark: color-mix(in srgb, var(--chrome-blue-color) 75%, black);
+    --chrome-red-color-dark: color-mix(in srgb, var(--chrome-red-color) 75%, black);
+    --chrome-yellow-color-dark: color-mix(in srgb, var(--chrome-yellow-color) 80%, black);
+    --chrome-green-color-dark: color-mix(in srgb, var(--chrome-green-color) 70%, black);
+    --chrome-pink-color-dark: color-mix(in srgb, var(--chrome-pink-color) 75%, black);
+    --chrome-purple-color-dark: color-mix(in srgb, var(--chrome-purple-color) 80%, black);
+    --chrome-cyan-color-dark: color-mix(in srgb, var(--chrome-cyan-color) 80%, black);
 }
 
 body {
@@ -1347,6 +1350,119 @@ h3 {
     /* Ensure it's displayed as block */
 }
 
+/* Advanced Options Section */
+.advanced-options-section {
+    margin-bottom: 1.5rem;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 1.5rem;
+}
+
+.advanced-options-toggle {
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0.8rem 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--options-text-color);
+    text-align: left;
+    transition: color 0.2s ease;
+}
+
+.advanced-options-toggle:hover {
+    color: var(--options-primary-color);
+}
+
+.advanced-options-chevron {
+    transition: transform 0.3s ease;
+    font-size: 0.8rem;
+    color: #999;
+}
+
+.advanced-options-toggle.expanded .advanced-options-chevron {
+    transform: rotate(180deg);
+}
+
+.advanced-options-content {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.advanced-options-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--options-text-color);
+}
+
+.color-overrides-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.color-override-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.color-override-label {
+    font-weight: 500;
+    color: var(--options-text-color);
+    min-width: 80px;
+}
+
+.color-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.color-picker {
+    width: 60px;
+    height: 36px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 2px;
+    background: none;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.color-picker::-webkit-color-swatch {
+    border: none;
+    border-radius: 4px;
+}
+
+.color-reset-btn {
+    padding: 0.4rem 0.8rem;
+    background-color: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--options-text-color);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.color-reset-btn:hover {
+    background-color: #e8e8e8;
+    border-color: #ccc;
+}
+
 .toggle-switch-container {
     position: relative;
     display: inline-block;
@@ -1675,22 +1791,25 @@ h3 {
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
     :root {
-        --chrome-grey-color: #546E7A;
-        --chrome-blue-color: #235d8b;
-        --chrome-red-color: #963d3d;
-        --chrome-yellow-color: #a38e54;
-        --chrome-green-color: #4f8057;
-        --chrome-pink-color: #b06c92;
-        --chrome-purple-color: #8d75a1;
-        --chrome-cyan-color: #5e9299;
-        --chrome-grey-color-dark: #455A64;
-        --chrome-blue-color-dark: #1f4b6d;
-        --chrome-red-color-dark: #7c3537;
-        --chrome-yellow-color-dark: #845e24;
-        --chrome-green-color-dark: #436f4a;
-        --chrome-pink-color-dark: #935779;
-        --chrome-purple-color-dark: #7c668e;
-        --chrome-cyan-color-dark: #55858b;
+        /* In dark mode, use darker variants of user colors or fallback to dark defaults */
+        --chrome-grey-color: var(--user-chrome-grey-color, #546E7A);
+        --chrome-blue-color: var(--user-chrome-blue-color, #235d8b);
+        --chrome-red-color: var(--user-chrome-red-color, #963d3d);
+        --chrome-yellow-color: var(--user-chrome-yellow-color, #a38e54);
+        --chrome-green-color: var(--user-chrome-green-color, #4f8057);
+        --chrome-pink-color: var(--user-chrome-pink-color, #b06c92);
+        --chrome-purple-color: var(--user-chrome-purple-color, #8d75a1);
+        --chrome-cyan-color: var(--user-chrome-cyan-color, #5e9299);
+        
+        /* Dark variants - auto-generated, darker in dark mode */
+        --chrome-grey-color-dark: color-mix(in srgb, var(--chrome-grey-color) 70%, black);
+        --chrome-blue-color-dark: color-mix(in srgb, var(--chrome-blue-color) 60%, black);
+        --chrome-red-color-dark: color-mix(in srgb, var(--chrome-red-color) 60%, black);
+        --chrome-yellow-color-dark: color-mix(in srgb, var(--chrome-yellow-color) 65%, black);
+        --chrome-green-color-dark: color-mix(in srgb, var(--chrome-green-color) 55%, black);
+        --chrome-pink-color-dark: color-mix(in srgb, var(--chrome-pink-color) 60%, black);
+        --chrome-purple-color-dark: color-mix(in srgb, var(--chrome-purple-color) 65%, black);
+        --chrome-cyan-color-dark: color-mix(in srgb, var(--chrome-cyan-color) 65%, black);
     }
 
     /* Dark mode text colors */
