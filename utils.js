@@ -68,6 +68,7 @@ const Utils = {
             autoArchiveIdleMinutes: 360, // Default: 30 minutes
             enableSpotlight: true, // Default: enabled
             useArcLikePositioning: false, // Default: disabled (Chrome sync is default)
+            invertTabOrder: true, // Default: enabled (New tabs/High index on top)
             colorOverrides: null, // Default: no color overrides
             // ... other settings ...
         };
@@ -305,6 +306,15 @@ const Utils = {
     // Set Arc-like positioning setting
     setUseArcLikePositioning: async function (enabled) {
         await chrome.storage.sync.set({ useArcLikePositioning: enabled });
+    },
+
+    getInvertTabOrder: async function () {
+        const settings = await this.getSettings();
+        return settings.invertTabOrder;
+    },
+
+    setInvertTabOrder: async function (enabled) {
+        await chrome.storage.sync.set({ invertTabOrder: enabled });
     },
 
     // Search and remove bookmark by URL from a folder structure recursively

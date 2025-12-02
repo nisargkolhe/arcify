@@ -2089,7 +2089,14 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 
 
         // Load temporary tabs
-        space.temporaryTabs.reverse().forEach(async tabId => {
+        const invertTabOrder = await Utils.getInvertTabOrder();
+        let tabsToLoad = [...space.temporaryTabs]; // Create a copy
+
+        if (invertTabOrder) {
+            tabsToLoad.reverse();
+        }
+
+        tabsToLoad.forEach(async tabId => {
             console.log("checking", tabId, spaces);
             const tab = tabs.find(t => t.id === tabId);
             const pinned = bookmarkedTabURLs.find(url => url == tab.url);
@@ -3094,6 +3101,11 @@ async function processTabMove(tabId, moveInfo) {
 
                     // Re-append tabs in the correct order
                     // appendChild moves the element if it already exists, so this effectively reorders them
+                    const invertTabOrder = await Utils.getInvertTabOrder();
+                    if (invertTabOrder) {
+                        tabsInContainer.reverse();
+                    }
+
                     tabsInContainer.forEach(t => {
                         const el = container.querySelector(`[data-tab-id="${t.id}"]`);
                         if (el) {
@@ -3332,7 +3344,12 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
                     // Add to the bottom after all existing elements
                     container.appendChild(tabElement);
                 } else {
-                    container.insertBefore(tabElement, container.firstChild);
+                    const invertTabOrder = await Utils.getInvertTabOrder();
+                    if (invertTabOrder) {
+                        container.insertBefore(tabElement, container.firstChild);
+                    } else {
+                        container.appendChild(tabElement);
+                    }
                 }
             }
         } else {

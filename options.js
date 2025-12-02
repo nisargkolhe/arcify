@@ -30,7 +30,7 @@ const DEFAULT_COLORS = {
 // Function to apply color overrides to CSS variables
 function applyColorOverrides(colorOverrides) {
   if (!colorOverrides) return;
-  
+
   const root = document.documentElement;
   Object.keys(colorOverrides).forEach(colorName => {
     const colorValue = colorOverrides[colorName];
@@ -49,6 +49,7 @@ async function saveOptions() {
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const useArcLikePositioningCheckbox = document.getElementById('useArcLikePositioning');
+  const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
 
   // Get color overrides
   const colorOverrides = {};
@@ -65,6 +66,7 @@ async function saveOptions() {
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
     useArcLikePositioning: useArcLikePositioningCheckbox.checked,
+    invertTabOrder: invertTabOrderCheckbox.checked,
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
   };
 
@@ -96,6 +98,7 @@ async function restoreOptions() {
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const useArcLikePositioningCheckbox = document.getElementById('useArcLikePositioning');
+  const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
 
   // Populate spaces dropdown
   await populateSpacesDropdown(settings.defaultSpaceName);
@@ -103,6 +106,7 @@ async function restoreOptions() {
   autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
   useArcLikePositioningCheckbox.checked = settings.useArcLikePositioning || false;
+  invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
 
   // Restore color overrides
   if (settings.colorOverrides && typeof settings.colorOverrides === 'object') {
@@ -158,7 +162,7 @@ async function populateSpacesDropdown(selectedSpaceName) {
 function setupAdvancedOptions() {
   const toggle = document.getElementById('advancedOptionsToggle');
   const content = document.getElementById('advancedOptionsContent');
-  
+
   if (toggle && content) {
     toggle.addEventListener('click', () => {
       const isExpanded = content.style.display !== 'none';

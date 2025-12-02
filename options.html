@@ -44,6 +44,16 @@
                 default, tab positions sync with Chrome tab groups.</small>
         </div>
 
+        <div class="options-setting-item options-setting-toggle">
+            <label for="invertTabOrder" class="options-label">Invert Tab Order:</label>
+            <div class="toggle-switch-container">
+                <input type="checkbox" id="invertTabOrder" class="ios-toggle">
+                <label for="invertTabOrder" class="toggle-label"></label>
+            </div>
+            <small class="options-description">When enabled (default), new tabs appear at the top. Disable to match
+                Chrome's order (new tabs at bottom).</small>
+        </div>
+
         <!-- Advanced Options Section -->
         <div class="advanced-options-section">
             <button type="button" class="advanced-options-toggle" id="advancedOptionsToggle">
@@ -52,8 +62,9 @@
             </button>
             <div class="advanced-options-content" id="advancedOptionsContent" style="display: none;">
                 <h3 class="advanced-options-title">Color Overrides</h3>
-                <small class="options-description">Override the default colors used throughout the extension. Dark variants will be automatically generated.</small>
-                
+                <small class="options-description">Override the default colors used throughout the extension. Dark
+                    variants will be automatically generated.</small>
+
                 <div class="color-overrides-grid">
                     <div class="color-override-item">
                         <label for="colorGrey" class="color-override-label">Grey:</label>
