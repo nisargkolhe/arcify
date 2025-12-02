@@ -242,6 +242,3 @@ document.addEventListener('DOMContentLoaded', () => {
   setupAdvancedOptions();
   setupAutoSave();
 });
-
-// Keep the manual save button as a fallback
-document.getElementById('save').addEventListener('click', saveOptions);

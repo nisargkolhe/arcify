@@ -514,14 +514,32 @@ h3 {
 }
 
 .folder-toggle {
-    font-size: 0.8em;
     background: none;
     border: none;
-    color: #101010bd;
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
     transition: transform 0.2s;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.folder-toggle::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid transparent;
+    transition: border-top-color 0.2s;
+}
+
+.folder-header:hover .folder-toggle::before {
+    border-top: 6px solid #1010107d;
 }
 
 .folder-toggle.collapsed {
@@ -1429,19 +1447,22 @@ h3 {
 }
 
 .advanced-options-chevron {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #999;
+    border-bottom: 2px solid #999;
+    transform: rotate(45deg);
     transition: transform 0.3s ease;
-    font-size: 0.8rem;
-    color: #999;
+    margin-left: 8px;
 }
 
 .advanced-options-toggle.expanded .advanced-options-chevron {
-    transform: rotate(180deg);
+    transform: rotate(-135deg);
 }
 
 .advanced-options-content {
     margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid #e0e0e0;
 }
 
 .advanced-options-title {
