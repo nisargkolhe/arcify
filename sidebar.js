@@ -69,67 +69,67 @@ console.log("hi");
 
 // Function to apply color overrides from settings
 async function applyColorOverrides() {
-  try {
-    const settings = await Utils.getSettings();
-    console.log('Applying color overrides, settings:', settings);
-    
-    const root = document.documentElement;
-    
-    // Clear any existing overrides first
-    const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
-    colorNames.forEach(colorName => {
-      root.style.removeProperty(`--user-chrome-${colorName}-color`);
-    });
-    
-    // Apply new overrides if they exist
-    if (settings.colorOverrides && Object.keys(settings.colorOverrides).length > 0) {
-      console.log('Found color overrides:', settings.colorOverrides);
-      Object.keys(settings.colorOverrides).forEach(colorName => {
-        const colorValue = settings.colorOverrides[colorName];
-        if (colorValue) {
-          root.style.setProperty(`--user-chrome-${colorName}-color`, colorValue);
-          console.log(`Applied color override: --user-chrome-${colorName}-color = ${colorValue}`);
+    try {
+        const settings = await Utils.getSettings();
+        console.log('Applying color overrides, settings:', settings);
+
+        const root = document.documentElement;
+
+        // Clear any existing overrides first
+        const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+        colorNames.forEach(colorName => {
+            root.style.removeProperty(`--user-chrome-${colorName}-color`);
+        });
+
+        // Apply new overrides if they exist
+        if (settings.colorOverrides && Object.keys(settings.colorOverrides).length > 0) {
+            console.log('Found color overrides:', settings.colorOverrides);
+            Object.keys(settings.colorOverrides).forEach(colorName => {
+                const colorValue = settings.colorOverrides[colorName];
+                if (colorValue) {
+                    root.style.setProperty(`--user-chrome-${colorName}-color`, colorValue);
+                    console.log(`Applied color override: --user-chrome-${colorName}-color = ${colorValue}`);
+                }
+            });
+        } else {
+            console.log('No color overrides found in settings');
         }
-      });
-    } else {
-      console.log('No color overrides found in settings');
+
+        // Re-apply colors to all existing spaces
+        reapplySpaceColors();
+    } catch (error) {
+        console.error('Error applying color overrides:', error);
     }
-    
-    // Re-apply colors to all existing spaces
-    reapplySpaceColors();
-  } catch (error) {
-    console.error('Error applying color overrides:', error);
-  }
 }
 
 // Function to re-apply colors to the active space
 function reapplySpaceColors() {
-  const sidebarContainer = document.getElementById('sidebar-container');
-  if (!sidebarContainer || !activeSpaceId || spaces.length === 0) return;
-  
-  // Find the active space
-  const activeSpace = spaces.find(space => space.id === activeSpaceId);
-  if (!activeSpace) return;
-  
-  const root = document.documentElement;
-  const colorVar = `--chrome-${activeSpace.color}-color`;
-  const colorDarkVar = `--chrome-${activeSpace.color}-color-dark`;
-  
-  // Get computed values
-  const computedStyle = getComputedStyle(root);
-  let colorValue = computedStyle.getPropertyValue(colorVar).trim();
-  let colorDarkValue = computedStyle.getPropertyValue(colorDarkVar).trim();
-  
-  // Fallback if variables aren't set yet
-  if (!colorValue) {
-    colorValue = `var(--chrome-${activeSpace.color}-color, rgba(255, 255, 255, 0.1))`;
-  }
-  if (!colorDarkValue) {
-    colorDarkValue = `var(--chrome-${activeSpace.color}-color-dark, rgba(255, 255, 255, 0.1))`;
-  }
-  
-  sidebarContainer.style.setProperty('--space-bg-color', colorValue);
-  sidebarContainer.style.setProperty('--space-bg-color-dark', colorDarkValue);
+    const sidebarContainer = document.getElementById('sidebar-container');
+    if (!sidebarContainer || !activeSpaceId || spaces.length === 0) return;
+
+    // Find the active space
+    const activeSpace = spaces.find(space => space.id === activeSpaceId);
+    if (!activeSpace) return;
+
+    const root = document.documentElement;
+    const colorVar = `--chrome-${activeSpace.color}-color`;
+    const colorDarkVar = `--chrome-${activeSpace.color}-color-dark`;
+
+    // Get computed values
+    const computedStyle = getComputedStyle(root);
+    let colorValue = computedStyle.getPropertyValue(colorVar).trim();
+    let colorDarkValue = computedStyle.getPropertyValue(colorDarkVar).trim();
+
+    // Fallback if variables aren't set yet
+    if (!colorValue) {
+        colorValue = `var(--chrome-${activeSpace.color}-color, rgba(255, 255, 255, 0.1))`;
+    }
+    if (!colorDarkValue) {
+        colorDarkValue = `var(--chrome-${activeSpace.color}-color-dark, rgba(255, 255, 255, 0.1))`;
+    }
+
+    sidebarContainer.style.setProperty('--space-bg-color', colorValue);
+    sidebarContainer.style.setProperty('--space-bg-color-dark', colorDarkValue);
 }
 
 // Function to update pinned favicons
@@ -404,7 +404,7 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('DOM loaded, initializing sidebar...');
     await applyColorOverrides();
-    
+
     // Listen for storage changes to re-apply colors when they're updated
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName === 'sync' && changes.colorOverrides) {
@@ -412,7 +412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             applyColorOverrides();
         }
     });
-    
+
     initSidebar();
     updatePinnedFavicons(); // Initial load of pinned favicons
 
@@ -611,7 +611,7 @@ async function initSidebar() {
             spaces.forEach(space => createSpaceElement(space));
             console.log("initial save", spaces);
             saveSpaces();
-            
+
             // Re-apply colors to all spaces after they're created
             reapplySpaceColors();
 
@@ -655,12 +655,12 @@ function createSpaceElement(space) {
     const root = document.documentElement;
     const colorVar = `--chrome-${space.color}-color`;
     const colorDarkVar = `--chrome-${space.color}-color-dark`;
-    
+
     // Get computed values - this will resolve the CSS variable chain
     const computedStyle = getComputedStyle(root);
     let colorValue = computedStyle.getPropertyValue(colorVar).trim();
     let colorDarkValue = computedStyle.getPropertyValue(colorDarkVar).trim();
-    
+
     // Fallback if variables aren't set yet
     if (!colorValue) {
         colorValue = `var(--chrome-${space.color}-color, rgba(255, 255, 255, 0.1))`;
@@ -668,7 +668,7 @@ function createSpaceElement(space) {
     if (!colorDarkValue) {
         colorDarkValue = `var(--chrome-${space.color}-color-dark, rgba(255, 255, 255, 0.1))`;
     }
-    
+
     sidebarContainer.style.setProperty('--space-bg-color', colorValue);
     sidebarContainer.style.setProperty('--space-bg-color-dark', colorDarkValue);
 
@@ -3040,61 +3040,68 @@ async function processTabMove(tabId, moveInfo) {
 
                     // Get all tabs in the group - Chrome's order is the source of truth
                     const groupTabs = await chrome.tabs.query({ groupId: tab.groupId });
-                    const currentTabIndex = groupTabs.findIndex(t => t.id === tabId);
 
-                    // Log current DOM order
-                    const domTabElements = Array.from(container.querySelectorAll('[data-tab-id]'));
-                    const domOrder = domTabElements.map(el => {
-                        const id = parseInt(el.getAttribute('data-tab-id'));
-                        const tab = groupTabs.find(t => t.id === id);
-                        return tab ? tab.title.substring(0, 20) : 'Unknown';
-                    });
+                    if (groupTabs.length === 0) return;
 
-                    console.log('[TabMove] Moving within same space:', {
+                    // Calculate relative indices (moveInfo indices are global/window-level)
+                    const groupStartIndex = groupTabs[0].index;
+                    // Note: If groupTabs is stale, the start index might be different, but usually
+                    // tabs in a group are contiguous so the offset is consistent.
+
+                    const relativeToIndex = moveInfo.toIndex - groupStartIndex;
+
+                    console.log('[TabMove] Positioning logic:', {
                         tabId,
-                        currentTabIndex,
-                        moveInfoToIndex: moveInfo.toIndex,
-                        totalTabs: groupTabs.length,
-                        chromeOrder: groupTabs.map(t => t.title.substring(0, 20)),
-                        domOrder: domOrder
+                        globalToIndex: moveInfo.toIndex,
+                        groupStartIndex,
+                        relativeToIndex,
+                        groupTabsLength: groupTabs.length,
+                        groupTabTitles: groupTabs.map(t => {
+                            const isPinned = sourceSpace.spaceBookmarks.includes(t.id) || sourceSpace.spaceBookmarks.some(b => b.id === t.id || b.url === t.url);
+                            return (isPinned ? '[PINNED] ' : '') + t.title;
+                        })
                     });
 
-                    if (currentTabIndex !== -1) {
-                        // Find the tab that should come AFTER the moved tab in Chrome's current order
-                        const nextTab = groupTabs[currentTabIndex - 1];
-                        console.log('[TabMove] Next tab (index ' + (currentTabIndex - 1) + '):', nextTab ? nextTab.title + ' (id: ' + nextTab.id + ')' : 'NONE (last tab)');
+                    // Determine if groupTabs is fresh (already updated) or stale (needs simulation)
+                    let targetTabsOrder = groupTabs;
+                    const isFresh = groupTabs[relativeToIndex] && groupTabs[relativeToIndex].id === tabId;
 
-                        if (nextTab) {
-                            const nextTabElement = container.querySelector(`[data-tab-id="${nextTab.id}"]`);
-                            console.log('[TabMove] Next tab element found:', !!nextTabElement);
+                    if (isFresh) {
+                        console.log('[TabMove] Data is FRESH - using current order');
+                    } else {
+                        console.log('[TabMove] Data is STALE - simulating move');
+                        // Find where the tab is currently in the stale list
+                        const currentStaleIndex = groupTabs.findIndex(t => t.id === tabId);
+                        if (currentStaleIndex !== -1) {
+                            // Create a new array and simulate the move
+                            targetTabsOrder = [...groupTabs];
+                            const [movedTab] = targetTabsOrder.splice(currentStaleIndex, 1);
+                            // Clamp index to bounds
+                            const insertIndex = Math.max(0, Math.min(relativeToIndex, targetTabsOrder.length));
+                            targetTabsOrder.splice(insertIndex, 0, movedTab);
 
-                            if (nextTabElement && nextTabElement !== tabElement) {
-                                console.log('[TabMove] ✓ Inserting before next tab:', nextTab.title);
-                                container.insertBefore(tabElement, nextTabElement);
-                            } else if (!nextTabElement) {
-                                // Next tab element not found, try to find any later tab
-                                console.log('[TabMove] Next tab element not found, searching for later tabs...');
-                                let inserted = false;
-                                for (let i = currentTabIndex; i < groupTabs.length; i++) {
-                                    const laterTab = container.querySelector(`[data-tab-id="${groupTabs[i].id}"]`);
-                                    if (laterTab) {
-                                        console.log('[TabMove] ✓ Inserting before later tab at index', i, ':', groupTabs[i].title);
-                                        container.insertBefore(tabElement, laterTab);
-                                        inserted = true;
-                                        break;
-                                    }
-                                }
-                                if (!inserted) {
-                                    console.log('[TabMove] ✓ No later tabs found, appending to end');
-                                    container.appendChild(tabElement);
-                                }
-                            }
-                        } else {
-                            // This is the last tab, append to end
-                            console.log('[TabMove] ✓ Last tab in group, appending to end');
-                            container.appendChild(tabElement);
+                            console.log('[TabMove] Simulated order:', targetTabsOrder.map(t => t.title));
                         }
                     }
+
+                    // Filter targetTabsOrder to only include tabs that are in the current container (Temporary tabs)
+                    // This avoids issues with pinned tabs or other hidden tabs interfering with neighbor calculations
+                    const tabsInContainer = targetTabsOrder.filter(t => {
+                        return container.querySelector(`[data-tab-id="${t.id}"]`);
+                    });
+
+                    console.log('[TabMove] Reordering tabs in container:', tabsInContainer.map(t => t.title));
+
+                    // Re-append tabs in the correct order
+                    // appendChild moves the element if it already exists, so this effectively reorders them
+                    tabsInContainer.forEach(t => {
+                        const el = container.querySelector(`[data-tab-id="${t.id}"]`);
+                        if (el) {
+                            container.appendChild(el);
+                        }
+                    });
+
+                    console.log('[TabMove] ✓ Reorder complete');
                 }
             }
             // If Arc-like positioning is enabled and moving within same space, do nothing (keep current order)
