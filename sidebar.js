@@ -3339,11 +3339,40 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
                     // Add to the bottom after all existing elements
                     container.appendChild(tabElement);
                 } else {
-                    const invertTabOrder = await Utils.getInvertTabOrder();
-                    if (invertTabOrder) {
-                        container.insertBefore(tabElement, container.firstChild);
-                    } else {
+                    // For temporary tabs, sync with Chrome's tab order
+                    const groupTabs = await chrome.tabs.query({ groupId: spaceId });
+                    const currentTabIndex = groupTabs.findIndex(t => t.id === tabId);
+
+                    if (currentTabIndex !== -1 && groupTabs.length > 1) {
+                        // First, add the new tab element to the container so it can be found in the filter
                         container.appendChild(tabElement);
+
+                        // Filter to only include tabs in the temporary container (including the new one)
+                        const tabsInContainer = groupTabs.filter(t => {
+                            return container.querySelector(`[data-tab-id="${t.id}"]`);
+                        });
+
+                        // Apply invert order if enabled
+                        const invertTabOrder = await Utils.getInvertTabOrder();
+                        if (invertTabOrder) {
+                            tabsInContainer.reverse();
+                        }
+
+                        // Re-append all tabs in correct order (including the new one)
+                        tabsInContainer.forEach(t => {
+                            const el = container.querySelector(`[data-tab-id="${t.id}"]`);
+                            if (el) {
+                                container.appendChild(el);
+                            }
+                        });
+                    } else {
+                        // Fallback: use simple insert logic
+                        const invertTabOrder = await Utils.getInvertTabOrder();
+                        if (invertTabOrder) {
+                            container.insertBefore(tabElement, container.firstChild);
+                        } else {
+                            container.appendChild(tabElement);
+                        }
                     }
                 }
             }
