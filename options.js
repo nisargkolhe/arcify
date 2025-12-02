@@ -48,7 +48,6 @@ async function saveOptions() {
   const defaultSpaceName = defaultSpaceNameSelect.value;
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
-  const useArcLikePositioningCheckbox = document.getElementById('useArcLikePositioning');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
 
   // Get color overrides
@@ -65,7 +64,6 @@ async function saveOptions() {
     defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
-    useArcLikePositioning: useArcLikePositioningCheckbox.checked,
     invertTabOrder: invertTabOrderCheckbox.checked,
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
   };
@@ -75,7 +73,7 @@ async function saveOptions() {
     console.log('Settings saved:', settings);
 
     // Apply color overrides immediately
-    applyColorOverrides(colorOverrides);
+    applyColorOverrides(settings.colorOverrides);
 
     // Notify background script to update the alarm immediately
     await chrome.runtime.sendMessage({ action: 'updateAutoArchiveSettings' });
@@ -86,7 +84,7 @@ async function saveOptions() {
     status.textContent = 'Options saved.';
     setTimeout(() => {
       status.textContent = '';
-    }, 2000);
+    }, 750);
   } catch (error) {
     console.error('Error saving settings:', error);
   }
@@ -97,7 +95,6 @@ async function restoreOptions() {
   const settings = await Utils.getSettings();
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
-  const useArcLikePositioningCheckbox = document.getElementById('useArcLikePositioning');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
 
   // Populate spaces dropdown
@@ -105,19 +102,20 @@ async function restoreOptions() {
 
   autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
-  useArcLikePositioningCheckbox.checked = settings.useArcLikePositioning || false;
   invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
 
   // Restore color overrides
-  if (settings.colorOverrides && typeof settings.colorOverrides === 'object') {
-    Object.keys(settings.colorOverrides).forEach(colorName => {
-      const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
-      if (colorPicker && settings.colorOverrides[colorName]) {
-        colorPicker.value = settings.colorOverrides[colorName];
-      }
-    });
-    applyColorOverrides(settings.colorOverrides);
-  }
+  const colorOverrides = settings.colorOverrides || {};
+  const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+  colorNames.forEach(colorName => {
+    const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+    if (colorPicker) {
+      colorPicker.value = colorOverrides[colorName] || DEFAULT_COLORS[colorName];
+    }
+  });
+
+  // Apply color overrides on load
+  applyColorOverrides(colorOverrides);
 }
 
 // Function to populate the spaces dropdown

@@ -2983,8 +2983,7 @@ async function processTabMove(tabId, moveInfo) {
             );
             console.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace.id);
 
-            // Check if Arc-like positioning is enabled (append to end instead of syncing)
-            const useArcLikePositioning = await Utils.getUseArcLikePositioning();
+
 
             // Find the source and destination spaces
 
@@ -3009,8 +3008,8 @@ async function processTabMove(tabId, moveInfo) {
                     const destSpaceElement = document.querySelector(`[data-space-id="${destSpace.id}"]`);
                     if (destSpaceElement) {
                         const destTempContainer = destSpaceElement.querySelector('[data-tab-type="temporary"]');
-                        if (destTempContainer && !useArcLikePositioning) {
-                            // Chrome sync mode (default): position tab to match Chrome's order
+                        if (destTempContainer) {
+                            // Position tab to match Chrome's order
                             const groupTabs = await chrome.tabs.query({ groupId: newGroupId });
                             const tabIndex = groupTabs.findIndex(t => t.id === tabId);
 
@@ -3031,16 +3030,13 @@ async function processTabMove(tabId, moveInfo) {
                             } else {
                                 destTempContainer.appendChild(tabElement);
                             }
-                        } else if (destTempContainer) {
-                            // Arc-like positioning: just append to end
-                            destTempContainer.appendChild(tabElement);
                         }
                     }
                 }
 
                 saveSpaces();
-            } else if (!useArcLikePositioning && sourceSpace) {
-                // Chrome sync mode (default): handle tab position updates within the same space
+            } else if (sourceSpace) {
+                // Handle tab position updates within the same space
                 const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
                 if (tabElement) {
                     const container = tabElement.parentElement;
@@ -3116,7 +3112,6 @@ async function processTabMove(tabId, moveInfo) {
                     console.log('[TabMove] ✓ Reorder complete');
                 }
             }
-            // If Arc-like positioning is enabled and moving within same space, do nothing (keep current order)
         });
     });
 }
