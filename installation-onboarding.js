@@ -53,8 +53,10 @@ class InstallationOnboarding {
         });
     }
 
-    nextStep() {
+    async nextStep() {
         if (this.currentStep === 4) {
+            await this.loadKeyboardShortcuts();
+
             // Redirect to arcify.io when next is clicked on step 4 (Spotlight)
             // Pass keyboard shortcuts as URL parameters
             const urlParams = new URLSearchParams();
@@ -206,7 +208,7 @@ class InstallationOnboarding {
                 'toggleSpotlight': shortcuts['toggleSpotlight'] || 'Alt+L',
                 'toggleSpotlightNewTab': shortcuts['toggleSpotlightNewTab'] || 'Alt+T'
             };
-
+            console.log('Keyboard shortcuts loaded:', this.shortcuts);
             // Update the shortcut display in step 5
             this.updateShortcutDisplay(shortcuts);
         } catch (error) {
