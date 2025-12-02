@@ -69,11 +69,9 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
 
             const input = existingDialog.querySelector('.arcify-spotlight-input');
             if (input) {
-                setTimeout(() => {
-                    input.focus();
-                    input.select();
-                    input.scrollLeft = 0;
-                }, 50);
+                input.focus();
+                input.select();
+                input.scrollLeft = 0;
             }
         }
         return;
@@ -559,12 +557,10 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Notify background that spotlight opened in this tab
     SpotlightMessageClient.notifyOpened();
 
-    // Focus input immediately
-    setTimeout(() => {
-        input.focus();
-        input.select();
-        input.scrollLeft = 0;
-    }, 50);
+    // Focus input immediately (no delay needed)
+    input.focus();
+    input.select();
+    input.scrollLeft = 0;
 
     /**
      * PHASE 2: NON-BLOCKING INITIALIZATION OPTIMIZATIONS
