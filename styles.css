@@ -14,7 +14,7 @@
     --chrome-pink-color: var(--user-chrome-pink-color, #fbaad7);
     --chrome-purple-color: var(--user-chrome-purple-color, #d6a6ff);
     --chrome-cyan-color: var(--user-chrome-cyan-color, #a5e2ea);
-    
+
     /* Dark variants - auto-generated from base colors using color-mix */
     --chrome-grey-color-dark: color-mix(in srgb, var(--chrome-grey-color) 85%, black);
     --chrome-blue-color-dark: color-mix(in srgb, var(--chrome-blue-color) 75%, black);
@@ -1131,6 +1131,10 @@ h3 {
     /* Take available width up to max-width */
     text-align: center;
     /* Center text inside container */
+    max-height: calc(100vh - 4rem);
+    /* Allow container to fit within viewport with padding */
+    overflow-y: auto;
+    /* Enable scrolling when content overflows */
 }
 
 .options-title {
@@ -1215,6 +1219,52 @@ h3 {
     /* Prevent layout shift */
     text-align: center;
 }
+
+/* Toast notification styles */
+.save-toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background-color: #2d2d2d;
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10000;
+}
+
+.save-toast.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background-color: #4ade80;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+}
+
+.toast-message {
+    white-space: nowrap;
+}
+
 
 /* Archive Section Styles */
 .archive-section {
@@ -1800,7 +1850,7 @@ h3 {
         --chrome-pink-color: var(--user-chrome-pink-color, #b06c92);
         --chrome-purple-color: var(--user-chrome-purple-color, #8d75a1);
         --chrome-cyan-color: var(--user-chrome-cyan-color, #5e9299);
-        
+
         /* Dark variants - auto-generated, darker in dark mode */
         --chrome-grey-color-dark: color-mix(in srgb, var(--chrome-grey-color) 70%, black);
         --chrome-blue-color-dark: color-mix(in srgb, var(--chrome-blue-color) 60%, black);

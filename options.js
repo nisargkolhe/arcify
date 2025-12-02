@@ -78,16 +78,25 @@ async function saveOptions() {
     // Notify background script to update the alarm immediately
     await chrome.runtime.sendMessage({ action: 'updateAutoArchiveSettings' });
 
-    // Show status message to user
-    const status = document.getElementById('status');
-    console.log('Status:', status);
-    status.textContent = 'Options saved.';
-    setTimeout(() => {
-      status.textContent = '';
-    }, 750);
+    // Show toast notification
+    showToast();
   } catch (error) {
     console.error('Error saving settings:', error);
   }
+}
+
+// Function to show toast notification
+function showToast() {
+  const toast = document.getElementById('saveToast');
+  if (!toast) return;
+
+  // Add show class to trigger animation
+  toast.classList.add('show');
+
+  // Remove show class after 2 seconds
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 2000);
 }
 
 // Function to restore options from chrome.storage
@@ -177,13 +186,62 @@ function setupAdvancedOptions() {
       const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
       if (colorPicker && DEFAULT_COLORS[colorName]) {
         colorPicker.value = DEFAULT_COLORS[colorName];
+        // Trigger auto-save after reset
+        saveOptions();
       }
     });
+  });
+}
+
+// Debounce function to avoid excessive saves for color pickers
+let saveTimeout;
+function debouncedSave() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveOptions();
+  }, 500); // Wait 500ms after last change before saving
+}
+
+// Function to setup auto-save listeners
+function setupAutoSave() {
+  // Auto-save for dropdown
+  const defaultSpaceNameSelect = document.getElementById('defaultSpaceName');
+  if (defaultSpaceNameSelect) {
+    defaultSpaceNameSelect.addEventListener('change', saveOptions);
+  }
+
+  // Auto-save for checkboxes
+  const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
+  if (autoArchiveEnabledCheckbox) {
+    autoArchiveEnabledCheckbox.addEventListener('change', saveOptions);
+  }
+
+  const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
+  if (invertTabOrderCheckbox) {
+    invertTabOrderCheckbox.addEventListener('change', saveOptions);
+  }
+
+  // Auto-save for number input (with debounce)
+  const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+  if (autoArchiveIdleMinutesInput) {
+    autoArchiveIdleMinutesInput.addEventListener('input', debouncedSave);
+  }
+
+  // Auto-save for color pickers (with debounce)
+  const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
+  colorNames.forEach(colorName => {
+    const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+    if (colorPicker) {
+      colorPicker.addEventListener('input', debouncedSave);
+    }
   });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   restoreOptions();
   setupAdvancedOptions();
+  setupAutoSave();
 });
+
+// Keep the manual save button as a fallback
 document.getElementById('save').addEventListener('click', saveOptions);
