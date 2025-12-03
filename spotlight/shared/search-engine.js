@@ -27,7 +27,10 @@ export class SearchEngine {
         this.CACHE_TTL = 30000;
 
         // Detect if we're running in background script context
-        this.isBackgroundContext = this.dataProvider.constructor.name === 'BackgroundDataProvider';
+        // Use a flag on the data provider for reliable detection in minified builds
+        // Fallback to constructor name check for development builds
+        this.isBackgroundContext = this.dataProvider.isBackgroundProvider === true || 
+                                   this.dataProvider.constructor.name === 'BackgroundDataProvider';
     }
 
     // Main method to get spotlight suggestions with debouncing and caching

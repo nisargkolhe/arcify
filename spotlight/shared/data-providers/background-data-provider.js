@@ -10,6 +10,8 @@ export class BackgroundDataProvider extends BaseDataProvider {
     constructor() {
         super();
         this.autocompleteProvider = new AutocompleteProvider();
+        // Mark this as a background provider for reliable detection in minified builds
+        this.isBackgroundProvider = true;
     }
     
     // Only implement the small data fetchers using direct Chrome APIs
