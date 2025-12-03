@@ -57,6 +57,7 @@ jobs:
             
             // Get the current tag and previous tag
             const currentTag = context.ref.replace('refs/tags/', '');
+            const version = currentTag.replace(/^v/, ''); // Remove 'v' prefix if present
             
             let previousTag;
             try {
@@ -73,8 +74,17 @@ jobs:
             const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             const manifestJson = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
             
+            // Read checksum from file
+            let checksum = '';
+            try {
+              const checksumContent = fs.readFileSync('checksum.txt', 'utf8');
+              checksum = checksumContent.replace('SHA256: ', '').trim();
+            } catch (error) {
+              console.log('Warning: Could not read checksum.txt');
+            }
+            
             // Generate release notes
-            let releaseNotes = `# ${manifestJson.name} v${steps.version.outputs.version}\n\n`;
+            let releaseNotes = `# ${manifestJson.name} v${version}\n\n`;
             releaseNotes += `${manifestJson.description}\n\n`;
             
             if (commits) {
@@ -139,7 +149,7 @@ jobs:
             releaseNotes += `## 📋 File Information\n\n`;
             releaseNotes += `| File | SHA256 Checksum |\n`;
             releaseNotes += `|------|----------------|\n`;
-            releaseNotes += `| arcify-extension.zip | \`${steps.checksum.outputs.checksum}\` |\n\n`;
+            releaseNotes += `| arcify-extension.zip | \`${checksum}\` |\n\n`;
             
             // Add compatibility info
             releaseNotes += `## 🔧 Compatibility\n\n`;
