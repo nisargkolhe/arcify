@@ -49,6 +49,7 @@ async function saveOptions() {
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
+  const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
 
   // Get color overrides
   const colorOverrides = {};
@@ -65,6 +66,7 @@ async function saveOptions() {
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
     invertTabOrder: invertTabOrderCheckbox.checked,
+    enableSpotlight: enableSpotlightCheckbox.checked,
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
   };
 
@@ -105,6 +107,7 @@ async function restoreOptions() {
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
+  const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
 
   // Populate spaces dropdown
   await populateSpacesDropdown(settings.defaultSpaceName);
@@ -112,6 +115,7 @@ async function restoreOptions() {
   autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
   invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
+  enableSpotlightCheckbox.checked = settings.enableSpotlight !== undefined ? settings.enableSpotlight : true; // Default true
 
   // Restore color overrides
   const colorOverrides = settings.colorOverrides || {};
@@ -219,6 +223,11 @@ function setupAutoSave() {
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   if (invertTabOrderCheckbox) {
     invertTabOrderCheckbox.addEventListener('change', saveOptions);
+  }
+
+  const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
+  if (enableSpotlightCheckbox) {
+    enableSpotlightCheckbox.addEventListener('change', saveOptions);
   }
 
   // Auto-save for number input (with debounce)

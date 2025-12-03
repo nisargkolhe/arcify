@@ -14,6 +14,20 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 
 // Initialize spotlight on page load
 document.addEventListener('DOMContentLoaded', async () => {
+    // Check if spotlight is enabled (controls both spotlight and custom new tab)
+    const settings = await chrome.storage.sync.get({ enableSpotlight: true });
+    if (!settings.enableSpotlight) {
+        // Request background script to navigate to default new tab
+        try {
+            await chrome.runtime.sendMessage({
+                action: 'navigateToDefaultNewTab'
+            });
+        } catch (error) {
+            console.error('[NewTab] Error navigating to default new tab:', error);
+        }
+        return;
+    }
+    
     await initializeSpotlight();
 });
 

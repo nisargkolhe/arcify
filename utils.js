@@ -66,7 +66,7 @@ const Utils = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
             autoArchiveIdleMinutes: 360, // Default: 30 minutes
-            enableSpotlight: true, // Default: enabled
+            enableSpotlight: true, // Default: enabled (controls both spotlight and custom new tab)
             invertTabOrder: true, // Default: enabled (New tabs/High index on top)
             colorOverrides: null, // Default: no color overrides
             // ... other settings ...

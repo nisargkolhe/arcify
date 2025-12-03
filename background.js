@@ -539,6 +539,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.create({ url: message.url });
         sendResponse({ success: true });
         return false; // Synchronous response
+    } else if (message.action === 'navigateToDefaultNewTab') {
+        // Handle navigation to default new tab when custom new tab is disabled
+        (async () => {
+            try {
+                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                if (tab && tab.url && tab.url.includes('newtab.html')) {
+                    // Navigate to Chrome's default new tab page
+                    await chrome.tabs.update(tab.id, { url: 'chrome://new-tab-page/' });
+                }
+                sendResponse({ success: true });
+            } catch (error) {
+                console.error('[Background] Error navigating to default new tab:', error);
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true; // Async response
     } else if (message.action === 'switchToTab') {
         // Handle tab switching for spotlight search results
         (async () => {
