@@ -4,7 +4,7 @@ import { Logger } from './logger.js';
 class InstallationOnboarding {
     constructor() {
         this.currentStep = 1;
-        this.totalSteps = 5;
+        this.totalSteps = 4;
         this.settings = {
             archiving: false,
             spotlight: true
@@ -32,7 +32,10 @@ class InstallationOnboarding {
         document.getElementById('nextBtn').addEventListener('click', () => this.nextStep());
 
         // Toggle buttons
-        document.getElementById('archiveToggle').addEventListener('click', () => this.toggleArchiving());
+        const archiveToggle = document.getElementById('archiveToggle');
+        if (archiveToggle) {
+            archiveToggle.addEventListener('click', () => this.toggleArchiving());
+        }
         document.getElementById('spotlightToggle').addEventListener('click', () => this.toggleSpotlight());
 
         // Progress dots
@@ -56,10 +59,10 @@ class InstallationOnboarding {
     }
 
     async nextStep() {
-        if (this.currentStep === 4) {
+        if (this.currentStep === 3) {
             await this.loadKeyboardShortcuts();
 
-            // Redirect to arcify.io when next is clicked on step 4 (Spotlight)
+            // Redirect to arcify.io when next is clicked on step 3 (Spotlight)
             // Pass keyboard shortcuts as URL parameters
             const urlParams = new URLSearchParams();
 
@@ -102,13 +105,27 @@ class InstallationOnboarding {
     goToStep(step) {
         if (step < 1 || step > this.totalSteps) return;
 
+        // Map logical step numbers to actual step IDs (step3 is commented out)
+        const stepIdMap = {
+            1: 'step1',
+            2: 'step2',
+            3: 'step4',  // Spotlight (was step 4)
+            4: 'step5'   // Start Using (was step 5)
+        };
+
         // Hide current step
-        const currentStepElement = document.getElementById(`step${this.currentStep}`);
-        currentStepElement.classList.remove('active');
+        const currentStepId = stepIdMap[this.currentStep];
+        const currentStepElement = document.getElementById(currentStepId);
+        if (currentStepElement) {
+            currentStepElement.classList.remove('active');
+        }
 
         // Show new step
-        const newStepElement = document.getElementById(`step${step}`);
-        newStepElement.classList.add('active');
+        const newStepId = stepIdMap[step];
+        const newStepElement = document.getElementById(newStepId);
+        if (newStepElement) {
+            newStepElement.classList.add('active');
+        }
 
         // Update current step
         this.currentStep = step;

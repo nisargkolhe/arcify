@@ -138,6 +138,9 @@ body {
     border-radius: 16px;
     margin: 2rem auto;
     overflow: hidden;
+}
+
+.shadow {
     box-shadow: var(--shadow);
 }
 

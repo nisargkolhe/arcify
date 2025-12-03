@@ -43,7 +43,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
             chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
         }
     } else if (details.reason === 'update') {
-        chrome.tabs.create({ url: 'onboarding.html', active: true });
+        chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
     }
 
     if (chrome.contextMenus) {
