@@ -144,6 +144,32 @@ async function closeSpotlightInTrackedTabs() {
  * - Opens extension popup with same spotlight functionality
  */
 
+// Helper function to check if a URL supports content script injection
+function supportsContentScripts(url) {
+    if (!url) return false;
+    
+    // URLs that don't support content scripts
+    const restrictedPatterns = [
+        /^chrome:\/\//,
+        /^chrome-extension:\/\//,
+        /^edge:\/\//,
+        /^about:/,
+        /^moz-extension:\/\//,
+        /^vivaldi:\/\//,
+        /^brave:\/\//,
+        /^opera:\/\//
+    ];
+    
+    // Check if URL matches any restricted pattern
+    for (const pattern of restrictedPatterns) {
+        if (pattern.test(url)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 // Helper function to activate spotlight (now using messaging instead of injection)
 async function injectSpotlightScript(spotlightTabMode) {
     try {
@@ -153,6 +179,13 @@ async function injectSpotlightScript(spotlightTabMode) {
         // Get the active tab
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab) {
+            // Check if the tab URL supports content scripts
+            // If not, skip directly to custom new tab fallback
+            if (!supportsContentScripts(tab.url)) {
+                console.log("Tab URL doesn't support content scripts, opening custom new tab directly:", tab.url);
+                await fallbackToChromeTabs(spotlightTabMode);
+                return;
+            }
             // PRIMARY: Try to send activation message to dormant content script
             // This is 20-40x faster than script injection (50-100ms vs 1-2s)
             try {
