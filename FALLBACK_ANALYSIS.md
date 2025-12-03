@@ -1,5 +1,7 @@
 # Fallback Script Injection Analysis
 
+**Status: IMPLEMENTED - Fallback removed, host_permissions removed**
+
 ## Current Flow
 
 1. **Primary Method** (lines 193-207): Send message to dormant content script
