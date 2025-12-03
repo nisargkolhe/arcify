@@ -15,6 +15,7 @@
 // Cached debug setting value (defaults to false if not yet loaded)
 let debugLoggingEnabled = false;
 let isInitialized = false;
+let initializationPromise = null;
 
 /**
  * Initialize the logger by loading the debug setting and setting up storage listener
@@ -23,48 +24,75 @@ let isInitialized = false;
  */
 async function initializeLogger() {
     if (isInitialized) return;
+    if (initializationPromise) return initializationPromise;
     
-    try {
-        // Load the setting from storage
-        const result = await chrome.storage.sync.get({ debugLoggingEnabled: false });
-        debugLoggingEnabled = result.debugLoggingEnabled || false;
-        
-        // Listen for storage changes to update cache
-        chrome.storage.onChanged.addListener((changes, areaName) => {
-            if (areaName === 'sync' && changes.debugLoggingEnabled) {
-                debugLoggingEnabled = changes.debugLoggingEnabled.newValue || false;
-            }
-        });
-        
-        isInitialized = true;
-    } catch (error) {
-        // If we can't access storage, default to disabled
-        console.error('[Logger] Failed to initialize:', error);
-        debugLoggingEnabled = false;
-        isInitialized = true;
+    initializationPromise = (async () => {
+        try {
+            // Load the setting from storage
+            const result = await chrome.storage.sync.get({ debugLoggingEnabled: false });
+            debugLoggingEnabled = result.debugLoggingEnabled || false;
+            
+            // Listen for storage changes to update cache
+            chrome.storage.onChanged.addListener((changes, areaName) => {
+                if (areaName === 'sync' && changes.debugLoggingEnabled) {
+                    debugLoggingEnabled = changes.debugLoggingEnabled.newValue || false;
+                }
+            });
+            
+            isInitialized = true;
+        } catch (error) {
+            // If we can't access storage, default to disabled
+            console.error('[Logger] Failed to initialize:', error);
+            debugLoggingEnabled = false;
+            isInitialized = true;
+        }
+    })();
+    
+    return initializationPromise;
+}
+
+/**
+ * Check if debug logging is enabled, with fallback for race conditions
+ * If not initialized yet, performs an immediate async check
+ */
+function shouldLog() {
+    // If initialized, use cached value
+    if (isInitialized) {
+        return debugLoggingEnabled;
     }
+    
+    // If not initialized and chrome.storage is available, trigger immediate check
+    // This handles the race condition where Logger methods are called before init completes
+    if (typeof chrome !== 'undefined' && chrome.storage && !initializationPromise) {
+        // Start initialization if not already started
+        initializeLogger();
+    }
+    
+    // During race condition window, default to false (respects user's setting preference)
+    // The async check will update the cache for future calls
+    return false;
 }
 
 /**
  * Logger object with methods matching console API
- * All methods check the cached debugLoggingEnabled value synchronously
+ * All methods check the cached debugLoggingEnabled value, handling race conditions
  */
 const Logger = {
     /**
      * Log a message (only if debug logging is enabled)
      */
     log: function(...args) {
-        if (debugLoggingEnabled) {
+        if (shouldLog()) {
             console.log(...args);
         }
     },
     
     /**
      * Log an error (only if debug logging is enabled)
-     * Note: Consider if errors should always log regardless of debug flag
+     * Note: Errors are critical but we respect the debug flag to avoid console spam
      */
     error: function(...args) {
-        if (debugLoggingEnabled) {
+        if (shouldLog()) {
             console.error(...args);
         }
     },
@@ -73,7 +101,7 @@ const Logger = {
      * Log a warning (only if debug logging is enabled)
      */
     warn: function(...args) {
-        if (debugLoggingEnabled) {
+        if (shouldLog()) {
             console.warn(...args);
         }
     },
@@ -82,7 +110,7 @@ const Logger = {
      * Log an info message (only if debug logging is enabled)
      */
     info: function(...args) {
-        if (debugLoggingEnabled) {
+        if (shouldLog()) {
             console.info(...args);
         }
     },
@@ -91,7 +119,7 @@ const Logger = {
      * Log a debug message (only if debug logging is enabled)
      */
     debug: function(...args) {
-        if (debugLoggingEnabled) {
+        if (shouldLog()) {
             console.debug(...args);
         }
     },
