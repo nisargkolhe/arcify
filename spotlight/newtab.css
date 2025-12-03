@@ -1,0 +1,29 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: rgb(243 246 252);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background: rgb(45 46 49);
+    }
+}
+
+#spotlight-container {
+    width: 100%;
+    max-width: 650px;
+    padding: 0 20px;
+}
+
+/* Spotlight styles will be injected by the JavaScript */

@@ -218,18 +218,13 @@ async function fallbackToChromeTabs(spotlightTabMode) {
         // First, close any existing spotlights in tracked tabs
         await closeSpotlightInTrackedTabs();
 
-        console.log(`Falling back to Chrome tabs for mode: ${spotlightTabMode}`);
+        console.log(`Falling back to custom new tab page for mode: ${spotlightTabMode}`);
 
-        // TODO: Consider adding a toast/notification to inform users that current tab 
-        // URL hotkeys don't work on core Chrome pages (chrome://, extension pages, etc.)
-        // This would help users understand why we're opening a new tab instead.
-        // Could use chrome.notifications API or a subtle in-page notification.
-
-        // Always create new tab regardless of original mode
-        // This ensures URL bar is always focused when spotlight fails
-        // Chrome security model prevents extensions from focusing address bar directly
-        await chrome.tabs.create({ url: 'chrome://newtab/', active: true });
-        console.log("Spotlight failed - created new tab with URL bar focused");
+        // Open custom new tab page with spotlight
+        // This provides a better UX than chrome://newtab/ since users can still use spotlight
+        // even when it cannot be injected on restricted pages (chrome://, extension pages, etc.)
+        await chrome.tabs.create({ url: chrome.runtime.getURL('spotlight/newtab.html'), active: true });
+        console.log("Spotlight failed - opened custom new tab with spotlight interface");
 
     } catch (chromeTabError) {
         console.error("Error with Chrome tab fallback:", chromeTabError);
@@ -732,7 +727,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         })();
         return true; // Async response
     } else if (message.action === 'spotlightHandleResult') {
-        // Handle spotlight result actions from overlay.js
+        // Handle spotlight result actions from overlay.js and newtab.js
         (async () => {
             try {
                 // Validate inputs
@@ -740,8 +735,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     throw new Error('Invalid spotlight result message');
                 }
 
-                // Handle the result action (pass tabId if provided for optimization)
-                await backgroundSearchEngine.handleResultAction(message.result, message.mode, message.tabId);
+                // Use sender's tab ID if available (for new tab page), otherwise use provided tabId
+                const tabId = (sender.tab && sender.tab.id) ? sender.tab.id : message.tabId;
+
+                // Handle the result action (pass tabId for optimization)
+                await backgroundSearchEngine.handleResultAction(message.result, message.mode, tabId);
                 sendResponse({ success: true });
             } catch (error) {
                 console.error('[Background] Error handling spotlight result:', error);

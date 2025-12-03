@@ -25,6 +25,9 @@
     "default_path": "sidebar.html"
   },
   "action": {},
+  "chrome_url_overrides": {
+    "newtab": "spotlight/newtab.html"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
