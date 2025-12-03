@@ -171,7 +171,7 @@ function supportsContentScripts(url) {
     return true;
 }
 
-// Helper function to activate spotlight (now using messaging instead of injection)
+// Helper function to activate spotlight via content script messaging
 async function injectSpotlightScript(spotlightTabMode) {
     try {
         // First, close any existing spotlights in tracked tabs
@@ -206,38 +206,11 @@ async function injectSpotlightScript(spotlightTabMode) {
                     return; // Exit early - no need for fallbacks
                 }
             } catch (messageError) {
-                Logger.log("Content script messaging failed, trying injection fallback:", messageError);
+                Logger.log("Content script messaging failed, using new tab fallback:", messageError);
+                // If messaging fails, fall back to opening spotlight in a new tab
+                await fallbackToChromeTabs(spotlightTabMode);
+                return;
             }
-
-            // FALLBACK: Use legacy injection method if messaging fails
-            // This happens when:
-            // - Content script hasn't loaded yet (very new tab)
-            // - Page blocked content script injection
-            // - Extension context invalidated and re-injected
-            Logger.log("Using legacy injection method as fallback");
-
-            // Step 1: Inject variables (same as what messaging would set)
-            await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: (spotlightTabMode, currentUrl, tabId) => {
-                    window.arcifySpotlightTabMode = spotlightTabMode;
-                    window.arcifyCurrentTabUrl = currentUrl;
-                    window.arcifyCurrentTabId = tabId;
-                },
-                args: [spotlightTabMode, tab.url, tab.id]
-            });
-
-            // Step 2: Inject spotlight script (will auto-activate due to variables)
-            await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                files: ['spotlight/overlay.js']
-            });
-
-            // Notify sidebar about spotlight mode
-            chrome.runtime.sendMessage({
-                action: 'spotlightOpened',
-                mode: spotlightTabMode
-            });
         }
     } catch (error) {
         Logger.log("All spotlight activation methods failed, using Chrome tab fallback:", error);
