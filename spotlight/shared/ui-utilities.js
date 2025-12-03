@@ -16,6 +16,7 @@ import { ResultType, SpotlightTabMode } from './search-types.js';
 import { websiteNameExtractor } from './website-name-extractor.js';
 import { BASE_SCORES } from './scoring-constants.js';
 import { Utils } from '../../utils.js';
+import { Logger } from '../../logger.js';
 
 export class SpotlightUtils {
     // Helper to properly prefix URLs with protocol
@@ -112,7 +113,7 @@ export class SpotlightUtils {
         try {
             return websiteNameExtractor.extractWebsiteName(url);
         } catch (error) {
-            console.error('[SpotlightUtils] Error extracting website name:', error);
+            Logger.error('[SpotlightUtils] Error extracting website name:', error);
             // Fallback to basic hostname parsing
             try {
                 const normalizedUrl = SpotlightUtils.normalizeURL(url);
@@ -209,7 +210,7 @@ export class SpotlightUtils {
             }
         };
 
-        console.log('---- Formatting result type', result.type);
+        Logger.log('---- Formatting result type', result.type);
 
         return formatters[result.type] || {
             title: result.title,
@@ -252,7 +253,7 @@ export class SpotlightUtils {
                 }
             }
         } catch (error) {
-            console.error('Error getting color overrides:', error);
+            Logger.error('Error getting color overrides:', error);
         }
 
         return `

@@ -13,6 +13,7 @@
  */
 
 import { BookmarkUtils } from './bookmark-utils.js';
+import { Logger } from './logger.js';
 
 const MAX_ARCHIVED_TABS = 100;
 const ARCHIVED_TABS_KEY = 'archivedTabs';
@@ -32,7 +33,7 @@ const Utils = {
                     // Set tab name override with the bookmark's title
                     if (item.title && item.title !== tab.title) { // Only override if bookmark title is present and different
                         await this.setTabNameOverride(tab.id, tab.url, item.title);
-                        console.log(`Override set for tab ${tab.id} from bookmark: ${item.title}`);
+                        Logger.log(`Override set for tab ${tab.id} from bookmark: ${item.title}`);
                     }
                 }
             } else {
@@ -69,10 +70,11 @@ const Utils = {
             enableSpotlight: true, // Default: enabled (controls both spotlight and custom new tab)
             invertTabOrder: true, // Default: enabled (New tabs/High index on top)
             colorOverrides: null, // Default: no color overrides
+            debugLoggingEnabled: false, // Default: disabled (controls debug logging)
             // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);
-        console.log("Retrieved settings:", result);
+        Logger.log("Retrieved settings:", result);
         return result;
     },
 
@@ -97,9 +99,9 @@ const Utils = {
             const originalDomain = new URL(url).hostname;
             overrides[tabId] = { name: name, originalDomain: originalDomain }; // Use tabId as key
             await this.saveTabNameOverrides(overrides);
-            console.log(`Override set for tab ${tabId}: ${name}`);
+            Logger.log(`Override set for tab ${tabId}: ${name}`);
         } catch (e) {
-            console.error("Error setting override - invalid URL?", url, e);
+            Logger.error("Error setting override - invalid URL?", url, e);
         }
     },
 
@@ -111,7 +113,7 @@ const Utils = {
         if (overrides[tabId]) { // Check using tabId
             delete overrides[tabId]; // Delete using tabId
             await this.saveTabNameOverrides(overrides);
-            console.log(`Override removed for tab ${tabId}`);
+            Logger.log(`Override removed for tab ${tabId}`);
         }
     },
 
@@ -131,12 +133,12 @@ const Utils = {
     },
 
     updateBookmarkTitleIfNeeded: async function (tab, activeSpace, newTitle) {
-        console.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
+        Logger.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
 
         try {
             const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(activeSpace.name);
             if (!spaceFolder) {
-                console.error(`Bookmark folder for space ${activeSpace.name} not found.`);
+                Logger.error(`Bookmark folder for space ${activeSpace.name} not found.`);
                 return;
             }
 
@@ -148,10 +150,10 @@ const Utils = {
                         // Found the bookmark
                         // Avoid unnecessary updates if title is already correct
                         if (item.title !== newTitle) {
-                            console.log(`Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
+                            Logger.log(`Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
                             await chrome.bookmarks.update(item.id, { title: newTitle });
                         } else {
-                            console.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
+                            Logger.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
                         }
                         return true; // Found
                     } else if (!item.url) {
@@ -165,11 +167,11 @@ const Utils = {
 
             const updated = await findAndUpdate(spaceFolder.id);
             if (!updated) {
-                console.log(`Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
+                Logger.log(`Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
             }
 
         } catch (error) {
-            console.error(`Error updating bookmark for tab ${tab.id}:`, error);
+            Logger.error(`Error updating bookmark for tab ${tab.id}:`, error);
         }
     },
 
@@ -199,7 +201,7 @@ const Utils = {
         // Check if URL already exists in archive (regardless of space)
         const existingTab = archivedTabs.find(t => t.url === tabData.url);
         if (existingTab) {
-            console.log(`Tab with URL already archived: ${tabData.name} (${tabData.url})`);
+            Logger.log(`Tab with URL already archived: ${tabData.name} (${tabData.url})`);
             return; // Don't add duplicates based on URL
         }
 
@@ -216,7 +218,7 @@ const Utils = {
         }
 
         await this.saveArchivedTabs(archivedTabs);
-        console.log(`Archived tab: ${tabData.name} from space ${tabData.spaceId}`);
+        Logger.log(`Archived tab: ${tabData.name} from space ${tabData.spaceId}`);
     },
 
     // Function to archive a tab (likely called from context menu)
@@ -236,7 +238,7 @@ const Utils = {
             // Optionally: Refresh sidebar view if needed, though handleTabRemove should cover it
 
         } catch (error) {
-            console.error(`Error archiving tab ${tabId}:`, error);
+            Logger.error(`Error archiving tab ${tabId}:`, error);
         }
     },
 
@@ -247,7 +249,7 @@ const Utils = {
         let archivedTabs = await this.getArchivedTabs();
         archivedTabs = archivedTabs.filter(tab => !(tab.url === url && tab.spaceId === spaceId));
         await this.saveArchivedTabs(archivedTabs);
-        console.log(`Removed archived tab: ${url} from space ${spaceId}`);
+        Logger.log(`Removed archived tab: ${url} from space ${spaceId}`);
     },
 
     restoreArchivedTab: async function (archivedTabData) {
@@ -268,7 +270,7 @@ const Utils = {
                     await chrome.tabs.group({ tabIds: [newTab.id], groupId: archivedTabData.spaceId });
                 } catch (e) {
                     // Group doesn't exist, create a new one or leave ungrouped
-                    console.warn(`Space ${archivedTabData.spaceId} no longer exists, tab restored without grouping`);
+                    Logger.warn(`Space ${archivedTabData.spaceId} no longer exists, tab restored without grouping`);
                 }
             }
 
@@ -279,7 +281,7 @@ const Utils = {
             return newTab;
 
         } catch (error) {
-            console.error(`Error restoring archived tab ${archivedTabData.url}:`, error);
+            Logger.error(`Error restoring archived tab ${archivedTabData.url}:`, error);
             throw error;
         }
     },
@@ -328,7 +330,7 @@ const Utils = {
         for (const item of items) {
             if (item.url === tabUrl) {
                 if (logRemoval) {
-                    console.log("removing bookmark", item);
+                    Logger.log("removing bookmark", item);
                 }
                 await chrome.bookmarks.remove(item.id);
 
@@ -398,13 +400,13 @@ const Utils = {
         }
     },
     findActiveSpaceAndTab: async function () {
-        console.log("[TabNavigation] finding space");
+        Logger.log("[TabNavigation] finding space");
         const spacesResult = await chrome.storage.local.get('spaces');
         const spaces = spacesResult.spaces || [];
-        console.log("[TabNavigation] Loaded spaces from storage:", spaces);
+        Logger.log("[TabNavigation] Loaded spaces from storage:", spaces);
         const foundTabs = await chrome.tabs.query({ active: true, currentWindow: true });
         if (foundTabs.length === 0) {
-            console.log("[TabNavigation] No active tab found!:");
+            Logger.log("[TabNavigation] No active tab found!:");
             return undefined;
         }
         const foundTab = foundTabs[0];
@@ -412,7 +414,7 @@ const Utils = {
             space.temporaryTabs.includes(foundTab.id)
         );
         if (spaceWithTempTab) {
-            console.log(`[TabNavigation] Tab ${foundTab.id} is a temporary tab in space "${spaceWithTempTab.name}".`);
+            Logger.log(`[TabNavigation] Tab ${foundTab.id} is a temporary tab in space "${spaceWithTempTab.name}".`);
             return { space: spaceWithTempTab, tab: foundTab };
         }
 
@@ -420,7 +422,7 @@ const Utils = {
             space.spaceBookmarks.includes(foundTab.id)
         );
         if (spaceWithBookmark) {
-            console.log(`[TabNavigation] Tab ${foundTab.id} is a bookmarked tab in space "${spaceWithBookmark.name}".`);
+            Logger.log(`[TabNavigation] Tab ${foundTab.id} is a bookmarked tab in space "${spaceWithBookmark.name}".`);
             return { space: spaceWithBookmark, tab: foundTab };
         }
 
@@ -431,7 +433,7 @@ const Utils = {
     adjustMenuPosition: function (menu, x, y) {
         // Ensure menu is in DOM to get dimensions
         if (!menu.isConnected) {
-            console.warn('Menu must be in DOM to adjust position');
+            Logger.warn('Menu must be in DOM to adjust position');
             return;
         }
 

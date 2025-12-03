@@ -3,6 +3,7 @@
 import { BaseDataProvider } from './base-data-provider.js';
 import { AutocompleteProvider } from './autocomplete-provider.js';
 import { BookmarkUtils } from '../../../bookmark-utils.js';
+import { Logger } from '../../../logger.js';
 
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity';
 
@@ -29,7 +30,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
             
             return filteredTabs;
         } catch (error) {
-            console.error('[BackgroundDataProvider] Error querying tabs:', error);
+            Logger.error('[BackgroundDataProvider] Error querying tabs:', error);
             return [];
         }
     }
@@ -51,7 +52,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
                 
             return recentTabs;
         } catch (error) {
-            console.error('[BackgroundDataProvider] Error getting recent tabs:', error);
+            Logger.error('[BackgroundDataProvider] Error getting recent tabs:', error);
             return [];
         }
     }
@@ -76,7 +77,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
             });
             return historyItems;
         } catch (error) {
-            console.error('[BackgroundDataProvider] Error getting history:', error);
+            Logger.error('[BackgroundDataProvider] Error getting history:', error);
             return [];
         }
     }
@@ -86,7 +87,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
             const topSites = await chrome.topSites.get();
             return topSites;
         } catch (error) {
-            console.error('[BackgroundDataProvider] Error getting top sites:', error);
+            Logger.error('[BackgroundDataProvider] Error getting top sites:', error);
             return [];
         }
     }
@@ -95,49 +96,49 @@ export class BackgroundDataProvider extends BaseDataProvider {
         try {
             return await this.autocompleteProvider.getAutocompleteSuggestions(query);
         } catch (error) {
-            console.error('[BackgroundDataProvider] Error getting autocomplete data:', error);
+            Logger.error('[BackgroundDataProvider] Error getting autocomplete data:', error);
             return [];
         }
     }
 
     async getPinnedTabsData(query = '') {
-        console.log('[BackgroundDataProvider] getPinnedTabsData called with query:', query);
+        Logger.log('[BackgroundDataProvider] getPinnedTabsData called with query:', query);
         try {
             // Get spaces from storage
             const storage = await chrome.storage.local.get('spaces');
             const spaces = storage.spaces || [];
-            console.log('[BackgroundDataProvider] Found spaces:', spaces.length, spaces.map(s => s.name));
+            Logger.log('[BackgroundDataProvider] Found spaces:', spaces.length, spaces.map(s => s.name));
             
             // Get current tabs
             const tabs = await chrome.tabs.query({});
-            console.log('[BackgroundDataProvider] Found tabs:', tabs.length);
+            Logger.log('[BackgroundDataProvider] Found tabs:', tabs.length);
             
             // Get Arcify folder structure using robust method
             const arcifyFolder = await BookmarkUtils.findArcifyFolder();
             if (!arcifyFolder) {
-                console.log('[BackgroundDataProvider] No Arcify folder found');
+                Logger.log('[BackgroundDataProvider] No Arcify folder found');
                 return [];
             }
-            console.log('[BackgroundDataProvider] Found Arcify folder:', arcifyFolder.id);
+            Logger.log('[BackgroundDataProvider] Found Arcify folder:', arcifyFolder.id);
 
             const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-            console.log('[BackgroundDataProvider] Found space folders:', spaceFolders.length, spaceFolders.map(f => f.title));
+            Logger.log('[BackgroundDataProvider] Found space folders:', spaceFolders.length, spaceFolders.map(f => f.title));
             const pinnedTabs = [];
 
             // Process each space folder
             for (const spaceFolder of spaceFolders) {
                 const space = spaces.find(s => s.name === spaceFolder.title);
-                console.log('[BackgroundDataProvider] Processing space folder:', spaceFolder.title, 'found space:', !!space);
+                Logger.log('[BackgroundDataProvider] Processing space folder:', spaceFolder.title, 'found space:', !!space);
                 if (!space) continue;
 
                 // Get all bookmarks in this space folder (recursively)
                 const bookmarks = await BookmarkUtils.getBookmarksFromFolderRecursive(spaceFolder.id);
-                console.log('[BackgroundDataProvider] Found bookmarks in', spaceFolder.title, ':', bookmarks.length);
+                Logger.log('[BackgroundDataProvider] Found bookmarks in', spaceFolder.title, ':', bookmarks.length);
                 
                 for (const bookmark of bookmarks) {
                     // Check if there's a matching open tab
                     const matchingTab = BookmarkUtils.findTabByUrl(tabs, bookmark.url);
-                    console.log('[BackgroundDataProvider] Processing bookmark:', bookmark.title, 'matching tab:', !!matchingTab);
+                    Logger.log('[BackgroundDataProvider] Processing bookmark:', bookmark.title, 'matching tab:', !!matchingTab);
                     
                     // Apply query filter
                     if (query) {
@@ -145,7 +146,7 @@ export class BackgroundDataProvider extends BaseDataProvider {
                         const titleMatch = bookmark.title.toLowerCase().includes(queryLower);
                         const urlMatch = bookmark.url.toLowerCase().includes(queryLower);
                         if (!titleMatch && !urlMatch) {
-                            console.log('[BackgroundDataProvider] Bookmark filtered out by query:', bookmark.title);
+                            Logger.log('[BackgroundDataProvider] Bookmark filtered out by query:', bookmark.title);
                             continue;
                         }
                     }
@@ -158,15 +159,15 @@ export class BackgroundDataProvider extends BaseDataProvider {
                         tabId: matchingTab?.id || null,
                         isActive: !!matchingTab
                     };
-                    console.log('[BackgroundDataProvider] Adding pinned tab:', pinnedTab);
+                    Logger.log('[BackgroundDataProvider] Adding pinned tab:', pinnedTab);
                     pinnedTabs.push(pinnedTab);
                 }
             }
 
-            console.log('[BackgroundDataProvider] Returning', pinnedTabs.length, 'pinned tabs');
+            Logger.log('[BackgroundDataProvider] Returning', pinnedTabs.length, 'pinned tabs');
             return pinnedTabs;
         } catch (error) {
-            console.error('[BackgroundDataProvider] Error getting pinned tabs data:', error);
+            Logger.error('[BackgroundDataProvider] Error getting pinned tabs data:', error);
             return [];
         }
     }

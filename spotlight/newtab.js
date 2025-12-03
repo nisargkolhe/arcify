@@ -11,6 +11,7 @@ import { SelectionManager } from './shared/selection-manager.js';
 import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
+import { Logger } from '../logger.js';
 
 // Initialize spotlight on page load
 document.addEventListener('DOMContentLoaded', async () => {
@@ -23,7 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 action: 'navigateToDefaultNewTab'
             });
         } catch (error) {
-            console.error('[NewTab] Error navigating to default new tab:', error);
+            Logger.error('[NewTab] Error navigating to default new tab:', error);
         }
         return;
     }
@@ -275,7 +276,7 @@ async function initializeSpotlight() {
             asyncSuggestions = results || [];
             updateDisplay();
         } catch (error) {
-            console.error('[NewTab Spotlight] Error loading initial results:', error);
+            Logger.error('[NewTab Spotlight] Error loading initial results:', error);
             instantSuggestion = null;
             asyncSuggestions = [];
             displayEmptyState();
@@ -312,7 +313,7 @@ async function initializeSpotlight() {
             asyncSuggestions = results || [];
             updateDisplay();
         } catch (error) {
-            console.error('[NewTab Spotlight] Search error:', error);
+            Logger.error('[NewTab Spotlight] Search error:', error);
             asyncSuggestions = [];
             updateDisplay();
         }
@@ -357,14 +358,14 @@ async function initializeSpotlight() {
     // Use 'current-tab' mode so navigation happens in the current tab (the new tab page itself)
     async function handleResultAction(result) {
         if (!result) {
-            console.error('[NewTab Spotlight] No result provided');
+            Logger.error('[NewTab Spotlight] No result provided');
             return;
         }
 
         try {
             await handleResultActionViaMessage(result, 'current-tab');
         } catch (error) {
-            console.error('[NewTab Spotlight] Error in result action:', error);
+            Logger.error('[NewTab Spotlight] Error in result action:', error);
         }
     }
 
@@ -404,7 +405,7 @@ async function initializeSpotlight() {
                 }
             }
         } catch (error) {
-            console.error('[NewTab Spotlight] Error updating active space color:', error);
+            Logger.error('[NewTab Spotlight] Error updating active space color:', error);
         }
 
         // Load initial results

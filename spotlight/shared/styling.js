@@ -1,4 +1,5 @@
 // styling.js - Shared styling utilities for spotlight components
+import { Logger } from '../../logger.js';
 
 // Helper function to convert hex color to RGB string
 function hexToRgb(hex) {
@@ -38,7 +39,7 @@ export async function getAccentColorCSS(spaceColor) {
             }
         }
     } catch (error) {
-        console.error('Error getting color overrides:', error);
+        Logger.error('Error getting color overrides:', error);
     }
 
     return `

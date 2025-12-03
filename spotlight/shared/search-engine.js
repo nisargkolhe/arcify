@@ -13,6 +13,7 @@
  */
 
 import { ResultType, SpotlightTabMode } from './search-types.js';
+import { Logger } from '../../logger.js';
 
 // Search Engine with caching
 export class SearchEngine {
@@ -58,7 +59,7 @@ export class SearchEngine {
 
                     resolve(results);
                 } catch (error) {
-                    console.error('Search error:', error);
+                    Logger.error('Search error:', error);
                     resolve([]);
                 }
             }, this.DEBOUNCE_DELAY);
@@ -71,8 +72,8 @@ export class SearchEngine {
             const results = await this.getSuggestionsImpl(query, mode);
             return results;
         } catch (error) {
-            console.error('[SearchEngine] Immediate suggestions error:', error);
-            console.error('[SearchEngine] Error stack:', error.stack);
+            Logger.error('[SearchEngine] Immediate suggestions error:', error);
+            Logger.error('[SearchEngine] Error stack:', error.stack);
             return [];
         }
     }
@@ -143,7 +144,7 @@ export class SearchEngine {
                     break;
 
                 case ResultType.PINNED_TAB:
-                    console.log('[SearchEngine] Handling PINNED_TAB result:', result);
+                    Logger.log('[SearchEngine] Handling PINNED_TAB result:', result);
                     if (!result.metadata?.spaceId) {
                         throw new Error('PINNED_TAB result missing spaceId in metadata');
                     }
@@ -155,17 +156,17 @@ export class SearchEngine {
                         bookmarkUrl: result.url,
                         mode: mode
                     };
-                    console.log('[SearchEngine] Sending activatePinnedTab message:', pinnedTabMessage);
+                    Logger.log('[SearchEngine] Sending activatePinnedTab message:', pinnedTabMessage);
 
                     // Send message to sidebar to handle pinned tab activation
                     if (this.isBackgroundContext) {
                         // Send message to sidebar via runtime messaging
                         chrome.runtime.sendMessage(pinnedTabMessage);
-                        console.log('[SearchEngine] Message sent from background context');
+                        Logger.log('[SearchEngine] Message sent from background context');
                     } else {
                         // From content script, send message to background which will forward to sidebar
                         const response = await chrome.runtime.sendMessage(pinnedTabMessage);
-                        console.log('[SearchEngine] Message sent from content script, response:', response);
+                        Logger.log('[SearchEngine] Message sent from content script, response:', response);
                         if (!response?.success) {
                             throw new Error('Failed to activate pinned tab');
                         }
@@ -246,7 +247,7 @@ export class SearchEngine {
                     throw new Error(`Unknown result type: ${result.type}`);
             }
         } catch (error) {
-            console.error('[SearchEngine] Error handling result action:', error);
+            Logger.error('[SearchEngine] Error handling result action:', error);
             throw error; // Re-throw to propagate to background script
         }
     }

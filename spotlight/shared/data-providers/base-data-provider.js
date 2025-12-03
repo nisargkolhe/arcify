@@ -4,6 +4,7 @@ import { SearchResult, ResultType } from '../search-types.js';
 import { findMatchingDomains } from '../popular-sites.js';
 import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
+import { Logger } from '../../../logger.js';
 
 export class BaseDataProvider {
     constructor() {
@@ -64,17 +65,17 @@ export class BaseDataProvider {
             try {
                 openTabs = await this.getOpenTabs(trimmedQuery);
             } catch (error) {
-                console.error('[SearchProvider] Failed to get open tabs:', error);
+                Logger.error('[SearchProvider] Failed to get open tabs:', error);
                 openTabs = [];
             }
 
             // Get pinned tabs
             try {
-                console.log('[BaseDataProvider] Getting pinned tab suggestions for query:', trimmedQuery);
+                Logger.log('[BaseDataProvider] Getting pinned tab suggestions for query:', trimmedQuery);
                 pinnedTabs = await this.getPinnedTabSuggestions(trimmedQuery);
-                console.log('[BaseDataProvider] Got pinned tab suggestions:', pinnedTabs.length);
+                Logger.log('[BaseDataProvider] Got pinned tab suggestions:', pinnedTabs.length);
             } catch (error) {
-                console.error('[SearchProvider] Failed to get pinned tabs:', error);
+                Logger.error('[SearchProvider] Failed to get pinned tabs:', error);
                 pinnedTabs = [];
             }
 
@@ -82,7 +83,7 @@ export class BaseDataProvider {
             try {
                 bookmarks = await this.getBookmarkSuggestions(trimmedQuery);
             } catch (error) {
-                console.error('[SearchProvider] Failed to get bookmarks:', error);
+                Logger.error('[SearchProvider] Failed to get bookmarks:', error);
                 bookmarks = [];
             }
 
@@ -90,7 +91,7 @@ export class BaseDataProvider {
             try {
                 history = await this.getHistorySuggestions(trimmedQuery);
             } catch (error) {
-                console.error('[SearchProvider] Failed to get history:', error);
+                Logger.error('[SearchProvider] Failed to get history:', error);
                 history = [];
             }
 
@@ -98,7 +99,7 @@ export class BaseDataProvider {
             try {
                 topSites = await this.getTopSites();
             } catch (error) {
-                console.error('[SearchProvider] Failed to get top sites:', error);
+                Logger.error('[SearchProvider] Failed to get top sites:', error);
                 topSites = [];
             }
 
@@ -106,7 +107,7 @@ export class BaseDataProvider {
             try {
                 autocomplete = await this.getAutocompleteSuggestions(trimmedQuery);
             } catch (error) {
-                console.error('[SearchProvider] Failed to get autocomplete:', error);
+                Logger.error('[SearchProvider] Failed to get autocomplete:', error);
                 autocomplete = [];
             }
 
@@ -130,7 +131,7 @@ export class BaseDataProvider {
             const finalResults = this.scoreAndSortResults(deduplicatedResults, trimmedQuery);
             return finalResults;
         } catch (error) {
-            console.error('[SearchProvider] Search error:', error);
+            Logger.error('[SearchProvider] Search error:', error);
             const fallback = this.generateFallbackResult(trimmedQuery);
             return [fallback];
         }
@@ -145,7 +146,7 @@ export class BaseDataProvider {
             const openTabs = await this.getOpenTabs('');
             results.push(...openTabs);
         } catch (error) {
-            console.error('[SearchProvider] Error getting default results:', error);
+            Logger.error('[SearchProvider] Error getting default results:', error);
         }
 
         // Apply deduplication to default results as well
@@ -166,7 +167,7 @@ export class BaseDataProvider {
             }));
             return results;
         } catch (error) {
-            console.error('[SearchProvider-Tabs] Error querying tabs:', error);
+            Logger.error('[SearchProvider-Tabs] Error querying tabs:', error);
             return [];
         }
     }
@@ -185,7 +186,7 @@ export class BaseDataProvider {
             }));
             return results;
         } catch (error) {
-            console.error('[SearchProvider-Tabs] Error getting recent tabs:', error);
+            Logger.error('[SearchProvider-Tabs] Error getting recent tabs:', error);
             return [];
         }
     }
@@ -193,9 +194,9 @@ export class BaseDataProvider {
     // Chrome bookmarks API integration
     async getPinnedTabSuggestions(query) {
         try {
-            console.log('[BaseDataProvider] getPinnedTabSuggestions called with query:', query);
+            Logger.log('[BaseDataProvider] getPinnedTabSuggestions called with query:', query);
             const pinnedTabsData = await this.getPinnedTabsData(query);
-            console.log('[BaseDataProvider] Got pinned tabs data:', pinnedTabsData.length, pinnedTabsData);
+            Logger.log('[BaseDataProvider] Got pinned tabs data:', pinnedTabsData.length, pinnedTabsData);
             
             const results = pinnedTabsData.map(pinnedTab => {
                 const result = new SearchResult({
@@ -211,13 +212,13 @@ export class BaseDataProvider {
                         isActive: pinnedTab.isActive
                     }
                 });
-                console.log('[BaseDataProvider] Created PINNED_TAB SearchResult:', result);
+                Logger.log('[BaseDataProvider] Created PINNED_TAB SearchResult:', result);
                 return result;
             });
-            console.log('[BaseDataProvider] Returning', results.length, 'pinned tab results');
+            Logger.log('[BaseDataProvider] Returning', results.length, 'pinned tab results');
             return results;
         } catch (error) {
-            console.error('[SearchProvider-PinnedTabs] Error getting pinned tab suggestions:', error);
+            Logger.error('[SearchProvider-PinnedTabs] Error getting pinned tab suggestions:', error);
             return [];
         }
     }
@@ -234,7 +235,7 @@ export class BaseDataProvider {
             }));
             return results;
         } catch (error) {
-            console.error('[SearchProvider-Bookmarks] Error getting bookmark suggestions:', error);
+            Logger.error('[SearchProvider-Bookmarks] Error getting bookmark suggestions:', error);
             return [];
         }
     }
@@ -252,7 +253,7 @@ export class BaseDataProvider {
             }));
             return results;
         } catch (error) {
-            console.error('[SearchProvider-History] Error getting history suggestions:', error);
+            Logger.error('[SearchProvider-History] Error getting history suggestions:', error);
             return [];
         }
     }
@@ -269,7 +270,7 @@ export class BaseDataProvider {
             }));
             return results;
         } catch (error) {
-            console.error('[SearchProvider-TopSites] Error getting top sites:', error);
+            Logger.error('[SearchProvider-TopSites] Error getting top sites:', error);
             return [];
         }
     }
@@ -280,7 +281,7 @@ export class BaseDataProvider {
             const autocompleteData = await this.getAutocompleteData(query);
             return autocompleteData; // AutocompleteProvider already returns SearchResult objects
         } catch (error) {
-            console.error('[SearchProvider-Autocomplete] Error getting autocomplete suggestions:', error);
+            Logger.error('[SearchProvider-Autocomplete] Error getting autocomplete suggestions:', error);
             return [];
         }
     }

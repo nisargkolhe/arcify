@@ -16,6 +16,7 @@ import { SearchResult, ResultType } from '../search-types.js';
 import { websiteNameExtractor } from '../website-name-extractor.js';
 import { getAutocompleteScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
+import { Logger } from '../../../logger.js';
 
 export class AutocompleteProvider {
     constructor() {
@@ -60,7 +61,7 @@ export class AutocompleteProvider {
 
             return results;
         } catch (error) {
-            console.error('[AutocompleteProvider] Error fetching suggestions:', error);
+            Logger.error('[AutocompleteProvider] Error fetching suggestions:', error);
             return [];
         } finally {
             this.pendingRequests.delete(cacheKey);
@@ -96,7 +97,7 @@ export class AutocompleteProvider {
             
             // Parse Google's response format: [query, [suggestions], [descriptions], [queryUrls]]
             if (!Array.isArray(data) || data.length < 2 || !Array.isArray(data[1])) {
-                console.warn('[AutocompleteProvider] Unexpected response format:', data);
+                Logger.warn('[AutocompleteProvider] Unexpected response format:', data);
                 return [];
             }
 
@@ -126,9 +127,9 @@ export class AutocompleteProvider {
             return results;
         } catch (error) {
             if (error.name === 'AbortError') {
-                console.warn('[AutocompleteProvider] Request timeout');
+                Logger.warn('[AutocompleteProvider] Request timeout');
             } else {
-                console.error('[AutocompleteProvider] Fetch error:', error);
+                Logger.error('[AutocompleteProvider] Fetch error:', error);
             }
             return [];
         }
@@ -150,7 +151,7 @@ export class AutocompleteProvider {
         try {
             return websiteNameExtractor.extractWebsiteName(url);
         } catch (error) {
-            console.error('[AutocompleteProvider] Error extracting website name:', error);
+            Logger.error('[AutocompleteProvider] Error extracting website name:', error);
             // Fallback to basic hostname parsing
             try {
                 const normalizedUrl = this.normalizeURL(url);

@@ -15,6 +15,7 @@
 import { Utils } from './utils.js';
 import { SearchEngine } from './spotlight/shared/search-engine.js';
 import { BackgroundDataProvider } from './spotlight/shared/data-providers/background-data-provider.js';
+import { Logger } from './logger.js';
 
 // Enum for spotlight tab modes
 const SpotlightTabMode = {
@@ -31,7 +32,7 @@ const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
 // Configure Chrome side panel behavior
 chrome.sidePanel.setPanelBehavior({
     openPanelOnActionClick: true
-}).catch(error => console.error(error));
+}).catch(error => Logger.error(error));
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -92,7 +93,7 @@ chrome.commands.onCommand.addListener(async function (command) {
                 await Utils.movToPrevTabInSpace(tab.id, space);
             }
         });
-        console.log("sending");
+        Logger.log("sending");
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "PrevTabInSpace" });
     } else if (command === "toggleSpotlight") {
@@ -122,7 +123,7 @@ async function closeSpotlightInTrackedTabs() {
         // Clear the set after closing
         spotlightOpenTabs.clear();
     } catch (error) {
-        console.error('[Background] Error closing spotlight in tracked tabs:', error);
+        Logger.error('[Background] Error closing spotlight in tracked tabs:', error);
     }
 }
 
@@ -182,7 +183,7 @@ async function injectSpotlightScript(spotlightTabMode) {
             // Check if the tab URL supports content scripts
             // If not, skip directly to custom new tab fallback
             if (!supportsContentScripts(tab.url)) {
-                console.log("Tab URL doesn't support content scripts, opening custom new tab directly:", tab.url);
+                Logger.log("Tab URL doesn't support content scripts, opening custom new tab directly:", tab.url);
                 await fallbackToChromeTabs(spotlightTabMode);
                 return;
             }
@@ -205,7 +206,7 @@ async function injectSpotlightScript(spotlightTabMode) {
                     return; // Exit early - no need for fallbacks
                 }
             } catch (messageError) {
-                console.log("Content script messaging failed, trying injection fallback:", messageError);
+                Logger.log("Content script messaging failed, trying injection fallback:", messageError);
             }
 
             // FALLBACK: Use legacy injection method if messaging fails
@@ -213,7 +214,7 @@ async function injectSpotlightScript(spotlightTabMode) {
             // - Content script hasn't loaded yet (very new tab)
             // - Page blocked content script injection
             // - Extension context invalidated and re-injected
-            console.log("Using legacy injection method as fallback");
+            Logger.log("Using legacy injection method as fallback");
 
             // Step 1: Inject variables (same as what messaging would set)
             await chrome.scripting.executeScript({
@@ -239,7 +240,7 @@ async function injectSpotlightScript(spotlightTabMode) {
             });
         }
     } catch (error) {
-        console.log("All spotlight activation methods failed, using Chrome tab fallback:", error);
+        Logger.log("All spotlight activation methods failed, using Chrome tab fallback:", error);
         // Final fallback: Chrome tab operations
         await fallbackToChromeTabs(spotlightTabMode);
     }
@@ -251,25 +252,25 @@ async function fallbackToChromeTabs(spotlightTabMode) {
         // First, close any existing spotlights in tracked tabs
         await closeSpotlightInTrackedTabs();
 
-        console.log(`Falling back to custom new tab page for mode: ${spotlightTabMode}`);
+        Logger.log(`Falling back to custom new tab page for mode: ${spotlightTabMode}`);
 
         // Open custom new tab page with spotlight
         // This provides a better UX than chrome://newtab/ since users can still use spotlight
         // even when it cannot be injected on restricted pages (chrome://, extension pages, etc.)
         await chrome.tabs.create({ url: chrome.runtime.getURL('spotlight/newtab.html'), active: true });
-        console.log("Spotlight failed - opened custom new tab with spotlight interface");
+        Logger.log("Spotlight failed - opened custom new tab with spotlight interface");
 
     } catch (chromeTabError) {
-        console.error("Error with Chrome tab fallback:", chromeTabError);
+        Logger.error("Error with Chrome tab fallback:", chromeTabError);
         // Final fallback: open side panel
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (tab) {
                 chrome.sidePanel.open({ windowId: tab.windowId });
-                console.log("Opened side panel as final fallback");
+                Logger.log("Opened side panel as final fallback");
             }
         } catch (sidePanelError) {
-            console.error("All fallbacks failed:", sidePanelError);
+            Logger.error("All fallbacks failed:", sidePanelError);
         }
     }
 }
@@ -279,11 +280,11 @@ async function copyCurrentTabUrlWithFallback() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (!tab) {
-            console.error("[URLCopy] No active tab found");
+            Logger.error("[URLCopy] No active tab found");
             return;
         }
 
-        console.log(`[URLCopy] Copying URL via script injection: ${tab.url}`);
+        Logger.log(`[URLCopy] Copying URL via script injection: ${tab.url}`);
 
         // PRIMARY: Script injection approach (universal, no permission popups)
         try {
@@ -293,9 +294,9 @@ async function copyCurrentTabUrlWithFallback() {
                     // This function runs in webpage context but avoids permission issues
                     // by being injected from extension context
                     navigator.clipboard.writeText(url).then(() => {
-                        console.log(`[URLCopy] Script injection succeeded: ${url}`);
+                        Logger.log(`[URLCopy] Script injection succeeded: ${url}`);
                     }).catch(err => {
-                        console.error("[URLCopy] Script injection clipboard failed:", err);
+                        Logger.error("[URLCopy] Script injection clipboard failed:", err);
                         // Fallback to older method if clipboard API fails
                         const textarea = document.createElement('textarea');
                         textarea.value = url;
@@ -303,26 +304,26 @@ async function copyCurrentTabUrlWithFallback() {
                         textarea.select();
                         document.execCommand('copy');
                         document.body.removeChild(textarea);
-                        console.log(`[URLCopy] Fallback copy succeeded: ${url}`);
+                        Logger.log(`[URLCopy] Fallback copy succeeded: ${url}`);
                     });
                 },
                 args: [tab.url]
             });
 
-            console.log(`[URLCopy] Script injection completed for: ${tab.url}`);
+            Logger.log(`[URLCopy] Script injection completed for: ${tab.url}`);
 
             // Notify sidebar of successful URL copy
             try {
                 chrome.runtime.sendMessage({ action: "urlCopySuccess" });
-                console.log("[URLCopy] Success message sent to sidebar");
+                Logger.log("[URLCopy] Success message sent to sidebar");
             } catch (notifyError) {
-                console.log("[URLCopy] Could not notify sidebar:", notifyError);
+                Logger.log("[URLCopy] Could not notify sidebar:", notifyError);
             }
 
             return;
 
         } catch (injectionError) {
-            console.log("[URLCopy] Script injection failed, trying sidebar fallback:", injectionError);
+            Logger.log("[URLCopy] Script injection failed, trying sidebar fallback:", injectionError);
         }
 
         // FALLBACK: Sidebar approach (works when sidebar is focused)
@@ -345,13 +346,13 @@ async function copyCurrentTabUrlWithFallback() {
                 });
             });
 
-            console.log(`[URLCopy] Sidebar fallback succeeded: ${tab.url}`);
+            Logger.log(`[URLCopy] Sidebar fallback succeeded: ${tab.url}`);
         } catch (sidebarError) {
-            console.error("[URLCopy] Both script injection and sidebar failed:", sidebarError);
+            Logger.error("[URLCopy] Both script injection and sidebar failed:", sidebarError);
         }
 
     } catch (error) {
-        console.error("[URLCopy] Failed to copy URL:", error);
+        Logger.error("[URLCopy] Failed to copy URL:", error);
     }
 }
 
@@ -365,7 +366,7 @@ async function updateTabLastActivity(tabId) {
         // Optional: Prune old entries if the storage grows too large
         await chrome.storage.local.set({ [TAB_ACTIVITY_STORAGE_KEY]: activityData });
     } catch (error) {
-        console.error("Error updating tab activity:", error);
+        Logger.error("Error updating tab activity:", error);
     }
 }
 
@@ -378,7 +379,7 @@ async function removeTabLastActivity(tabId) {
         delete activityData[tabId];
         await chrome.storage.local.set({ [TAB_ACTIVITY_STORAGE_KEY]: activityData });
     } catch (error) {
-        console.error("Error removing tab activity:", error);
+        Logger.error("Error removing tab activity:", error);
     }
 }
 
@@ -400,7 +401,7 @@ async function setupAutoArchiveAlarm() {
             await chrome.alarms.clear(AUTO_ARCHIVE_ALARM_NAME);
         }
     } catch (error) {
-        console.error("Error setting up auto-archive alarm:", error);
+        Logger.error("Error setting up auto-archive alarm:", error);
     }
 }
 
@@ -496,7 +497,7 @@ async function runAutoArchiveCheck() {
         }
 
     } catch (error) {
-        console.error("Error during auto-archive check:", error);
+        Logger.error("Error during auto-archive check:", error);
     }
 }
 
@@ -564,7 +565,7 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.action === 'updateAutoArchiveSettings') {
-        console.log("Received message to update auto-archive settings.");
+        Logger.log("Received message to update auto-archive settings.");
         setupAutoArchiveAlarm();
         sendResponse({ success: true });
         return false; // Synchronous response
@@ -583,7 +584,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
                 sendResponse({ success: true });
             } catch (error) {
-                console.error('[Background] Error navigating to default new tab:', error);
+                Logger.error('[Background] Error navigating to default new tab:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -596,7 +597,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 await chrome.windows.update(message.windowId, { focused: true });
                 sendResponse({ success: true });
             } catch (error) {
-                console.error('[Background] Error switching to tab:', error);
+                Logger.error('[Background] Error switching to tab:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -615,7 +616,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
                 sendResponse({ success: true, tabs: filteredTabs });
             } catch (error) {
-                console.error('[Background] Error searching tabs:', error);
+                Logger.error('[Background] Error searching tabs:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -638,7 +639,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 sendResponse({ success: true, tabs: tabsWithActivity });
             } catch (error) {
-                console.error('[Background] Error getting recent tabs:', error);
+                Logger.error('[Background] Error getting recent tabs:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -650,7 +651,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const filteredBookmarks = bookmarks.filter(bookmark => bookmark.url);
                 sendResponse({ success: true, bookmarks: filteredBookmarks });
             } catch (error) {
-                console.error('[Background] Error searching bookmarks:', error);
+                Logger.error('[Background] Error searching bookmarks:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -665,7 +666,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
                 sendResponse({ success: true, history: historyItems });
             } catch (error) {
-                console.error('[Background] Error searching history:', error);
+                Logger.error('[Background] Error searching history:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -676,7 +677,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const topSites = await chrome.topSites.get();
                 sendResponse({ success: true, topSites: topSites });
             } catch (error) {
-                console.error('[Background] Error getting top sites:', error);
+                Logger.error('[Background] Error getting top sites:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -688,22 +689,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const suggestions = await dataProvider.getAutocompleteData(message.query);
                 sendResponse({ success: true, suggestions: suggestions });
             } catch (error) {
-                console.error('[Background] Error getting autocomplete suggestions:', error);
+                Logger.error('[Background] Error getting autocomplete suggestions:', error);
                 sendResponse({ success: false, error: error.message, suggestions: [] });
             }
         })();
         return true; // Async response
     } else if (message.action === 'getPinnedTabs') {
-        console.log('[Background] Received getPinnedTabs message:', message);
+        Logger.log('[Background] Received getPinnedTabs message:', message);
         (async () => {
             try {
                 const dataProvider = backgroundSearchEngine.dataProvider;
-                console.log('[Background] Getting pinned tabs from data provider...');
+                Logger.log('[Background] Getting pinned tabs from data provider...');
                 const pinnedTabs = await dataProvider.getPinnedTabsData(message.query);
-                console.log('[Background] Sending pinned tabs response:', pinnedTabs.length, 'tabs');
+                Logger.log('[Background] Sending pinned tabs response:', pinnedTabs.length, 'tabs');
                 sendResponse({ success: true, pinnedTabs: pinnedTabs });
             } catch (error) {
-                console.error('[Background] Error getting pinned tabs:', error);
+                Logger.error('[Background] Error getting pinned tabs:', error);
                 sendResponse({ success: false, error: error.message, pinnedTabs: [] });
             }
         })();
@@ -731,7 +732,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     sendResponse({ success: true, color: 'purple' });
                 }
             } catch (error) {
-                console.error('[Background] Error getting active space color:', error);
+                Logger.error('[Background] Error getting active space color:', error);
                 sendResponse({ success: false, error: error.message, color: 'purple' });
             }
         })();
@@ -752,7 +753,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 sendResponse({ success: true });
             } catch (error) {
-                console.error('[Background] Error performing search:', error);
+                Logger.error('[Background] Error performing search:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -770,7 +771,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 sendResponse({ success: true, results: results });
             } catch (error) {
-                console.error('[Background] Error getting spotlight suggestions:', error);
+                Logger.error('[Background] Error getting spotlight suggestions:', error);
                 sendResponse({ success: false, error: error.message, results: [] });
             }
         })();
@@ -791,7 +792,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 await backgroundSearchEngine.handleResultAction(message.result, message.mode, tabId);
                 sendResponse({ success: true });
             } catch (error) {
-                console.error('[Background] Error handling spotlight result:', error);
+                Logger.error('[Background] Error handling spotlight result:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();

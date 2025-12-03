@@ -1,6 +1,8 @@
 // message-client.js - Shared message passing abstraction for spotlight components
 // Consolidates chrome.runtime.sendMessage patterns from overlay.js and popup.js
 
+import { Logger } from '../../logger.js';
+
 export class SpotlightMessageClient {
     // Get suggestions from background script
     static async getSuggestions(query, mode) {
@@ -16,11 +18,11 @@ export class SpotlightMessageClient {
             if (response && response.success) {
                 return response.results;
             } else {
-                console.error('[SpotlightMessageClient] Get suggestions failed:', response?.error);
+                Logger.error('[SpotlightMessageClient] Get suggestions failed:', response?.error);
                 return [];
             }
         } catch (error) {
-            console.error('[SpotlightMessageClient] Get suggestions error:', error);
+            Logger.error('[SpotlightMessageClient] Get suggestions error:', error);
             return [];
         }
     }
@@ -38,12 +40,12 @@ export class SpotlightMessageClient {
             const response = await chrome.runtime.sendMessage(message);
 
             if (!response || response.success === false) {
-                console.error('[SpotlightMessageClient] Result action failed:', response?.error || 'No response');
+                Logger.error('[SpotlightMessageClient] Result action failed:', response?.error || 'No response');
                 return false;
             }
             return true;
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error handling result action:', error);
+            Logger.error('[SpotlightMessageClient] Error handling result action:', error);
             return false;
         }
     }
@@ -59,11 +61,11 @@ export class SpotlightMessageClient {
             if (response && response.success && response.color) {
                 return response.color;
             } else {
-                console.error('[SpotlightMessageClient] Failed to get active space color:', response?.error);
+                Logger.error('[SpotlightMessageClient] Failed to get active space color:', response?.error);
                 return 'purple'; // Default fallback
             }
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error getting active space color:', error);
+            Logger.error('[SpotlightMessageClient] Error getting active space color:', error);
             return 'purple'; // Default fallback
         }
     }
@@ -73,7 +75,7 @@ export class SpotlightMessageClient {
         try {
             chrome.runtime.sendMessage({ action: 'spotlightOpened' });
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error notifying spotlight opened:', error);
+            Logger.error('[SpotlightMessageClient] Error notifying spotlight opened:', error);
         }
     }
 
@@ -82,7 +84,7 @@ export class SpotlightMessageClient {
         try {
             chrome.runtime.sendMessage({ action: 'spotlightClosed' });
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error notifying spotlight closed:', error);
+            Logger.error('[SpotlightMessageClient] Error notifying spotlight closed:', error);
         }
     }
 
@@ -96,7 +98,7 @@ export class SpotlightMessageClient {
             });
             return response?.success === true;
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error switching to tab:', error);
+            Logger.error('[SpotlightMessageClient] Error switching to tab:', error);
             return false;
         }
     }
@@ -110,7 +112,7 @@ export class SpotlightMessageClient {
             });
             return response?.success === true;
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error navigating current tab:', error);
+            Logger.error('[SpotlightMessageClient] Error navigating current tab:', error);
             return false;
         }
     }
@@ -125,7 +127,7 @@ export class SpotlightMessageClient {
             });
             return response?.success === true;
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error opening new tab:', error);
+            Logger.error('[SpotlightMessageClient] Error opening new tab:', error);
             return false;
         }
     }
@@ -140,7 +142,7 @@ export class SpotlightMessageClient {
             });
             return response?.success === true;
         } catch (error) {
-            console.error('[SpotlightMessageClient] Error performing search:', error);
+            Logger.error('[SpotlightMessageClient] Error performing search:', error);
             return false;
         }
     }

@@ -14,6 +14,7 @@
 
 import { Utils } from './utils.js';
 import { RESTORE_ICON } from './icons.js';
+import { Logger } from './logger.js';
 
 // DOM Elements
 const spacesList = document.getElementById('spacesList');
@@ -468,24 +469,24 @@ export function showUrlCopyToast() {
 export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, currentActiveSpaceId, setActiveSpaceFunc, activatePinnedTabByURL) {
     chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {
-            console.log(`[QuickPin] Received command: ${request.command}`, { request });
+            Logger.log(`[QuickPin] Received command: ${request.command}`, { request });
             chrome.storage.local.get('spaces', function (result) {
                 const spaces = result.spaces || [];
-                console.log("[QuickPin] Loaded spaces from storage:", spaces);
+                Logger.log("[QuickPin] Loaded spaces from storage:", spaces);
 
                 const getTabAndToggle = (tabToToggle) => {
                     if (!tabToToggle) {
-                        console.error("[QuickPin] No tab found to toggle.");
+                        Logger.error("[QuickPin] No tab found to toggle.");
                         return;
                     }
-                    console.log("[QuickPin] Toggling pin state for tab:", tabToToggle);
+                    Logger.log("[QuickPin] Toggling pin state for tab:", tabToToggle);
 
                     const spaceWithTempTab = spaces.find(space =>
                         space.temporaryTabs.includes(tabToToggle.id)
                     );
 
                     if (spaceWithTempTab) {
-                        console.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
+                        Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
                         moveTabToSpace(tabToToggle.id, spaceWithTempTab.id, true);
                         moveTabToPinned(spaceWithTempTab, tabToToggle);
                     } else {
@@ -494,22 +495,22 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                         );
 
                         if (spaceWithBookmark) {
-                            console.log(`[QuickPin] Tab ${tabToToggle.id} is a bookmarked tab in space "${spaceWithBookmark.name}". Unpinning it.`);
+                            Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a bookmarked tab in space "${spaceWithBookmark.name}". Unpinning it.`);
                             moveTabToSpace(tabToToggle.id, spaceWithBookmark.id, false);
                             moveTabToTemp(spaceWithBookmark, tabToToggle);
                         } else {
-                            console.warn(`[QuickPin] Tab ${tabToToggle.id} not found in any space as temporary or bookmarked.`);
+                            Logger.warn(`[QuickPin] Tab ${tabToToggle.id} not found in any space as temporary or bookmarked.`);
                         }
                     }
                 };
 
                 if (request.command === "quickPinToggle") {
-                    console.log("[QuickPin] Handling quickPinToggle for active tab.");
+                    Logger.log("[QuickPin] Handling quickPinToggle for active tab.");
                     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
                         getTabAndToggle(tabs[0]);
                     });
                 } else if (request.command === "toggleSpacePin" && request.tabId) {
-                    console.log(`[QuickPin] Handling toggleSpacePin for tabId: ${request.tabId}`);
+                    Logger.log(`[QuickPin] Handling toggleSpacePin for tabId: ${request.tabId}`);
                     chrome.tabs.get(request.tabId, function (tab) {
                         getTabAndToggle(tab);
                     });
@@ -517,49 +518,49 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             });
         } else if (request.command === "copyCurrentUrl") {
             // SIDEBAR FALLBACK: Handle URL copy when sidebar is focused
-            console.log(`[URLCopy] Sidebar fallback - copying URL: ${request.url}`);
+            Logger.log(`[URLCopy] Sidebar fallback - copying URL: ${request.url}`);
 
             // Use clipboard API to copy the URL
             if (navigator.clipboard && request.url) {
                 navigator.clipboard.writeText(request.url).then(() => {
-                    console.log(`[URLCopy] Sidebar fallback succeeded: ${request.url}`);
+                    Logger.log(`[URLCopy] Sidebar fallback succeeded: ${request.url}`);
                     showUrlCopyToast(); // Show success toast
                     sendResponse({ success: true });
                 }).catch(err => {
-                    console.error("[URLCopy] Sidebar fallback failed:", err);
+                    Logger.error("[URLCopy] Sidebar fallback failed:", err);
                     sendResponse({ success: false, error: err.message });
                 });
             } else {
-                console.error("[URLCopy] Sidebar fallback failed: navigator.clipboard not available or no URL");
+                Logger.error("[URLCopy] Sidebar fallback failed: navigator.clipboard not available or no URL");
                 sendResponse({ success: false, error: "Clipboard API not available" });
             }
             return true; // Indicate async response
         } else if (request.action === "urlCopySuccess") {
             // Show toast when URL copy succeeds via script injection
-            console.log("[URLCopy] Received success message from background script");
+            Logger.log("[URLCopy] Received success message from background script");
             showUrlCopyToast();
             sendResponse({ success: true });
             return false; // Synchronous response
         } else if (request.action === "spotlightOpened") {
-            console.log("[Spotlight] Spotlight opened with mode:", request.mode);
+            Logger.log("[Spotlight] Spotlight opened with mode:", request.mode);
             // Highlight new tab button if spotlight is in new-tab mode
             const newTabBtn = document.getElementById('newTabBtn');
             if (request.mode === 'new-tab' && newTabBtn) {
                 newTabBtn.classList.add('spotlight-active');
             }
         } else if (request.action === "spotlightClosed") {
-            console.log("[Spotlight] Spotlight closed");
+            Logger.log("[Spotlight] Spotlight closed");
             // Remove highlighting from new tab button
             const newTabBtn = document.getElementById('newTabBtn');
             if (newTabBtn) {
                 newTabBtn.classList.remove('spotlight-active');
             }
         } else if (request.action === "activatePinnedTab") {
-            console.log("[Spotlight] Activating pinned tab:", request);
+            Logger.log("[Spotlight] Activating pinned tab:", request);
 
             // Switch to the space if needed
             if (request.spaceId && currentActiveSpaceId !== request.spaceId) {
-                console.log("[Spotlight] Switching to space:", request.spaceId, request.spaceName);
+                Logger.log("[Spotlight] Switching to space:", request.spaceId, request.spaceName);
                 setActiveSpaceFunc(request.spaceId);
             }
 

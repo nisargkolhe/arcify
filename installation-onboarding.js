@@ -1,4 +1,6 @@
 // Installation Onboarding Flow
+import { Logger } from './logger.js';
+
 class InstallationOnboarding {
     constructor() {
         this.currentStep = 1;
@@ -208,11 +210,11 @@ class InstallationOnboarding {
                 'toggleSpotlight': shortcuts['toggleSpotlight'] || 'Alt+L',
                 'toggleSpotlightNewTab': shortcuts['toggleSpotlightNewTab'] || 'Alt+T'
             };
-            console.log('Keyboard shortcuts loaded:', this.shortcuts);
+            Logger.log('Keyboard shortcuts loaded:', this.shortcuts);
             // Update the shortcut display in step 5
             this.updateShortcutDisplay(shortcuts);
         } catch (error) {
-            console.error('Error loading keyboard shortcuts:', error);
+            Logger.error('Error loading keyboard shortcuts:', error);
             // Fallback to default shortcuts
             this.shortcuts = {
                 '_execute_action': 'Alt+S',

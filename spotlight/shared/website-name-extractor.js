@@ -13,6 +13,7 @@
  */
 
 import { POPULAR_SITES } from './popular-sites.js';
+import { Logger } from '../../logger.js';
 
 export class WebsiteNameExtractor {
     constructor() {
@@ -33,7 +34,7 @@ export class WebsiteNameExtractor {
             return this.parseHostnameToName(hostname);
 
         } catch (error) {
-            console.error('[WebsiteNameExtractor] Error extracting name:', error);
+            Logger.error('[WebsiteNameExtractor] Error extracting name:', error);
             return this.parseHostnameToName(this.normalizeHostname(url)) || url;
         }
     }

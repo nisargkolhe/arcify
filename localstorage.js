@@ -12,6 +12,8 @@
  * - Handles bookmark folder creation and organization automatically
  */
 
+import { Logger } from './logger.js';
+
 const LocalStorage = {
     getOrCreateArcifyFolder: async function () {
         let [folder] = await chrome.bookmarks.search({ title: 'Arcify' });
@@ -36,7 +38,7 @@ const LocalStorage = {
 
     // --- Recursive Helper Function to Merge Contents ---
     _mergeFolderContentsRecursive: async function (sourceFolderId, targetFolderId) {
-        console.log(`Recursively merging contents from ${sourceFolderId} into ${targetFolderId}`);
+        Logger.log(`Recursively merging contents from ${sourceFolderId} into ${targetFolderId}`);
         try {
             const sourceChildren = await chrome.bookmarks.getChildren(sourceFolderId);
             const targetChildren = await chrome.bookmarks.getChildren(targetFolderId);
@@ -45,10 +47,10 @@ const LocalStorage = {
                 if (sourceItem.url) { // It's a bookmark
                     const existsInTarget = targetChildren.some(targetItem => targetItem.url === sourceItem.url);
                     if (!existsInTarget) {
-                        console.log(`Moving bookmark "${sourceItem.title}" (${sourceItem.id}) to ${targetFolderId}`);
+                        Logger.log(`Moving bookmark "${sourceItem.title}" (${sourceItem.id}) to ${targetFolderId}`);
                         await chrome.bookmarks.move(sourceItem.id, { parentId: targetFolderId });
                     } else {
-                        console.log(`Bookmark "${sourceItem.title}" (${sourceItem.id}) already exists in target ${targetFolderId}, removing source.`);
+                        Logger.log(`Bookmark "${sourceItem.title}" (${sourceItem.id}) already exists in target ${targetFolderId}, removing source.`);
                         await chrome.bookmarks.remove(sourceItem.id);
                     }
                 } else { // It's a nested folder
@@ -56,31 +58,31 @@ const LocalStorage = {
 
                     if (existingTargetSubfolder) {
                         // Target subfolder exists, merge recursively
-                        console.log(`Subfolder "${sourceItem.title}" exists in target. Merging subfolder ${sourceItem.id} into ${existingTargetSubfolder.id}`);
+                        Logger.log(`Subfolder "${sourceItem.title}" exists in target. Merging subfolder ${sourceItem.id} into ${existingTargetSubfolder.id}`);
                         await this._mergeFolderContentsRecursive(sourceItem.id, existingTargetSubfolder.id);
                         // After merging contents, remove the now-empty source subfolder
-                        console.log(`Removing merged source subfolder "${sourceItem.title}" (${sourceItem.id})`);
+                        Logger.log(`Removing merged source subfolder "${sourceItem.title}" (${sourceItem.id})`);
                         await chrome.bookmarks.remove(sourceItem.id);
                     } else {
                         // Target subfolder doesn't exist, move the entire source subfolder
-                        console.log(`Moving nested folder "${sourceItem.title}" (${sourceItem.id}) to ${targetFolderId}`);
+                        Logger.log(`Moving nested folder "${sourceItem.title}" (${sourceItem.id}) to ${targetFolderId}`);
                         await chrome.bookmarks.move(sourceItem.id, { parentId: targetFolderId });
                     }
                 }
             }
         } catch (error) {
-            console.error(`Error merging contents from ${sourceFolderId} to ${targetFolderId}:`, error);
+            Logger.error(`Error merging contents from ${sourceFolderId} to ${targetFolderId}:`, error);
             // Decide if you want to re-throw or just log
         }
     },
 
     // --- Updated Function to Merge Duplicate Space Folders ---
     mergeDuplicateSpaceFolders: async function () {
-        console.log("Checking for duplicate space folders...");
+        Logger.log("Checking for duplicate space folders...");
         try {
             const [arcifyFolder] = await chrome.bookmarks.search({ title: 'Arcify' });
             if (!arcifyFolder) {
-                console.log("Arcify folder not found.");
+                Logger.log("Arcify folder not found.");
                 return;
             }
 
@@ -98,14 +100,14 @@ const LocalStorage = {
 
             for (const [name, group] of folderGroups.entries()) {
                 if (group.length > 1) {
-                    console.log(`Found ${group.length} folders named "${name}". Merging...`);
+                    Logger.log(`Found ${group.length} folders named "${name}". Merging...`);
                     // Sort by dateAdded (oldest first) or just pick the first one
                     group.sort((a, b) => a.dateAdded - b.dateAdded); // Optional: Keep the oldest
                     const targetFolder = group[0]; // Keep the first/oldest one
 
                     for (let i = 1; i < group.length; i++) {
                         const sourceFolder = group[i];
-                        console.log(`Merging duplicate folder ID ${sourceFolder.id} ("${sourceFolder.title}") into target ${targetFolder.id}`);
+                        Logger.log(`Merging duplicate folder ID ${sourceFolder.id} ("${sourceFolder.title}") into target ${targetFolder.id}`);
                         try {
                             // Call the recursive helper to merge contents
                             await this._mergeFolderContentsRecursive(sourceFolder.id, targetFolder.id);
@@ -114,24 +116,24 @@ const LocalStorage = {
                             // Double-check it's empty first (optional but safer)
                             const remainingChildren = await chrome.bookmarks.getChildren(sourceFolder.id);
                             if (remainingChildren.length === 0) {
-                                console.log(`Removing empty source folder "${sourceFolder.title}" (ID: ${sourceFolder.id})`);
+                                Logger.log(`Removing empty source folder "${sourceFolder.title}" (ID: ${sourceFolder.id})`);
                                 await chrome.bookmarks.remove(sourceFolder.id);
                             } else {
-                                console.warn(`Source folder ${sourceFolder.id} ("${sourceFolder.title}") not empty after merge attempt, attempting removal anyway or investigate.`);
+                                Logger.warn(`Source folder ${sourceFolder.id} ("${sourceFolder.title}") not empty after merge attempt, attempting removal anyway or investigate.`);
                                 // Decide whether to force remove or log error
                                 await chrome.bookmarks.remove(sourceFolder.id); // Or removeTree if necessary
                             }
                         } catch (mergeError) {
-                            console.error(`Error during top-level merge of folder ${sourceFolder.id} into ${targetFolder.id}:`, mergeError);
+                            Logger.error(`Error during top-level merge of folder ${sourceFolder.id} into ${targetFolder.id}:`, mergeError);
                         }
                     }
-                    console.log(`Finished merging folders named "${name}".`);
+                    Logger.log(`Finished merging folders named "${name}".`);
                 }
             }
-            console.log("Duplicate folder check complete.");
+            Logger.log("Duplicate folder check complete.");
 
         } catch (error) {
-            console.error("Error during duplicate space folder merge process:", error);
+            Logger.error("Error during duplicate space folder merge process:", error);
         }
     },
     // --- End of Updated Function ---
@@ -162,10 +164,10 @@ const LocalStorage = {
                     spaceNames.add(folder.title);
                 });
 
-                console.log('Found spaces from Arcify bookmark folders:', spaceNames.size);
+                Logger.log('Found spaces from Arcify bookmark folders:', spaceNames.size);
             }
         } catch (bookmarkError) {
-            console.log('Could not get spaces from bookmark folders:', bookmarkError);
+            Logger.log('Could not get spaces from bookmark folders:', bookmarkError);
         }
 
         // If no spaces found in bookmarks, try fallback to tab groups
@@ -175,9 +177,9 @@ const LocalStorage = {
                 tabGroups.forEach(group => {
                     spaceNames.add(group.title);
                 });
-                console.log('Found spaces from tab groups (fallback):', spaceNames.size);
+                Logger.log('Found spaces from tab groups (fallback):', spaceNames.size);
             } catch (tabGroupError) {
-                console.log('Could not query tab groups:', tabGroupError);
+                Logger.log('Could not query tab groups:', tabGroupError);
             }
         }
 

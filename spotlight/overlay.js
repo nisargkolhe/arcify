@@ -18,6 +18,7 @@ import { SelectionManager } from './shared/selection-manager.js';
 import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
+import { Logger } from '../logger.js';
 
 /**
  * DORMANT CONTENT SCRIPT ARCHITECTURE
@@ -389,7 +390,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             asyncSuggestions = results || [];
             updateDisplay();
         } catch (error) {
-            console.error('[Spotlight] Error loading initial results:', error);
+            Logger.error('[Spotlight] Error loading initial results:', error);
             instantSuggestion = null;
             asyncSuggestions = [];
             displayEmptyState();
@@ -439,7 +440,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             asyncSuggestions = results || [];
             updateDisplay();
         } catch (error) {
-            console.error('[Spotlight] Search error:', error);
+            Logger.error('[Spotlight] Search error:', error);
             asyncSuggestions = [];
             updateDisplay();
         }
@@ -487,7 +488,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     // Handle result selection
     async function handleResultAction(result) {
         if (!result) {
-            console.error('[Spotlight] No result provided');
+            Logger.error('[Spotlight] No result provided');
             return;
         }
 
@@ -500,7 +501,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             // Navigate in background
             await handleResultActionViaMessage(result, mode);
         } catch (error) {
-            console.error('[Spotlight] Error in result action:', error);
+            Logger.error('[Spotlight] Error in result action:', error);
         }
     }
 
@@ -596,7 +597,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
                 }
             }
         } catch (error) {
-            console.error('[Spotlight] Error updating active space color:', error);
+            Logger.error('[Spotlight] Error updating active space color:', error);
         }
 
         // Load initial results after color update (if input is still empty)

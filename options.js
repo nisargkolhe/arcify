@@ -14,6 +14,7 @@
 
 import { Utils } from './utils.js';
 import { LocalStorage } from './localstorage.js';
+import { Logger } from './logger.js';
 
 // Default color values (must be 6-digit hex for color picker compatibility)
 const DEFAULT_COLORS = {
@@ -50,6 +51,7 @@ async function saveOptions() {
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
+  const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
 
   // Get color overrides
   const colorOverrides = {};
@@ -68,11 +70,12 @@ async function saveOptions() {
     invertTabOrder: invertTabOrderCheckbox.checked,
     enableSpotlight: enableSpotlightCheckbox.checked,
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
+    debugLoggingEnabled: debugLoggingEnabledCheckbox ? debugLoggingEnabledCheckbox.checked : false
   };
 
   try {
     await chrome.storage.sync.set(settings);
-    console.log('Settings saved:', settings);
+    Logger.log('Settings saved:', settings);
 
     // Apply color overrides immediately
     applyColorOverrides(settings.colorOverrides);
@@ -83,7 +86,7 @@ async function saveOptions() {
     // Show toast notification
     showToast();
   } catch (error) {
-    console.error('Error saving settings:', error);
+    Logger.error('Error saving settings:', error);
   }
 }
 
@@ -108,6 +111,7 @@ async function restoreOptions() {
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
+  const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
 
   // Populate spaces dropdown
   await populateSpacesDropdown(settings.defaultSpaceName);
@@ -116,6 +120,9 @@ async function restoreOptions() {
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
   invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
   enableSpotlightCheckbox.checked = settings.enableSpotlight !== undefined ? settings.enableSpotlight : true; // Default true
+  if (debugLoggingEnabledCheckbox) {
+    debugLoggingEnabledCheckbox.checked = settings.debugLoggingEnabled !== undefined ? settings.debugLoggingEnabled : false; // Default false
+  }
 
   // Restore color overrides
   const colorOverrides = settings.colorOverrides || {};
@@ -162,7 +169,7 @@ async function populateSpacesDropdown(selectedSpaceName) {
     defaultSpaceNameSelect.value = selectedSpaceName || 'Home';
 
   } catch (error) {
-    console.error('Error loading spaces:', error);
+    Logger.error('Error loading spaces:', error);
     // Fallback to default option if there's an error
     defaultSpaceNameSelect.innerHTML = '<option value="Home">Home</option>';
     defaultSpaceNameSelect.value = selectedSpaceName || 'Home';
@@ -228,6 +235,11 @@ function setupAutoSave() {
   const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
   if (enableSpotlightCheckbox) {
     enableSpotlightCheckbox.addEventListener('change', saveOptions);
+  }
+
+  const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
+  if (debugLoggingEnabledCheckbox) {
+    debugLoggingEnabledCheckbox.addEventListener('change', saveOptions);
   }
 
   // Auto-save for number input (with debounce)

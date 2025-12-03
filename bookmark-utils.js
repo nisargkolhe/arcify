@@ -13,6 +13,8 @@
  * - Does not handle folder creation - defers to LocalStorage for that functionality
  */
 
+import { Logger } from './logger.js';
+
 export const BookmarkUtils = {
 
     /**
@@ -21,49 +23,49 @@ export const BookmarkUtils = {
      * @returns {Promise<Object|null>} The Arcify folder object or null if not found
      */
     async findArcifyFolder() {
-        console.log('[BookmarkUtils] Finding Arcify folder...');
+        Logger.log('[BookmarkUtils] Finding Arcify folder...');
 
         try {
             // Method 1: Try the standard search first (this should work in most cases)
-            console.log('[BookmarkUtils] Method 1: Searching for Arcify folder by title...');
+            Logger.log('[BookmarkUtils] Method 1: Searching for Arcify folder by title...');
             const searchResults = await chrome.bookmarks.search({ title: 'Arcify' });
 
             if (searchResults && searchResults.length > 0) {
                 // Verify this is actually a folder (not a bookmark)
                 const arcifyFolder = searchResults.find(result => !result.url);
                 if (arcifyFolder) {
-                    console.log('[BookmarkUtils] Found Arcify folder via search:', arcifyFolder.id);
+                    Logger.log('[BookmarkUtils] Found Arcify folder via search:', arcifyFolder.id);
                     return arcifyFolder;
                 }
             }
 
-            console.log('[BookmarkUtils] Method 1 failed, trying Method 2: Traversing bookmark tree...');
+            Logger.log('[BookmarkUtils] Method 1 failed, trying Method 2: Traversing bookmark tree...');
 
             // Method 2: Traverse the bookmark tree manually
             // This is more reliable as it doesn't depend on search functionality
             const rootChildren = await chrome.bookmarks.getChildren('0');
-            console.log('[BookmarkUtils] Root folders found:', rootChildren.map(child => ({ id: child.id, title: child.title })));
+            Logger.log('[BookmarkUtils] Root folders found:', rootChildren.map(child => ({ id: child.id, title: child.title })));
 
             // Check each root folder for Arcify folder
             for (const rootFolder of rootChildren) {
-                console.log(`[BookmarkUtils] Checking folder: ${rootFolder.title} (ID: ${rootFolder.id})`);
+                Logger.log(`[BookmarkUtils] Checking folder: ${rootFolder.title} (ID: ${rootFolder.id})`);
 
                 try {
                     const children = await chrome.bookmarks.getChildren(rootFolder.id);
                     const arcifyFolder = children.find(child => child.title === 'Arcify' && !child.url);
 
                     if (arcifyFolder) {
-                        console.log(`[BookmarkUtils] Found Arcify folder in ${rootFolder.title}:`, arcifyFolder.id);
+                        Logger.log(`[BookmarkUtils] Found Arcify folder in ${rootFolder.title}:`, arcifyFolder.id);
                         return arcifyFolder;
                     }
                 } catch (error) {
-                    console.warn(`[BookmarkUtils] Error checking folder ${rootFolder.title}:`, error);
+                    Logger.warn(`[BookmarkUtils] Error checking folder ${rootFolder.title}:`, error);
                     continue;
                 }
             }
 
             // Method 3: Try to find by checking "Other Bookmarks" specifically
-            console.log('[BookmarkUtils] Method 2 failed, trying Method 3: Check Other Bookmarks specifically...');
+            Logger.log('[BookmarkUtils] Method 2 failed, trying Method 3: Check Other Bookmarks specifically...');
 
             // Find "Other Bookmarks" folder - it could have different names in different locales
             const otherBookmarksFolder = rootChildren.find(folder =>
@@ -73,26 +75,26 @@ export const BookmarkUtils = {
             );
 
             if (otherBookmarksFolder) {
-                console.log(`[BookmarkUtils] Found Other Bookmarks folder: ${otherBookmarksFolder.title} (ID: ${otherBookmarksFolder.id})`);
+                Logger.log(`[BookmarkUtils] Found Other Bookmarks folder: ${otherBookmarksFolder.title} (ID: ${otherBookmarksFolder.id})`);
 
                 try {
                     const otherBookmarksChildren = await chrome.bookmarks.getChildren(otherBookmarksFolder.id);
                     const arcifyFolder = otherBookmarksChildren.find(child => child.title === 'Arcify' && !child.url);
 
                     if (arcifyFolder) {
-                        console.log('[BookmarkUtils] Found Arcify folder in Other Bookmarks:', arcifyFolder.id);
+                        Logger.log('[BookmarkUtils] Found Arcify folder in Other Bookmarks:', arcifyFolder.id);
                         return arcifyFolder;
                     }
                 } catch (error) {
-                    console.warn('[BookmarkUtils] Error checking Other Bookmarks folder:', error);
+                    Logger.warn('[BookmarkUtils] Error checking Other Bookmarks folder:', error);
                 }
             }
 
-            console.log('[BookmarkUtils] All methods failed - Arcify folder not found');
+            Logger.log('[BookmarkUtils] All methods failed - Arcify folder not found');
             return null;
 
         } catch (error) {
-            console.error('[BookmarkUtils] Error in findArcifyFolder:', error);
+            Logger.error('[BookmarkUtils] Error in findArcifyFolder:', error);
             return null;
         }
     },
@@ -156,16 +158,16 @@ export const BookmarkUtils = {
     async findBookmarkInFolderRecursive(folderId, searchCriteria) {
         const { url, title } = searchCriteria;
         const searchDesc = url ? `URL: ${url}` : title ? `title: ${title}` : 'unknown criteria';
-        console.log(`[BookmarkUtils] Searching for bookmark with ${searchDesc} in folder: ${folderId}`);
+        Logger.log(`[BookmarkUtils] Searching for bookmark with ${searchDesc} in folder: ${folderId}`);
 
         if (!folderId || (!url && !title)) {
-            console.warn('[BookmarkUtils] Missing folderId or search criteria (url/title) for recursive search');
+            Logger.warn('[BookmarkUtils] Missing folderId or search criteria (url/title) for recursive search');
             return null;
         }
 
         try {
             const items = await chrome.bookmarks.getChildren(folderId);
-            console.log(`[BookmarkUtils] Found ${items.length} items in folder ${folderId}`);
+            Logger.log(`[BookmarkUtils] Found ${items.length} items in folder ${folderId}`);
 
             for (const item of items) {
                 if (item.url) {
@@ -181,7 +183,7 @@ export const BookmarkUtils = {
                     }
 
                     if (matches) {
-                        console.log(`[BookmarkUtils] Found matching bookmark: ${item.title} in folder ${folderId}`);
+                        Logger.log(`[BookmarkUtils] Found matching bookmark: ${item.title} in folder ${folderId}`);
                         return {
                             bookmark: item,
                             parentFolderId: folderId,
@@ -190,20 +192,20 @@ export const BookmarkUtils = {
                     }
                 } else {
                     // This is a folder - recurse into it
-                    console.log(`[BookmarkUtils] Recursing into subfolder: ${item.title} (${item.id})`);
+                    Logger.log(`[BookmarkUtils] Recursing into subfolder: ${item.title} (${item.id})`);
                     const result = await this.findBookmarkInFolderRecursive(item.id, searchCriteria);
                     if (result) {
-                        console.log(`[BookmarkUtils] Found bookmark in subfolder: ${item.title}`);
+                        Logger.log(`[BookmarkUtils] Found bookmark in subfolder: ${item.title}`);
                         return result;
                     }
                 }
             }
 
-            console.log(`[BookmarkUtils] Bookmark not found in folder ${folderId}`);
+            Logger.log(`[BookmarkUtils] Bookmark not found in folder ${folderId}`);
             return null;
 
         } catch (error) {
-            console.error(`[BookmarkUtils] Error searching folder ${folderId}:`, error);
+            Logger.error(`[BookmarkUtils] Error searching folder ${folderId}:`, error);
             return null;
         }
     },
@@ -260,7 +262,7 @@ export const BookmarkUtils = {
             Utils
         } = context;
 
-        console.log('[BookmarkUtils] Opening bookmark as tab:', bookmarkData.url, targetSpaceId);
+        Logger.log('[BookmarkUtils] Opening bookmark as tab:', bookmarkData.url, targetSpaceId);
 
         // Create new tab with bookmark URL in the target group
         const newTab = await chrome.tabs.create({
@@ -308,7 +310,7 @@ export const BookmarkUtils = {
             activateTabInDOM(newTab.id);
         }
 
-        console.log('[BookmarkUtils] Successfully opened bookmark as tab:', newTab.id);
+        Logger.log('[BookmarkUtils] Successfully opened bookmark as tab:', newTab.id);
         return newTab;
     },
 
@@ -333,7 +335,7 @@ export const BookmarkUtils = {
         for (const item of items) {
             if (item.url === tabUrl) {
                 if (logRemoval) {
-                    console.log('[BookmarkUtils] Removing bookmark:', item);
+                    Logger.log('[BookmarkUtils] Removing bookmark:', item);
                 }
                 await chrome.bookmarks.remove(item.id);
 
@@ -373,7 +375,7 @@ export const BookmarkUtils = {
                     // Set tab name override with the bookmark's title if needed
                     if (item.title && item.title !== tab.title && setTabNameOverride) {
                         await setTabNameOverride(tab.id, tab.url, item.title);
-                        console.log(`[BookmarkUtils] Override set for tab ${tab.id} from bookmark: ${item.title}`);
+                        Logger.log(`[BookmarkUtils] Override set for tab ${tab.id} from bookmark: ${item.title}`);
                     }
                 }
             } else {
@@ -394,13 +396,13 @@ export const BookmarkUtils = {
      * @returns {Promise<boolean>} True if bookmark was found and updated
      */
     async updateBookmarkTitle(tab, activeSpace, newTitle) {
-        console.log(`[BookmarkUtils] Attempting to update bookmark for tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
+        Logger.log(`[BookmarkUtils] Attempting to update bookmark for tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
 
         try {
             // Find the space folder - don't create it, that's LocalStorage's responsibility
             const arcifyFolder = await this.findArcifyFolder();
             if (!arcifyFolder) {
-                console.error(`[BookmarkUtils] Arcify folder not found for space ${activeSpace.name}.`);
+                Logger.error(`[BookmarkUtils] Arcify folder not found for space ${activeSpace.name}.`);
                 return false;
             }
 
@@ -408,7 +410,7 @@ export const BookmarkUtils = {
             const spaceFolder = children.find(f => f.title === activeSpace.name && !f.url);
 
             if (!spaceFolder) {
-                console.error(`[BookmarkUtils] Space folder ${activeSpace.name} not found.`);
+                Logger.error(`[BookmarkUtils] Space folder ${activeSpace.name} not found.`);
                 return false;
             }
 
@@ -420,10 +422,10 @@ export const BookmarkUtils = {
                         // Found the bookmark
                         // Avoid unnecessary updates if title is already correct
                         if (item.title !== newTitle) {
-                            console.log(`[BookmarkUtils] Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
+                            Logger.log(`[BookmarkUtils] Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
                             await chrome.bookmarks.update(item.id, { title: newTitle });
                         } else {
-                            console.log(`[BookmarkUtils] Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
+                            Logger.log(`[BookmarkUtils] Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
                         }
                         return true; // Found
                     } else if (!item.url) {
@@ -437,12 +439,12 @@ export const BookmarkUtils = {
 
             const updated = await findAndUpdate(spaceFolder.id);
             if (!updated) {
-                console.log(`[BookmarkUtils] Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
+                Logger.log(`[BookmarkUtils] Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
             }
 
             return updated;
         } catch (error) {
-            console.error(`[BookmarkUtils] Error updating bookmark for tab ${tab.id}:`, error);
+            Logger.error(`[BookmarkUtils] Error updating bookmark for tab ${tab.id}:`, error);
             return false;
         }
     },
@@ -494,7 +496,7 @@ export const BookmarkUtils = {
 
             return filteredBookmarks;
         } catch (error) {
-            console.error('[BookmarkUtils] Error getting bookmarks:', error);
+            Logger.error('[BookmarkUtils] Error getting bookmarks:', error);
             return [];
         }
     }
