@@ -16,6 +16,7 @@ import { Utils } from './utils.js';
 import { SearchEngine } from './spotlight/shared/search-engine.js';
 import { BackgroundDataProvider } from './spotlight/shared/data-providers/background-data-provider.js';
 import { Logger } from './logger.js';
+import { PerformanceLogger } from './performance-logger.js';
 
 // Enum for spotlight tab modes
 const SpotlightTabMode = {
@@ -761,17 +762,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'getSpotlightSuggestions') {
         // Handle spotlight suggestions requests from overlay.js
         (async () => {
+            const messageTimer = PerformanceLogger.startTimer('background.getSpotlightSuggestions');
             try {
                 const query = message.query.trim();
 
                 // Get suggestions using the background search engine with debouncing
                 const results = query
-                    ? await backgroundSearchEngine.getSpotlightSuggestionsUsingCache(query, message.mode)
-                    : await backgroundSearchEngine.getSpotlightSuggestionsImmediate('', message.mode);
+                    ? await PerformanceLogger.measureAsync('background.getSpotlightSuggestionsUsingCache', () => 
+                        backgroundSearchEngine.getSpotlightSuggestionsUsingCache(query, message.mode), { query, mode: message.mode })
+                    : await PerformanceLogger.measureAsync('background.getSpotlightSuggestionsImmediate', () => 
+                        backgroundSearchEngine.getSpotlightSuggestionsImmediate('', message.mode), { mode: message.mode });
 
+                PerformanceLogger.endTimer(messageTimer, { query, mode: message.mode, resultCount: results.length });
                 sendResponse({ success: true, results: results });
             } catch (error) {
                 Logger.error('[Background] Error getting spotlight suggestions:', error);
+                PerformanceLogger.endTimer(messageTimer, { query: message.query, mode: message.mode, error: error.message });
                 sendResponse({ success: false, error: error.message, results: [] });
             }
         })();

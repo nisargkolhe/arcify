@@ -20,6 +20,7 @@ import { Utils } from './utils.js';
 import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener } from './domManager.js';
 import { BookmarkUtils } from './bookmark-utils.js';
 import { Logger } from './logger.js';
+import { PerformanceLogger } from './performance-logger.js';
 
 // Constants
 const MouseButton = {
@@ -486,26 +487,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function initSidebar() {
+    const initTimer = PerformanceLogger.startTimer('sidebar.initSidebar');
     Logger.log('Initializing sidebar...');
-    let settings = await Utils.getSettings();
+    
+    let settings = await PerformanceLogger.measureAsync('sidebar.getSettings', () => Utils.getSettings());
     if (settings.defaultSpaceName) {
         defaultSpaceName = settings.defaultSpaceName;
     }
     try {
-        currentWindow = await chrome.windows.getCurrent({ populate: false });
+        currentWindow = await PerformanceLogger.measureAsync('sidebar.windows.getCurrent', () => 
+            chrome.windows.getCurrent({ populate: false }));
 
-        let tabGroups = await chrome.tabGroups.query({});
-        let allTabs = await chrome.tabs.query({ currentWindow: true });
+        // Parallelize independent Chrome API calls
+        let [tabGroups, allTabs] = await Promise.all([
+            PerformanceLogger.measureAsync('sidebar.tabGroups.query', () => chrome.tabGroups.query({})),
+            PerformanceLogger.measureAsync('sidebar.tabs.query.currentWindow', () => chrome.tabs.query({ currentWindow: true }))
+        ]);
         Logger.log("tabGroups", tabGroups);
         Logger.log("allTabs", allTabs);
 
         // Check for duplicates
-        await LocalStorage.mergeDuplicateSpaceFolders();
+        await PerformanceLogger.measureAsync('sidebar.mergeDuplicateSpaceFolders', () => 
+            LocalStorage.mergeDuplicateSpaceFolders());
 
         // Create bookmarks folder for spaces if it doesn't exist
-        const spacesFolder = await LocalStorage.getOrCreateArcifyFolder();
+        const spacesFolder = await PerformanceLogger.measureAsync('sidebar.getOrCreateArcifyFolder', () => 
+            LocalStorage.getOrCreateArcifyFolder());
         Logger.log("spacesFolder", spacesFolder);
-        const subFolders = await chrome.bookmarks.getChildren(spacesFolder.id);
+        const subFolders = await PerformanceLogger.measureAsync('sidebar.bookmarks.getChildren', () => 
+            chrome.bookmarks.getChildren(spacesFolder.id));
         Logger.log("subFolders", subFolders);
         if (tabGroups.length === 0) {
             let currentTabs = allTabs.filter(tab => tab.id && !tab.pinned) ?? [];
@@ -571,44 +581,58 @@ async function initSidebar() {
                 }
             }
 
-            tabGroups = await chrome.tabGroups.query({});
+            tabGroups = await PerformanceLogger.measureAsync('sidebar.tabGroups.query.afterUngrouped', () => 
+                chrome.tabGroups.query({}));
 
             // Load existing tab groups as spaces
-            spaces = await Promise.all(tabGroups.map(async group => {
-                const tabs = await chrome.tabs.query({ groupId: group.id });
-                Logger.log("processing group", group);
+            const processSpaceTimer = PerformanceLogger.startTimer('sidebar.processSpaces');
+            spaces = await Promise.all(tabGroups.map(async (group, index) => {
+                const spaceTimer = PerformanceLogger.startTimer(`sidebar.processSpace.${group.id}`);
+                try {
+                    const tabs = await PerformanceLogger.measureAsync(`sidebar.tabs.query.groupId.${group.id}`, () => 
+                        chrome.tabs.query({ groupId: group.id }));
+                    Logger.log("processing group", group);
 
-                const mainFolder = await chrome.bookmarks.getSubTree(spacesFolder.id);
-                const bookmarkFolder = mainFolder[0].children?.find(f => f.title == group.title);
-                Logger.log("looking for existing folder", group.title, mainFolder, bookmarkFolder);
-                let spaceBookmarks = [];
-                if (!bookmarkFolder) {
-                    Logger.log("creating new folder", group.title)
-                    await chrome.bookmarks.create({
-                        parentId: spacesFolder.id,
-                        title: group.title
-                    });
-                } else {
-                    Logger.log("found folder", group.title)
-                    // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
+                    const mainFolder = await PerformanceLogger.measureAsync(`sidebar.bookmarks.getSubTree.${group.id}`, () => 
+                        chrome.bookmarks.getSubTree(spacesFolder.id));
+                    const bookmarkFolder = mainFolder[0].children?.find(f => f.title == group.title);
+                    Logger.log("looking for existing folder", group.title, mainFolder, bookmarkFolder);
+                    let spaceBookmarks = [];
+                    if (!bookmarkFolder) {
+                        Logger.log("creating new folder", group.title)
+                        await PerformanceLogger.measureAsync(`sidebar.bookmarks.create.${group.id}`, () => 
+                            chrome.bookmarks.create({
+                                parentId: spacesFolder.id,
+                                title: group.title
+                            }));
+                    } else {
+                        Logger.log("found folder", group.title)
+                        // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
 
-                    spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(bookmarkFolder, group.id, Utils.setTabNameOverride.bind(Utils));
-                    // Remove null values from spaceBookmarks
-                    spaceBookmarks = spaceBookmarks.filter(id => id !== null);
+                        spaceBookmarks = await PerformanceLogger.measureAsync(`sidebar.matchTabsWithBookmarks.${group.id}`, () => 
+                            BookmarkUtils.matchTabsWithBookmarks(bookmarkFolder, group.id, Utils.setTabNameOverride.bind(Utils)));
+                        // Remove null values from spaceBookmarks
+                        spaceBookmarks = spaceBookmarks.filter(id => id !== null);
 
-                    Logger.log("space bookmarks in", group.title, spaceBookmarks);
+                        Logger.log("space bookmarks in", group.title, spaceBookmarks);
+                    }
+                    const space = {
+                        id: group.id,
+                        uuid: Utils.generateUUID(),
+                        name: group.title,
+                        color: group.color,
+                        spaceBookmarks: spaceBookmarks,
+                        temporaryTabs: tabs.filter(tab => !spaceBookmarks.includes(tab.id)).map(tab => tab.id)
+                    };
+
+                    PerformanceLogger.endTimer(spaceTimer, { spaceName: group.title, spaceIndex: index });
+                    return space;
+                } catch (error) {
+                    PerformanceLogger.endTimer(spaceTimer, { spaceName: group.title, spaceIndex: index, error: error.message });
+                    throw error;
                 }
-                const space = {
-                    id: group.id,
-                    uuid: Utils.generateUUID(),
-                    name: group.title,
-                    color: group.color,
-                    spaceBookmarks: spaceBookmarks,
-                    temporaryTabs: tabs.filter(tab => !spaceBookmarks.includes(tab.id)).map(tab => tab.id)
-                };
-
-                return space;
             }));
+            PerformanceLogger.endTimer(processSpaceTimer, { spaceCount: spaces.length });
             spaces.forEach(space => createSpaceElement(space));
             Logger.log("initial save", spaces);
             saveSpaces();
@@ -616,17 +640,21 @@ async function initSidebar() {
             // Re-apply colors to all spaces after they're created
             reapplySpaceColors();
 
-            let activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            let activeTabs = await PerformanceLogger.measureAsync('sidebar.tabs.query.active', () => 
+                chrome.tabs.query({ active: true, currentWindow: true }));
             if (activeTabs.length > 0) {
                 const activeTab = activeTabs[0];
                 if (activeTab.pinned) {
-                    await setActiveSpace(spaces[0].id, false);
+                    await PerformanceLogger.measureAsync('sidebar.setActiveSpace.pinned', () => 
+                        setActiveSpace(spaces[0].id, false));
                     updatePinnedFavicons();
                 } else {
-                    await setActiveSpace(activeTab.groupId, false);
+                    await PerformanceLogger.measureAsync('sidebar.setActiveSpace.groupId', () => 
+                        setActiveSpace(activeTab.groupId, false));
                 }
             } else {
-                await setActiveSpace(defaultGroupId ?? spaces[0].id);
+                await PerformanceLogger.measureAsync('sidebar.setActiveSpace.default', () => 
+                    setActiveSpace(defaultGroupId ?? spaces[0].id));
             }
 
             // Initialize previousSpaceId to the default space (first space)
@@ -637,8 +665,10 @@ async function initSidebar() {
         }
     } catch (error) {
         Logger.error('Error initializing sidebar:', error);
+        PerformanceLogger.endTimer(initTimer, { error: error.message });
     }
 
+    PerformanceLogger.endTimer(initTimer);
     setupDOMElements(createNewSpace);
 }
 
@@ -2982,7 +3012,7 @@ async function processTabMove(tabId, moveInfo) {
             const sourceSpace = spaces.find(s =>
                 s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
             );
-            Logger.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace.id);
+            Logger.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace?.id);
 
 
 

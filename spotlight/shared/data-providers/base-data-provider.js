@@ -5,11 +5,16 @@ import { findMatchingDomains } from '../popular-sites.js';
 import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
 import { Logger } from '../../../logger.js';
+import { PerformanceLogger } from '../../../performance-logger.js';
 
 export class BaseDataProvider {
     constructor() {
         this.cache = new Map();
         this.cacheTimeout = 5000;
+        this.defaultResultsCache = null;
+        this.defaultResultsCacheTime = 0;
+        this.DEFAULT_RESULTS_CACHE_TTL = 10000; // 10 seconds
+        this.DATA_SOURCE_TIMEOUT = 2000; // 2 seconds per data source
     }
 
     // ABSTRACT DATA FETCHERS (must be implemented by subclasses)
@@ -45,15 +50,18 @@ export class BaseDataProvider {
 
     // Main method to get spotlight suggestions
     async getSpotlightSuggestions(query, mode = 'current-tab') {
+        const searchTimer = PerformanceLogger.startTimer('baseDataProvider.getSpotlightSuggestions');
         const results = [];
         const trimmedQuery = query.trim().toLowerCase();
 
         if (!trimmedQuery) {
-            return this.getDefaultResults(mode);
+            const defaultResults = await this.getDefaultResults(mode);
+            PerformanceLogger.endTimer(searchTimer, { mode, resultCount: defaultResults.length, type: 'default' });
+            return defaultResults;
         }
 
         try {
-            // Get results from different sources with individual error handling
+            // Get results from different sources with individual error handling and timeouts
             let openTabs = [];
             let pinnedTabs = [];
             let bookmarks = [];
@@ -61,55 +69,89 @@ export class BaseDataProvider {
             let topSites = [];
             let autocomplete = [];
 
-            // Get tabs (in both modes)
-            try {
-                openTabs = await this.getOpenTabs(trimmedQuery);
-            } catch (error) {
-                Logger.error('[SearchProvider] Failed to get open tabs:', error);
-                openTabs = [];
-            }
+            // Helper function to wrap async operations with timeout
+            const withTimeout = async (asyncFn, timeoutMs, label) => {
+                return Promise.race([
+                    asyncFn(),
+                    new Promise((_, reject) => {
+                        setTimeout(() => {
+                            reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+                        }, timeoutMs);
+                    })
+                ]);
+            };
 
-            // Get pinned tabs
-            try {
-                Logger.log('[BaseDataProvider] Getting pinned tab suggestions for query:', trimmedQuery);
-                pinnedTabs = await this.getPinnedTabSuggestions(trimmedQuery);
-                Logger.log('[BaseDataProvider] Got pinned tab suggestions:', pinnedTabs.length);
-            } catch (error) {
-                Logger.error('[SearchProvider] Failed to get pinned tabs:', error);
-                pinnedTabs = [];
-            }
+            // Parallelize all data source fetches with timeouts
+            const dataSourcePromises = [
+                // Get tabs (in both modes)
+                withTimeout(
+                    () => this.getOpenTabs(trimmedQuery),
+                    this.DATA_SOURCE_TIMEOUT,
+                    'getOpenTabs'
+                ).then(result => { openTabs = result; }).catch(error => {
+                    Logger.error('[SearchProvider] Failed to get open tabs:', error);
+                    openTabs = [];
+                }),
 
-            // Get bookmarks (excluding Arcify pinned tabs)
-            try {
-                bookmarks = await this.getBookmarkSuggestions(trimmedQuery);
-            } catch (error) {
-                Logger.error('[SearchProvider] Failed to get bookmarks:', error);
-                bookmarks = [];
-            }
+                // Get pinned tabs
+                withTimeout(
+                    () => {
+                        Logger.log('[BaseDataProvider] Getting pinned tab suggestions for query:', trimmedQuery);
+                        return this.getPinnedTabSuggestions(trimmedQuery);
+                    },
+                    this.DATA_SOURCE_TIMEOUT,
+                    'getPinnedTabSuggestions'
+                ).then(result => {
+                    pinnedTabs = result;
+                    Logger.log('[BaseDataProvider] Got pinned tab suggestions:', pinnedTabs.length);
+                }).catch(error => {
+                    Logger.error('[SearchProvider] Failed to get pinned tabs:', error);
+                    pinnedTabs = [];
+                }),
 
-            // Get history
-            try {
-                history = await this.getHistorySuggestions(trimmedQuery);
-            } catch (error) {
-                Logger.error('[SearchProvider] Failed to get history:', error);
-                history = [];
-            }
+                // Get bookmarks (excluding Arcify pinned tabs)
+                withTimeout(
+                    () => this.getBookmarkSuggestions(trimmedQuery),
+                    this.DATA_SOURCE_TIMEOUT,
+                    'getBookmarkSuggestions'
+                ).then(result => { bookmarks = result; }).catch(error => {
+                    Logger.error('[SearchProvider] Failed to get bookmarks:', error);
+                    bookmarks = [];
+                }),
 
-            // Get top sites
-            try {
-                topSites = await this.getTopSites();
-            } catch (error) {
-                Logger.error('[SearchProvider] Failed to get top sites:', error);
-                topSites = [];
-            }
+                // Get history
+                withTimeout(
+                    () => this.getHistorySuggestions(trimmedQuery),
+                    this.DATA_SOURCE_TIMEOUT,
+                    'getHistorySuggestions'
+                ).then(result => { history = result; }).catch(error => {
+                    Logger.error('[SearchProvider] Failed to get history:', error);
+                    history = [];
+                }),
 
-            // Get autocomplete suggestions
-            try {
-                autocomplete = await this.getAutocompleteSuggestions(trimmedQuery);
-            } catch (error) {
-                Logger.error('[SearchProvider] Failed to get autocomplete:', error);
-                autocomplete = [];
-            }
+                // Get top sites
+                withTimeout(
+                    () => this.getTopSites(),
+                    this.DATA_SOURCE_TIMEOUT,
+                    'getTopSites'
+                ).then(result => { topSites = result; }).catch(error => {
+                    Logger.error('[SearchProvider] Failed to get top sites:', error);
+                    topSites = [];
+                }),
+
+                // Get autocomplete suggestions
+                withTimeout(
+                    () => this.getAutocompleteSuggestions(trimmedQuery),
+                    this.DATA_SOURCE_TIMEOUT,
+                    'getAutocompleteSuggestions'
+                ).then(result => { autocomplete = result; }).catch(error => {
+                    Logger.error('[SearchProvider] Failed to get autocomplete:', error);
+                    autocomplete = [];
+                })
+            ];
+
+            // Wait for all data sources (with timeouts)
+            await Promise.all(dataSourcePromises);
 
             // Skip URL/search suggestions - these are handled by instant suggestions in the UI
             // Collect all results first
@@ -129,16 +171,37 @@ export class BaseDataProvider {
 
             // Score and sort results
             const finalResults = this.scoreAndSortResults(deduplicatedResults, trimmedQuery);
+            PerformanceLogger.endTimer(searchTimer, { 
+                mode, 
+                query: trimmedQuery,
+                resultCount: finalResults.length,
+                sourceCounts: {
+                    openTabs: openTabs.length,
+                    pinnedTabs: pinnedTabs.length,
+                    bookmarks: bookmarks.length,
+                    history: history.length,
+                    topSites: topSites.length,
+                    autocomplete: autocomplete.length
+                }
+            });
             return finalResults;
         } catch (error) {
             Logger.error('[SearchProvider] Search error:', error);
             const fallback = this.generateFallbackResult(trimmedQuery);
+            PerformanceLogger.endTimer(searchTimer, { mode, query: trimmedQuery, error: error.message });
             return [fallback];
         }
     }
 
     // Get default results when no query
     async getDefaultResults(mode) {
+        // Check cache first
+        if (this.defaultResultsCache && (Date.now() - this.defaultResultsCacheTime) < this.DEFAULT_RESULTS_CACHE_TTL) {
+            Logger.log('[BaseDataProvider] Returning cached default results');
+            return this.defaultResultsCache;
+        }
+
+        const defaultTimer = PerformanceLogger.startTimer('baseDataProvider.getDefaultResults');
         const results = [];
 
         try {
@@ -150,7 +213,14 @@ export class BaseDataProvider {
         }
 
         // Apply deduplication to default results as well
-        return this.deduplicateResults(results);
+        const deduplicated = this.deduplicateResults(results);
+        
+        // Cache the results
+        this.defaultResultsCache = deduplicated;
+        this.defaultResultsCacheTime = Date.now();
+        
+        PerformanceLogger.endTimer(defaultTimer, { mode, resultCount: deduplicated.length });
+        return deduplicated;
     }
 
     // Chrome tabs API integration

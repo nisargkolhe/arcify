@@ -12,34 +12,43 @@ import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 import { Logger } from '../logger.js';
+import { PerformanceLogger } from '../performance-logger.js';
 
 // Initialize spotlight on page load
 document.addEventListener('DOMContentLoaded', async () => {
+    const initTimer = PerformanceLogger.startTimer('spotlight.newtab.DOMContentLoaded');
+    
     // Check if spotlight is enabled (controls both spotlight and custom new tab)
-    const settings = await chrome.storage.sync.get({ enableSpotlight: true });
+    const settings = await PerformanceLogger.measureAsync('spotlight.newtab.getSettings', () => 
+        chrome.storage.sync.get({ enableSpotlight: true }));
     if (!settings.enableSpotlight) {
         // Request background script to navigate to default new tab
         try {
-            await chrome.runtime.sendMessage({
-                action: 'navigateToDefaultNewTab'
-            });
+            await PerformanceLogger.measureAsync('spotlight.newtab.navigateToDefaultNewTab', () => 
+                chrome.runtime.sendMessage({
+                    action: 'navigateToDefaultNewTab'
+                }));
         } catch (error) {
             Logger.error('[NewTab] Error navigating to default new tab:', error);
         }
+        PerformanceLogger.endTimer(initTimer, { enabled: false });
         return;
     }
     
     await initializeSpotlight();
+    PerformanceLogger.endTimer(initTimer, { enabled: true });
 });
 
 async function initializeSpotlight() {
+    const initTimer = PerformanceLogger.startTimer('spotlight.newtab.initializeSpotlight');
     const container = document.getElementById('spotlight-container');
 
     // Start with default color - will update asynchronously
     let activeSpaceColor = 'purple';
 
     // CSS styles with default accent color
-    const accentColorDefinitions = await SpotlightUtils.getAccentColorCSS(activeSpaceColor);
+    const accentColorDefinitions = await PerformanceLogger.measureAsync('spotlight.newtab.getAccentColorCSS', () => 
+        SpotlightUtils.getAccentColorCSS(activeSpaceColor));
     const spotlightCSS = `
         ${accentColorDefinitions}
         
@@ -256,7 +265,8 @@ async function initializeSpotlight() {
     // Send get suggestions message to background script
     // Use 'current-tab' mode so navigation happens in the current tab (the new tab page itself)
     async function sendGetSuggestionsMessage(query, mode) {
-        return await SpotlightMessageClient.getSuggestions(query, mode);
+        return await PerformanceLogger.measureAsync('spotlight.newtab.messageClient.getSuggestions', () => 
+            SpotlightMessageClient.getSuggestions(query, mode), { query, mode });
     }
 
     // Handle result action via message passing
@@ -270,16 +280,20 @@ async function initializeSpotlight() {
     // Load initial results
     // Use 'current-tab' mode since we're on the new tab page itself
     async function loadInitialResults() {
+        const loadTimer = PerformanceLogger.startTimer('spotlight.newtab.loadInitialResults');
         try {
             instantSuggestion = null;
-            const results = await sendGetSuggestionsMessage('', 'current-tab');
+            const results = await PerformanceLogger.measureAsync('spotlight.newtab.sendGetSuggestionsMessage', () => 
+                sendGetSuggestionsMessage('', 'current-tab'));
             asyncSuggestions = results || [];
             updateDisplay();
+            PerformanceLogger.endTimer(loadTimer, { resultCount: asyncSuggestions.length });
         } catch (error) {
             Logger.error('[NewTab Spotlight] Error loading initial results:', error);
             instantSuggestion = null;
             asyncSuggestions = [];
             displayEmptyState();
+            PerformanceLogger.endTimer(loadTimer, { error: error.message });
         }
     }
 
@@ -390,9 +404,11 @@ async function initializeSpotlight() {
     (async () => {
         try {
             // Update active space color asynchronously
-            const realActiveSpaceColor = await SpotlightMessageClient.getActiveSpaceColor();
+            const realActiveSpaceColor = await PerformanceLogger.measureAsync('spotlight.newtab.getActiveSpaceColor', () => 
+                SpotlightMessageClient.getActiveSpaceColor());
             if (realActiveSpaceColor !== activeSpaceColor) {
-                const newColorDefinitions = await SpotlightUtils.getAccentColorCSS(realActiveSpaceColor);
+                const newColorDefinitions = await PerformanceLogger.measureAsync('spotlight.newtab.updateAccentColorCSS', () => 
+                    SpotlightUtils.getAccentColorCSS(realActiveSpaceColor));
                 const styleElement = document.querySelector('#arcify-spotlight-styles');
                 if (styleElement) {
                     const colorRegex = /:root\s*{([^}]*)}/;
@@ -409,6 +425,7 @@ async function initializeSpotlight() {
         }
 
         // Load initial results
-        loadInitialResults();
+        await loadInitialResults();
+        PerformanceLogger.endTimer(initTimer);
     })();
 }

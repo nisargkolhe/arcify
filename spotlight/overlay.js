@@ -19,6 +19,7 @@ import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 import { Logger } from '../logger.js';
+import { PerformanceLogger } from '../performance-logger.js';
 
 /**
  * DORMANT CONTENT SCRIPT ARCHITECTURE
@@ -56,6 +57,7 @@ if (!window.arcifySpotlightTabMode) {
 
 // Main spotlight activation function
 async function activateSpotlight(spotlightTabMode = 'current-tab') {
+    const activateTimer = PerformanceLogger.startTimer('spotlight.overlay.activateSpotlight');
 
     // Handle toggle functionality for existing spotlight
     const existingDialog = document.getElementById('arcify-spotlight-dialog');
@@ -75,6 +77,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
                 input.scrollLeft = 0;
             }
         }
+        PerformanceLogger.endTimer(activateTimer, { action: 'toggle' });
         return;
     }
 
@@ -85,7 +88,8 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     let activeSpaceColor = 'purple'; // Default fallback
 
     // CSS styles with default accent color (will be updated)
-    const accentColorDefinitions = await SpotlightUtils.getAccentColorCSS(activeSpaceColor);
+    const accentColorDefinitions = await PerformanceLogger.measureAsync('spotlight.overlay.getAccentColorCSS', () => 
+        SpotlightUtils.getAccentColorCSS(activeSpaceColor));
     const spotlightCSS = `
         ${accentColorDefinitions}
         
@@ -368,7 +372,8 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
 
     // Send get suggestions message to background script using shared client
     async function sendGetSuggestionsMessage(query, mode) {
-        return await SpotlightMessageClient.getSuggestions(query, mode);
+        return await PerformanceLogger.measureAsync('spotlight.overlay.messageClient.getSuggestions', () => 
+            SpotlightMessageClient.getSuggestions(query, mode), { query, mode });
     }
 
     // Handle result action via message passing using shared client (with tab ID optimization)
@@ -381,6 +386,7 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
 
     // Load initial results
     async function loadInitialResults() {
+        const loadTimer = PerformanceLogger.startTimer('spotlight.overlay.loadInitialResults');
         try {
             // Clear instant suggestion when loading initial results
             instantSuggestion = null;
@@ -389,11 +395,13 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             const results = await sendGetSuggestionsMessage('', mode);
             asyncSuggestions = results || [];
             updateDisplay();
+            PerformanceLogger.endTimer(loadTimer, { resultCount: asyncSuggestions.length });
         } catch (error) {
             Logger.error('[Spotlight] Error loading initial results:', error);
             instantSuggestion = null;
             asyncSuggestions = [];
             displayEmptyState();
+            PerformanceLogger.endTimer(loadTimer, { error: error.message });
         }
     }
 
@@ -580,10 +588,12 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
     (async () => {
         try {
             // Update active space color asynchronously (non-blocking)
-            const realActiveSpaceColor = await SpotlightMessageClient.getActiveSpaceColor();
+            const realActiveSpaceColor = await PerformanceLogger.measureAsync('spotlight.overlay.getActiveSpaceColor', () => 
+                SpotlightMessageClient.getActiveSpaceColor());
             if (realActiveSpaceColor !== activeSpaceColor) {
                 // Update CSS variables for smooth color transition
-                const newColorDefinitions = await SpotlightUtils.getAccentColorCSS(realActiveSpaceColor);
+                const newColorDefinitions = await PerformanceLogger.measureAsync('spotlight.overlay.updateAccentColorCSS', () => 
+                    SpotlightUtils.getAccentColorCSS(realActiveSpaceColor));
                 const styleElement = document.querySelector('#arcify-spotlight-styles');
                 if (styleElement) {
                     // Extract just the color definitions and update them
@@ -602,8 +612,9 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
 
         // Load initial results after color update (if input is still empty)
         if (!input.value.trim()) {
-            loadInitialResults();
+            await loadInitialResults();
         }
+        PerformanceLogger.endTimer(activateTimer);
     })();
 
 }

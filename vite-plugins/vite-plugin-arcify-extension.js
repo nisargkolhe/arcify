@@ -109,6 +109,14 @@ function getExtensionPlugins(isDev = false) {
           await fs.copy('README.md', `${outDir}/README.md`);
         }
         
+        // Copy performance dashboard
+        if (await fs.pathExists('performance-dashboard.html')) {
+          await fs.copy('performance-dashboard.html', `${outDir}/performance-dashboard.html`);
+        }
+        if (await fs.pathExists('performance-dashboard.js')) {
+          await fs.copy('performance-dashboard.js', `${outDir}/performance-dashboard.js`);
+        }
+        
         console.log(`✅ Main extension files built to ${outDir}/`);
       }
     },
