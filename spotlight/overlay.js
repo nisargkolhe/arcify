@@ -413,8 +413,8 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
             handleAsyncSearch();
         }, 10);
     } else {
-        // Initial results will be loaded asynchronously after UI appears (Phase 2 optimization)
-        displayEmptyState();
+        // Show loading state while initial results load asynchronously
+        resultsContainer.innerHTML = '<div class="arcify-spotlight-loading">Loading...</div>';
     }
 
     // Handle instant suggestion update (no debouncing)
@@ -585,6 +585,18 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
      */
 
     // Async Phase 2 improvements: Update color and load initial results non-blocking
+    // Show spotlight UI immediately, then load results in background
+    PerformanceLogger.endTimer(activateTimer);
+    
+    // Start loading initial results asynchronously (don't await - non-blocking)
+    // Only load if input is empty (no pre-filled URL)
+    if (!input.value.trim()) {
+        loadInitialResults().catch(error => {
+            Logger.error('[Spotlight] Error loading initial results:', error);
+        });
+    }
+    
+    // Update color asynchronously (non-blocking)
     (async () => {
         try {
             // Update active space color asynchronously (non-blocking)
@@ -609,12 +621,6 @@ async function activateSpotlight(spotlightTabMode = 'current-tab') {
         } catch (error) {
             Logger.error('[Spotlight] Error updating active space color:', error);
         }
-
-        // Load initial results after color update (if input is still empty)
-        if (!input.value.trim()) {
-            await loadInitialResults();
-        }
-        PerformanceLogger.endTimer(activateTimer);
     })();
 
 }

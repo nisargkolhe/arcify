@@ -511,6 +511,7 @@ async function initSidebar() {
             LocalStorage.mergeDuplicateSpaceFolders());
 
         // Create bookmarks folder for spaces if it doesn't exist
+        // Cache: This folder rarely changes, so we can cache it
         const spacesFolder = await PerformanceLogger.measureAsync('sidebar.getOrCreateArcifyFolder', () => 
             LocalStorage.getOrCreateArcifyFolder());
         Logger.log("spacesFolder", spacesFolder);
@@ -586,17 +587,26 @@ async function initSidebar() {
 
             // Load existing tab groups as spaces
             const processSpaceTimer = PerformanceLogger.startTimer('sidebar.processSpaces');
+            
+            // Cache: Fetch bookmark folder tree once for all spaces (major optimization)
+            const mainFolder = await PerformanceLogger.measureAsync('sidebar.bookmarks.getSubTree.cached', () => 
+                chrome.bookmarks.getSubTree(spacesFolder.id));
+            const folderChildren = mainFolder[0].children || [];
+            
+            // Cache: Fetch all tabs once instead of per-space (optimization)
+            const allTabsForSpaces = await PerformanceLogger.measureAsync('sidebar.tabs.query.allForSpaces', () => 
+                chrome.tabs.query({}));
+            
             spaces = await Promise.all(tabGroups.map(async (group, index) => {
                 const spaceTimer = PerformanceLogger.startTimer(`sidebar.processSpace.${group.id}`);
                 try {
-                    const tabs = await PerformanceLogger.measureAsync(`sidebar.tabs.query.groupId.${group.id}`, () => 
-                        chrome.tabs.query({ groupId: group.id }));
+                    // Use cached tabs filtered by groupId instead of querying again
+                    const tabs = allTabsForSpaces.filter(tab => tab.groupId === group.id);
                     Logger.log("processing group", group);
 
-                    const mainFolder = await PerformanceLogger.measureAsync(`sidebar.bookmarks.getSubTree.${group.id}`, () => 
-                        chrome.bookmarks.getSubTree(spacesFolder.id));
-                    const bookmarkFolder = mainFolder[0].children?.find(f => f.title == group.title);
-                    Logger.log("looking for existing folder", group.title, mainFolder, bookmarkFolder);
+                    // Use cached folder tree instead of fetching again
+                    const bookmarkFolder = folderChildren.find(f => f.title == group.title);
+                    Logger.log("looking for existing folder", group.title, bookmarkFolder);
                     let spaceBookmarks = [];
                     if (!bookmarkFolder) {
                         Logger.log("creating new folder", group.title)

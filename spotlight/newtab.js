@@ -400,32 +400,37 @@ async function initializeSpotlight() {
     // Focus input immediately
     input.focus();
 
-    // Load initial results and update color asynchronously
-    (async () => {
-        try {
-            // Update active space color asynchronously
-            const realActiveSpaceColor = await PerformanceLogger.measureAsync('spotlight.newtab.getActiveSpaceColor', () => 
-                SpotlightMessageClient.getActiveSpaceColor());
-            if (realActiveSpaceColor !== activeSpaceColor) {
-                const newColorDefinitions = await PerformanceLogger.measureAsync('spotlight.newtab.updateAccentColorCSS', () => 
-                    SpotlightUtils.getAccentColorCSS(realActiveSpaceColor));
-                const styleElement = document.querySelector('#arcify-spotlight-styles');
-                if (styleElement) {
-                    const colorRegex = /:root\s*{([^}]*)}/;
-                    const currentCSS = styleElement.textContent;
-                    const newColorMatch = newColorDefinitions.match(colorRegex);
-                    if (newColorMatch) {
-                        const updatedCSS = currentCSS.replace(colorRegex, newColorMatch[0]);
-                        styleElement.textContent = updatedCSS;
+        // Load initial results and update color asynchronously (non-blocking)
+        // Show spotlight UI immediately, then load results in background
+        PerformanceLogger.endTimer(initTimer);
+        
+        // Start loading initial results asynchronously (don't await - non-blocking)
+        loadInitialResults().catch(error => {
+            Logger.error('[NewTab Spotlight] Error loading initial results:', error);
+        });
+        
+        // Update color asynchronously (non-blocking)
+        (async () => {
+            try {
+                // Update active space color asynchronously
+                const realActiveSpaceColor = await PerformanceLogger.measureAsync('spotlight.newtab.getActiveSpaceColor', () => 
+                    SpotlightMessageClient.getActiveSpaceColor());
+                if (realActiveSpaceColor !== activeSpaceColor) {
+                    const newColorDefinitions = await PerformanceLogger.measureAsync('spotlight.newtab.updateAccentColorCSS', () => 
+                        SpotlightUtils.getAccentColorCSS(realActiveSpaceColor));
+                    const styleElement = document.querySelector('#arcify-spotlight-styles');
+                    if (styleElement) {
+                        const colorRegex = /:root\s*{([^}]*)}/;
+                        const currentCSS = styleElement.textContent;
+                        const newColorMatch = newColorDefinitions.match(colorRegex);
+                        if (newColorMatch) {
+                            const updatedCSS = currentCSS.replace(colorRegex, newColorMatch[0]);
+                            styleElement.textContent = updatedCSS;
+                        }
                     }
                 }
+            } catch (error) {
+                Logger.error('[NewTab Spotlight] Error updating active space color:', error);
             }
-        } catch (error) {
-            Logger.error('[NewTab Spotlight] Error updating active space color:', error);
-        }
-
-        // Load initial results
-        await loadInitialResults();
-        PerformanceLogger.endTimer(initTimer);
-    })();
+        })();
 }
