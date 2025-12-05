@@ -1658,6 +1658,205 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
     }
 }
 
+/**
+ * Sync tab order from DOM to Chrome after drag and drop reordering
+ * @param {HTMLElement} draggingElement - The tab element that was dragged
+ * @param {HTMLElement} container - The container the tab was dropped into
+ */
+async function syncTabOrderToChrome(draggingElement, container) {
+    // Only sync if this is a real tab (has tabId), not a bookmark-only or folder
+    if (!draggingElement.dataset.tabId) {
+        return;
+    }
+
+    const tabId = parseInt(draggingElement.dataset.tabId);
+    if (!tabId) {
+        return;
+    }
+
+    // Note: Folder drops are already filtered out by the drop handler before calling this function
+
+    // Get the space element to determine which space/group we're working with
+    const spaceElement = container.closest('.space');
+    if (!spaceElement) {
+        return;
+    }
+
+    const spaceId = parseInt(spaceElement.dataset.spaceId);
+    if (!spaceId) {
+        return;
+    }
+
+    // Check if this is a pinned or temporary container
+    const isPinnedContainer = container.dataset.tabType === 'pinned';
+    const isTempContainer = container.dataset.tabType === 'temporary';
+
+    if (!isPinnedContainer && !isTempContainer) {
+        return;
+    }
+
+    try {
+        // Get the tab info from Chrome
+        const tab = await chrome.tabs.get(tabId);
+        
+        // Verify the tab is in the correct group
+        if (tab.groupId !== spaceId) {
+            return;
+        }
+
+        // Mark as syncing to prevent infinite loop
+        syncingToChrome.add(tabId);
+
+        // Get all tabs in the group from Chrome (in Chrome order)
+        const allGroupTabs = await chrome.tabs.query({ groupId: spaceId });
+        
+        if (allGroupTabs.length === 0) {
+            Logger.warn('[SyncToChrome] No tabs found in group');
+            return;
+        }
+
+        // Calculate the window-wide index where this group starts
+        // groupTabs[0].index gives us the window-wide index of the first tab in the group
+        const groupStartIndex = allGroupTabs[0].index;
+        
+        // Separate pinned and unpinned tabs
+        const pinnedTabs = allGroupTabs.filter(t => t.pinned);
+        const unpinnedTabs = allGroupTabs.filter(t => !t.pinned);
+
+        // Get all tab elements in the container (excluding folders and placeholders)
+        // DOM order is top to bottom
+        const tabElements = Array.from(container.querySelectorAll('.tab[data-tab-id]'));
+        const domTabIds = tabElements.map(el => parseInt(el.dataset.tabId));
+        
+        // Get the invert tab order setting
+        const invertTabOrder = await Utils.getInvertTabOrder();
+
+        let targetChromeIndex;
+
+        if (isPinnedContainer && tab.pinned) {
+            // For pinned tabs, we need to account for pinned tabs in other groups/spaces
+            // Get all pinned tabs in the window to find the correct window-wide index
+            const allPinnedTabs = await chrome.tabs.query({ pinned: true });
+            // Sort by index to ensure correct order
+            allPinnedTabs.sort((a, b) => a.index - b.index);
+            
+            // Filter to only pinned tabs in our group and sort by index
+            const pinnedTabsInGroup = allPinnedTabs.filter(t => t.groupId === spaceId);
+            pinnedTabsInGroup.sort((a, b) => a.index - b.index);
+            
+            // Convert DOM order to Chrome order
+            let chromeOrder = domTabIds;
+            if (invertTabOrder) {
+                // DOM shows [newest...oldest], Chrome stores [oldest...newest]
+                chromeOrder = [...domTabIds].reverse();
+            }
+
+            // Find the tab's relative position within pinned tabs in this group
+            const relativePosition = chromeOrder.indexOf(tabId);
+            
+            if (relativePosition === -1) {
+                Logger.warn('[SyncToChrome] Tab not found in Chrome order');
+                return;
+            }
+
+            // Find the first pinned tab in our group to get its window-wide index
+            const firstPinnedInGroup = pinnedTabsInGroup[0];
+            if (firstPinnedInGroup) {
+                // Count how many pinned tabs come before the first pinned tab in our group
+                const pinnedBeforeCount = allPinnedTabs.filter(t => 
+                    t.index < firstPinnedInGroup.index
+                ).length;
+                
+                // Target index = count of pinned tabs before ours + relative position in our group
+                targetChromeIndex = pinnedBeforeCount + relativePosition;
+            } else {
+                // Fallback: should not happen if tab is pinned
+                Logger.warn('[SyncToChrome] Could not find first pinned tab in group');
+                return;
+            }
+
+            Logger.log('[SyncToChrome] Pinned tab reorder:', {
+                tabId,
+                domOrder: domTabIds,
+                chromeOrder,
+                relativePosition,
+                firstPinnedIndex: firstPinnedInGroup.index,
+                pinnedBeforeCount: allPinnedTabs.filter(t => t.index < firstPinnedInGroup.index).length,
+                targetChromeIndex,
+                invertTabOrder
+            });
+
+        } else if (isTempContainer && !tab.pinned) {
+            // For temporary tabs, we need the window-wide index
+            // Get all unpinned tabs in our group, sorted by current index
+            const unpinnedTabsInGroup = allGroupTabs.filter(t => !t.pinned);
+            unpinnedTabsInGroup.sort((a, b) => a.index - b.index);
+            
+            if (unpinnedTabsInGroup.length === 0) {
+                Logger.warn('[SyncToChrome] No unpinned tabs in group');
+                return;
+            }
+            
+            // Convert DOM order to Chrome order
+            let chromeOrder = domTabIds;
+            if (invertTabOrder) {
+                // DOM shows [newest...oldest], Chrome stores [oldest...newest]
+                chromeOrder = [...domTabIds].reverse();
+            }
+
+            // Find the tab's relative position within unpinned tabs in this group
+            const relativePosition = chromeOrder.indexOf(tabId);
+            
+            if (relativePosition === -1) {
+                Logger.warn('[SyncToChrome] Tab not found in Chrome order');
+                return;
+            }
+
+            // Find the first unpinned tab in our group to get its window-wide index
+            const firstUnpinnedInGroup = unpinnedTabsInGroup[0];
+            
+            // Use the first unpinned tab's index as the base, then add relative position
+            targetChromeIndex = firstUnpinnedInGroup.index + relativePosition + 1;
+
+            Logger.log('[SyncToChrome] Temporary tab reorder:', {
+                tabId,
+                domOrder: domTabIds,
+                chromeOrder,
+                relativePosition,
+                groupStartIndex,
+                firstUnpinnedIndex: firstUnpinnedInGroup.index,
+                targetChromeIndex,
+                invertTabOrder
+            });
+        } else {
+            // Tab type mismatch (pinned in temp container or vice versa)
+            Logger.log('[SyncToChrome] Tab type mismatch, skipping sync');
+            return;
+        }
+
+        // Move the tab in Chrome
+        if (targetChromeIndex !== undefined && targetChromeIndex >= 0) {
+            const currentTab = await chrome.tabs.get(tabId);
+            
+            // Only move if the position actually changed
+            if (currentTab.index !== targetChromeIndex) {
+                await chrome.tabs.move(tabId, { index: targetChromeIndex });
+                Logger.log('[SyncToChrome] ✓ Moved tab', tabId, 'to Chrome index', targetChromeIndex);
+            } else {
+                Logger.log('[SyncToChrome] Tab already at target index', targetChromeIndex);
+            }
+        }
+
+    } catch (error) {
+        Logger.error('[SyncToChrome] Error syncing tab order:', error);
+    } finally {
+        // Remove sync flag after a short delay to allow Chrome to process the move
+        setTimeout(() => {
+            syncingToChrome.delete(tabId);
+        }, 300);
+    }
+}
+
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
     Logger.log('Setting up drag and drop handlers...');
     [pinnedContainer, tempContainer].forEach(container => {
@@ -1763,6 +1962,12 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 } else {
                     // Fallback: append to end if no specific target
                     targetContainer.appendChild(draggingElement);
+                }
+
+                // Sync tab order to Chrome if this is a real tab being dropped (not into a folder)
+                // The sync function will verify the tab is in the correct group/container
+                if (draggingElement.dataset.tabId && !targetFolder) {
+                    await syncTabOrderToChrome(draggingElement, container);
                 }
 
                 // Handle bookmark operations after DOM positioning is complete
@@ -2930,9 +3135,17 @@ async function handleTabRemove(tabId) {
 // Track pending tab moves to debounce rapid successive moves
 const pendingTabMoves = new Map();
 const processingTabMoves = new Set();
+// Track tabs being synced from DOM to Chrome to prevent infinite loops
+const syncingToChrome = new Set();
 
 function handleTabMove(tabId, moveInfo) {
     if (isOpeningBookmark) {
+        return;
+    }
+
+    // If we're syncing this tab from DOM to Chrome, ignore the Chrome -> DOM sync to prevent loop
+    if (syncingToChrome.has(tabId)) {
+        Logger.log('[TabMove] ⚠️ Ignoring move event - tab is being synced to Chrome', tabId);
         return;
     }
 
