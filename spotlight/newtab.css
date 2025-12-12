@@ -24,6 +24,8 @@ body {
     width: 100%;
     max-width: 650px;
     padding: 0 20px;
+    visibility: hidden;
+    /* Hidden by default until JS enables it */
 }
 
 /* Spotlight styles will be injected by the JavaScript */

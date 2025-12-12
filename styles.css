@@ -1275,9 +1275,14 @@ h3 {
     height: 20px;
     background-color: #4ade80;
     border-radius: 50%;
-    font-size: 12px;
-    font-weight: bold;
+    line-height: 0;
     color: white;
+}
+
+.toast-icon svg {
+    display: block;
+    width: 12px;
+    height: 12px;
 }
 
 .toast-message {

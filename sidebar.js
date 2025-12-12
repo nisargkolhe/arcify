@@ -384,7 +384,8 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
                 saveSpaces,
                 createTabElement,
                 activateTabInDOM,
-                Utils
+                Utils,
+                reconcileSpaceTabOrdering
             };
 
             // Use shared bookmark opening logic
@@ -411,6 +412,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (areaName === 'sync' && changes.colorOverrides) {
             Logger.log('Color overrides changed, re-applying...');
             applyColorOverrides();
+        }
+
+        // Re-render active space when tab order inversion setting changes
+        if (areaName === 'sync' && changes.invertTabOrder) {
+            Logger.log('invertTabOrder changed, refreshing active space UI...');
+            if (refreshActiveSpaceUITimeout) clearTimeout(refreshActiveSpaceUITimeout);
+            refreshActiveSpaceUITimeout = setTimeout(() => {
+                refreshActiveSpaceUITimeout = null;
+                refreshActiveSpaceUI();
+            }, 50);
         }
     });
 
@@ -1372,6 +1383,9 @@ async function moveTabToPinned(space, tab) {
 
     // Update placeholders after moving tab to pinned
     updatePinnedSectionPlaceholders();
+
+    // Enforce Chrome group ordering ([space bookmarks][temp]) after membership change.
+    await reconcileSpaceTabOrdering(space.id, { source: 'arcify', movedTabId: tab.id });
 }
 
 async function moveTabToTemp(space, tab) {
@@ -1397,6 +1411,9 @@ async function moveTabToTemp(space, tab) {
         const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
         updateChevronState(spaceElement, pinnedContainer);
     }
+
+    // Enforce Chrome group ordering ([space bookmarks][temp]) after membership change.
+    await reconcileSpaceTabOrdering(space.id, { source: 'arcify', movedTabId: tab.id });
 }
 
 // Helper function to manage folder placeholder state
@@ -1658,6 +1675,257 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
     }
 }
 
+/**
+ * Sync tab order from DOM to Chrome after drag and drop reordering
+ * @param {HTMLElement} draggingElement - The tab element that was dragged
+ * @param {HTMLElement} container - The container the tab was dropped into
+ */
+async function syncTabOrderToChrome(draggingElement, container) {
+    // Legacy implementation (index-math) intentionally disabled.
+    // The new, safer approach is `reconcileSpaceTabOrdering(...)` which enforces a single source of truth
+    // and uses batched moves rather than fragile index calculations.
+    return;
+}
+
+function uniqPreserveOrder(ids) {
+    const out = [];
+    const seen = new Set();
+    for (const id of ids) {
+        if (!id) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push(id);
+    }
+    return out;
+}
+
+function getSpaceElementById(spaceId) {
+    return document.querySelector(`[data-space-id="${spaceId}"]`);
+}
+
+function getPinnedContainer(spaceElement) {
+    return spaceElement?.querySelector('[data-tab-type="pinned"]') ?? null;
+}
+
+function getTempContainer(spaceElement) {
+    return spaceElement?.querySelector('[data-tab-type="temporary"]') ?? null;
+}
+
+/**
+ * Flatten visual order of pinned section for a space:
+ * - root-level `.tab[data-tab-id]` in order
+ * - then folder contents (per folder in DOM order), `.tab[data-tab-id]` in order
+ *
+ * Bookmark-only items (no tabId) are skipped since they don't exist in Chrome.
+ */
+function getFlattenedPinnedSectionTabIds(spaceElement) {
+    const pinnedContainer = getPinnedContainer(spaceElement);
+    if (!pinnedContainer) return [];
+
+    const out = [];
+    const children = Array.from(pinnedContainer.children);
+    for (const child of children) {
+        if (child.classList?.contains('tab') && child.dataset?.tabId) {
+            out.push(parseInt(child.dataset.tabId));
+            continue;
+        }
+        if (child.classList?.contains('folder')) {
+            const folderContent = child.querySelector('.folder-content');
+            if (!folderContent) continue;
+            const folderTabs = Array.from(folderContent.querySelectorAll('.tab[data-tab-id]'))
+                .map(el => parseInt(el.dataset.tabId));
+            out.push(...folderTabs);
+        }
+    }
+    return uniqPreserveOrder(out);
+}
+
+function getTempSectionTabIds(spaceElement) {
+    const tempContainer = getTempContainer(spaceElement);
+    if (!tempContainer) return [];
+    return uniqPreserveOrder(
+        Array.from(tempContainer.querySelectorAll('.tab[data-tab-id]')).map(el => parseInt(el.dataset.tabId))
+    );
+}
+
+function markTabsSyncingToChrome(tabIds, ttlMs = 600) {
+    const ids = uniqPreserveOrder(tabIds);
+    ids.forEach(id => syncingToChrome.add(id));
+    setTimeout(() => {
+        ids.forEach(id => syncingToChrome.delete(id));
+    }, ttlMs);
+}
+
+function unmarkTabsSyncingToChrome(tabIds) {
+    uniqPreserveOrder(tabIds).forEach(id => syncingToChrome.delete(id));
+}
+
+// Retry state for reconcile when Chrome is mid-drag and temporarily blocks tab edits.
+const reconcileRetryBySpace = new Map(); // spaceId -> { timeoutId, attempt, opts }
+
+function scheduleReconcileRetry(spaceId, opts, attempt, delayMs, reason) {
+    const existing = reconcileRetryBySpace.get(spaceId);
+    if (existing?.timeoutId) {
+        clearTimeout(existing.timeoutId);
+    }
+    const timeoutId = setTimeout(async () => {
+        reconcileRetryBySpace.delete(spaceId);
+        try {
+            await reconcileSpaceTabOrdering(spaceId, { ...opts, _retryAttempt: attempt });
+        } catch (e) {
+            Logger.warn('[ReconcileOrder] Retry failed:', e);
+        }
+    }, delayMs);
+    reconcileRetryBySpace.set(spaceId, { timeoutId, attempt, opts });
+    Logger.log('[ReconcileOrder] ⏳ Scheduled retry', { spaceId, attempt, delayMs, reason });
+}
+
+/**
+ * Reconcile ordering for a space/group by enforcing:
+ * Chrome window: [global pinned...][Group: (spaceBookmarks...) (temporaryTabs...)][other groups...]
+ *
+ * We intentionally avoid any manual index math:
+ * - We find the group's current start index
+ * - We move the entire group's tabs as a single batch into desired order
+ *
+ * @param {number} spaceId
+ * @param {{source?: 'arcify'|'chrome', movedTabId?: number}} opts
+ */
+async function reconcileSpaceTabOrdering(spaceId, opts = {}) {
+    const { source = 'arcify', movedTabId = null, _retryAttempt = 0 } = opts;
+    const space = spaces.find(s => s.id === spaceId);
+    if (!spaceId || !space) return;
+
+    const groupTabs = await chrome.tabs.query({ groupId: spaceId });
+    groupTabs.sort((a, b) => a.index - b.index);
+    const groupTabsUnpinned = groupTabs.filter(t => !t.pinned);
+    if (groupTabsUnpinned.length === 0) return;
+
+    const tabsInGroupSet = new Set(groupTabsUnpinned.map(t => t.id));
+
+    // If Chrome initiated the reorder, update temporary order from Chrome's current order.
+    // We keep bookmark ordering stable (Arcify/bookmark-folder is the canonical ordering),
+    // but enforce the boundary by moving any moved bookmark tab to the end of the bookmark block.
+    if (source === 'chrome') {
+        const bookmarkSet = new Set(space.spaceBookmarks ?? []);
+        const chromeOrder = groupTabsUnpinned.map(t => t.id);
+        const chromeTemps = chromeOrder.filter(id => !bookmarkSet.has(id));
+        space.temporaryTabs = uniqPreserveOrder(chromeTemps);
+
+        if (movedTabId && bookmarkSet.has(movedTabId)) {
+            const movedIndex = chromeOrder.indexOf(movedTabId);
+            const firstTempIndex = chromeOrder.findIndex(id => !bookmarkSet.has(id));
+            if (firstTempIndex !== -1 && movedIndex !== -1 && movedIndex > firstTempIndex) {
+                // Edge case: bookmark tab dragged into temporary region in Chrome.
+                // Force it back to the end of the bookmark block.
+                space.spaceBookmarks = (space.spaceBookmarks ?? []).filter(id => id !== movedTabId);
+                space.spaceBookmarks.push(movedTabId);
+            }
+        }
+    }
+
+    const desiredBookmarks = uniqPreserveOrder((space.spaceBookmarks ?? []).filter(id => tabsInGroupSet.has(id)));
+    const desiredTemps = uniqPreserveOrder((space.temporaryTabs ?? []).filter(id => tabsInGroupSet.has(id) && !desiredBookmarks.includes(id)));
+    const desiredGroupOrder = uniqPreserveOrder([...desiredBookmarks, ...desiredTemps]);
+
+    const currentGroupOrder = groupTabsUnpinned.map(t => t.id);
+    const isSameOrder = currentGroupOrder.length === desiredGroupOrder.length &&
+        currentGroupOrder.every((id, idx) => id === desiredGroupOrder[idx]);
+
+    if (!isSameOrder) {
+        const groupStartIndex = groupTabsUnpinned[0].index;
+        try {
+            // Mark as syncing to prevent Chrome->Arcify loops, but unmark immediately on failure.
+            markTabsSyncingToChrome(desiredGroupOrder);
+            await chrome.tabs.move(desiredGroupOrder, { index: groupStartIndex });
+            Logger.log('[ReconcileOrder] ✓ Reordered group', spaceId, {
+                source,
+                movedTabId,
+                from: currentGroupOrder,
+                to: desiredGroupOrder
+            });
+        } catch (error) {
+            unmarkTabsSyncingToChrome(desiredGroupOrder);
+
+            const message = (error && (error.message || error.toString())) ? (error.message || error.toString()) : '';
+            const isChromeMidDrag = typeof message === 'string' && message.includes('Tabs cannot be edited right now');
+
+            // Chrome blocks tab edits while the user is actively dragging a tab. In that case, retry shortly.
+            if (isChromeMidDrag) {
+                const nextAttempt = _retryAttempt + 1;
+                if (nextAttempt <= 12) {
+                    // Gentle exponential backoff, capped.
+                    const delayMs = Math.min(1200, 200 + nextAttempt * 100);
+                    scheduleReconcileRetry(spaceId, { source, movedTabId }, nextAttempt, delayMs, message);
+                    // Still save state + update DOM; Chrome will be fixed on retry.
+                } else {
+                    Logger.warn('[ReconcileOrder] Gave up retrying reorder (Chrome remained locked):', {
+                        spaceId,
+                        source,
+                        movedTabId,
+                        message
+                    });
+                }
+            } else {
+                // Unexpected errors should surface for debugging.
+                Logger.error('[ReconcileOrder] Error moving tabs:', error);
+                throw error;
+            }
+        }
+    }
+
+    saveSpaces();
+
+    // Update DOM: keep this conservative (temporary list only).
+    // Pinned section can include folders; we do not reshuffle folder structure based on Chrome.
+    const spaceElement = getSpaceElementById(spaceId);
+    if (spaceElement) {
+        const tempContainer = getTempContainer(spaceElement);
+        if (tempContainer) {
+            const invertTabOrder = await Utils.getInvertTabOrder();
+            const domTempOrder = invertTabOrder ? [...desiredTemps].reverse() : desiredTemps;
+            domTempOrder.forEach(id => {
+                const el = tempContainer.querySelector(`[data-tab-id="${id}"]`);
+                if (el) tempContainer.appendChild(el);
+            });
+        }
+    }
+}
+
+/**
+ * Called after an Arcify drag+drop to update the space model (spaceBookmarks/temporaryTabs)
+ * from the DOM, then reconcile Chrome ordering accordingly.
+ */
+async function handleArcifyOrderChangeAfterDropByTabId(tabId, container) {
+    if (!tabId || !container) return;
+    const spaceElement = container.closest('.space');
+    if (!spaceElement) return;
+    const spaceId = parseInt(spaceElement.dataset.spaceId);
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space) return;
+
+    const tabType = container.dataset.tabType;
+    const invertTabOrder = await Utils.getInvertTabOrder();
+    if (tabType === 'temporary') {
+        // DOM order is display order (top->bottom). Canonical storage is Chrome order (left->right).
+        const tempIdsDisplayOrder = getTempSectionTabIds(spaceElement);
+        const tempIdsChromeOrder = invertTabOrder ? [...tempIdsDisplayOrder].reverse() : tempIdsDisplayOrder;
+        // Preserve any non-rendered temp ids (should be rare), append to end.
+        const existing = (space.temporaryTabs ?? []).filter(id => !tempIdsChromeOrder.includes(id));
+        space.temporaryTabs = uniqPreserveOrder([...tempIdsChromeOrder, ...existing]);
+    } else if (tabType === 'pinned') {
+        // DOM order is display order. Canonical storage is Chrome order.
+        const pinnedIdsDisplayOrder = getFlattenedPinnedSectionTabIds(spaceElement);
+        const pinnedIdsChromeOrder = invertTabOrder ? [...pinnedIdsDisplayOrder].reverse() : pinnedIdsDisplayOrder;
+        const existing = (space.spaceBookmarks ?? []).filter(id => !pinnedIdsChromeOrder.includes(id));
+        space.spaceBookmarks = uniqPreserveOrder([...pinnedIdsChromeOrder, ...existing]);
+    } else {
+        return;
+    }
+
+    await reconcileSpaceTabOrdering(spaceId, { source: 'arcify', movedTabId: tabId });
+}
+
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
     Logger.log('Setting up drag and drop handlers...');
     [pinnedContainer, tempContainer].forEach(container => {
@@ -1733,6 +2001,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
+                const droppedTabId = draggingElement.dataset.tabId ? parseInt(draggingElement.dataset.tabId) : null;
                 const targetFolder = e.target.closest('.folder-content');
                 const targetContainer = targetFolder || container;
 
@@ -1767,6 +2036,12 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
                 // Handle bookmark operations after DOM positioning is complete
                 await handleBookmarkOperations(e, draggingElement, container, targetFolder);
+
+                // Update the model from the DOM (Arcify is source of truth here), then reconcile Chrome.
+                // This is intentionally done after bookmark operations so section membership is correct.
+                if (droppedTabId) {
+                    await handleArcifyOrderChangeAfterDropByTabId(droppedTabId, container);
+                }
             }
         });
     });
@@ -1949,6 +2224,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 
     var bookmarkedTabURLs = [];
     try {
+        const invertTabOrder = await Utils.getInvertTabOrder();
         const tabs = await chrome.tabs.query({});
         const pinnedTabs = await chrome.tabs.query({ pinned: true });
         const pinnedUrls = new Set(pinnedTabs.map(tab => tab.url));
@@ -1964,7 +2240,8 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                 Logger.log('Processing bookmarks:', bookmarks);
                 const processedUrls = new Set();
 
-                for (const item of bookmarks) {
+                const itemsToRender = invertTabOrder ? [...bookmarks].reverse() : bookmarks;
+                for (const item of itemsToRender) {
                     if (!item.url) {
                         // This is a folder
                         const folderTemplate = document.getElementById('folderTemplate');
@@ -2090,7 +2367,6 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 
 
         // Load temporary tabs
-        const invertTabOrder = await Utils.getInvertTabOrder();
         let tabsToLoad = [...space.temporaryTabs]; // Create a copy
 
         if (invertTabOrder) {
@@ -2110,6 +2386,39 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
         });
     } catch (error) {
         Logger.error('Error loading tabs:', error);
+    }
+}
+
+// Debounced UI refresh when settings change (e.g., invertTabOrder)
+let refreshActiveSpaceUITimeout = null;
+
+async function refreshActiveSpaceUI() {
+    try {
+        if (!activeSpaceId) return;
+        const space = spaces.find(s => s.id === activeSpaceId);
+        if (!space) return;
+
+        const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
+        if (!spaceElement) return;
+
+        const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+        const tempContainer = spaceElement.querySelector('[data-tab-type="temporary"]');
+        if (!pinnedContainer || !tempContainer) return;
+
+        // Clear existing rendered elements but keep templates (e.g., #folderTemplate).
+        pinnedContainer.querySelectorAll('.tab, .folder').forEach(el => el.remove());
+        tempContainer.querySelectorAll('.tab').forEach(el => el.remove());
+
+        await loadTabs(space, pinnedContainer, tempContainer);
+        updatePinnedSectionPlaceholders();
+
+        // Restore active highlight if possible
+        const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (activeTabs?.length) {
+            activateTabInDOM(activeTabs[0].id);
+        }
+    } catch (e) {
+        Logger.warn('[UIRefresh] Error refreshing active space UI:', e);
     }
 }
 
@@ -2482,6 +2791,9 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                                 saveSpaces();
                             }
 
+                            // Ensure restored tab lands in correct Chrome position for this space.
+                            await reconcileSpaceTabOrdering(targetSpaceId, { source: 'arcify', movedTabId: restoredTab.id });
+
                             // Replace the element with the active tab element
                             const updatedTabElement = await createTabElement(restoredTab, isPinned, false);
                             tabElement.replaceWith(updatedTabElement);
@@ -2522,7 +2834,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                         saveSpaces,
                         createTabElement,
                         activateTabInDOM,
-                        Utils
+                        Utils,
+                        reconcileSpaceTabOrdering
                     };
 
                     // Use shared bookmark opening logic
@@ -2930,9 +3243,17 @@ async function handleTabRemove(tabId) {
 // Track pending tab moves to debounce rapid successive moves
 const pendingTabMoves = new Map();
 const processingTabMoves = new Set();
+// Track tabs being synced from DOM to Chrome to prevent infinite loops
+const syncingToChrome = new Set();
 
 function handleTabMove(tabId, moveInfo) {
     if (isOpeningBookmark) {
+        return;
+    }
+
+    // If we're syncing this tab from DOM to Chrome, ignore the Chrome -> DOM sync to prevent loop
+    if (syncingToChrome.has(tabId)) {
+        Logger.log('[TabMove] ⚠️ Ignoring move event - tab is being synced to Chrome', tabId);
         return;
     }
 
@@ -2982,137 +3303,45 @@ async function processTabMove(tabId, moveInfo) {
             const sourceSpace = spaces.find(s =>
                 s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
             );
-            Logger.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace.id);
-
-
-
-            // Find the source and destination spaces
+            Logger.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace?.id);
 
             const destSpace = spaces.find(s => s.id === newGroupId);
 
+            // If the move affects a tab we don't track (rare), bail early.
+            if (!destSpace && !sourceSpace) return;
+
+            // If tab moved between groups/spaces, update membership first.
             if (sourceSpace && destSpace && sourceSpace.id !== destSpace.id) {
                 Logger.log('[TabMove] Moving tab between spaces:', sourceSpace.name, '->', destSpace.name);
 
-                // Remove from source space
                 sourceSpace.temporaryTabs = sourceSpace.temporaryTabs.filter(id => id !== tabId);
                 sourceSpace.spaceBookmarks = sourceSpace.spaceBookmarks.filter(id => id !== tabId);
                 sourceSpace.lastTab = null;
 
-                // Add to destination space's temporary tabs
+                // A moved tab into another group should be treated as a temporary tab in destination by default.
+                destSpace.spaceBookmarks = destSpace.spaceBookmarks.filter(id => id !== tabId);
                 if (!destSpace.temporaryTabs.includes(tabId)) {
                     destSpace.temporaryTabs.push(tabId);
                 }
 
-                // Update the DOM
+                // Move DOM element if it exists (visual update), then reconcile ordering.
                 const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
-                if (tabElement) {
-                    const destSpaceElement = document.querySelector(`[data-space-id="${destSpace.id}"]`);
-                    if (destSpaceElement) {
-                        const destTempContainer = destSpaceElement.querySelector('[data-tab-type="temporary"]');
-                        if (destTempContainer) {
-                            // Position tab to match Chrome's order
-                            const groupTabs = await chrome.tabs.query({ groupId: newGroupId });
-                            const tabIndex = groupTabs.findIndex(t => t.id === tabId);
-
-                            if (tabIndex !== -1) {
-                                // Find the tab element that should come after this one
-                                const nextTab = groupTabs[tabIndex - 1];
-                                if (nextTab) {
-                                    const nextTabElement = destTempContainer.querySelector(`[data-tab-id="${nextTab.id}"]`);
-                                    if (nextTabElement) {
-                                        destTempContainer.insertBefore(tabElement, nextTabElement);
-                                    } else {
-                                        destTempContainer.appendChild(tabElement);
-                                    }
-                                } else {
-                                    // This is the last tab, append to end
-                                    destTempContainer.appendChild(tabElement);
-                                }
-                            } else {
-                                destTempContainer.appendChild(tabElement);
-                            }
-                        }
-                    }
+                const destSpaceElement = document.querySelector(`[data-space-id="${destSpace.id}"]`);
+                const destTempContainer = destSpaceElement?.querySelector('[data-tab-type="temporary"]');
+                if (tabElement && destTempContainer) {
+                    destTempContainer.appendChild(tabElement);
                 }
 
-                saveSpaces();
-            } else if (sourceSpace) {
-                // Handle tab position updates within the same space
-                const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
-                if (tabElement) {
-                    const container = tabElement.parentElement;
-
-                    // Get all tabs in the group - Chrome's order is the source of truth
-                    const groupTabs = await chrome.tabs.query({ groupId: tab.groupId });
-
-                    if (groupTabs.length === 0) return;
-
-                    // Calculate relative indices (moveInfo indices are global/window-level)
-                    const groupStartIndex = groupTabs[0].index;
-                    // Note: If groupTabs is stale, the start index might be different, but usually
-                    // tabs in a group are contiguous so the offset is consistent.
-
-                    const relativeToIndex = moveInfo.toIndex - groupStartIndex;
-
-                    Logger.log('[TabMove] Positioning logic:', {
-                        tabId,
-                        globalToIndex: moveInfo.toIndex,
-                        groupStartIndex,
-                        relativeToIndex,
-                        groupTabsLength: groupTabs.length,
-                        groupTabTitles: groupTabs.map(t => {
-                            const isPinned = sourceSpace.spaceBookmarks.includes(t.id) || sourceSpace.spaceBookmarks.some(b => b.id === t.id || b.url === t.url);
-                            return (isPinned ? '[PINNED] ' : '') + t.title;
-                        })
-                    });
-
-                    // Determine if groupTabs is fresh (already updated) or stale (needs simulation)
-                    let targetTabsOrder = groupTabs;
-                    const isFresh = groupTabs[relativeToIndex] && groupTabs[relativeToIndex].id === tabId;
-
-                    if (isFresh) {
-                        Logger.log('[TabMove] Data is FRESH - using current order');
-                    } else {
-                        Logger.log('[TabMove] Data is STALE - simulating move');
-                        // Find where the tab is currently in the stale list
-                        const currentStaleIndex = groupTabs.findIndex(t => t.id === tabId);
-                        if (currentStaleIndex !== -1) {
-                            // Create a new array and simulate the move
-                            targetTabsOrder = [...groupTabs];
-                            const [movedTab] = targetTabsOrder.splice(currentStaleIndex, 1);
-                            // Clamp index to bounds
-                            const insertIndex = Math.max(0, Math.min(relativeToIndex, targetTabsOrder.length));
-                            targetTabsOrder.splice(insertIndex, 0, movedTab);
-
-                            Logger.log('[TabMove] Simulated order:', targetTabsOrder.map(t => t.title));
-                        }
-                    }
-
-                    // Filter targetTabsOrder to only include tabs that are in the current container (Temporary tabs)
-                    // This avoids issues with pinned tabs or other hidden tabs interfering with neighbor calculations
-                    const tabsInContainer = targetTabsOrder.filter(t => {
-                        return container.querySelector(`[data-tab-id="${t.id}"]`);
-                    });
-
-                    Logger.log('[TabMove] Reordering tabs in container:', tabsInContainer.map(t => t.title));
-
-                    // Re-append tabs in the correct order
-                    // appendChild moves the element if it already exists, so this effectively reorders them
-                    const invertTabOrder = await Utils.getInvertTabOrder();
-                    if (invertTabOrder) {
-                        tabsInContainer.reverse();
-                    }
-
-                    tabsInContainer.forEach(t => {
-                        const el = container.querySelector(`[data-tab-id="${t.id}"]`);
-                        if (el) {
-                            container.appendChild(el);
-                        }
-                    });
-
-                    Logger.log('[TabMove] ✓ Reorder complete');
-                }
+                await reconcileSpaceTabOrdering(sourceSpace.id, { source: 'chrome', movedTabId: tabId });
+                await reconcileSpaceTabOrdering(destSpace.id, { source: 'chrome', movedTabId: tabId });
+                return;
             }
+
+            // Same-space reorder: Chrome is the source of truth for temporary ordering, but we enforce
+            // bookmark-vs-temp boundaries via reconcile (edge case: bookmark dragged into temps).
+            const effectiveSpaceId = destSpace?.id ?? sourceSpace?.id;
+            if (!effectiveSpaceId) return;
+            await reconcileSpaceTabOrdering(effectiveSpaceId, { source: 'chrome', movedTabId: tabId });
         });
     });
 }

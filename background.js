@@ -148,7 +148,7 @@ async function closeSpotlightInTrackedTabs() {
 // Helper function to check if a URL supports content script injection
 function supportsContentScripts(url) {
     if (!url) return false;
-    
+
     // URLs that don't support content scripts
     const restrictedPatterns = [
         /^chrome:\/\//,
@@ -160,20 +160,38 @@ function supportsContentScripts(url) {
         /^brave:\/\//,
         /^opera:\/\//
     ];
-    
+
     // Check if URL matches any restricted pattern
     for (const pattern of restrictedPatterns) {
         if (pattern.test(url)) {
             return false;
         }
     }
-    
+
     return true;
 }
 
 // Helper function to activate spotlight via content script messaging
 async function injectSpotlightScript(spotlightTabMode) {
     try {
+        // Check if spotlight is enabled
+        const settings = await Utils.getSettings();
+        if (!settings.enableSpotlight) {
+            Logger.log("Spotlight is disabled in settings.");
+
+            if (spotlightTabMode === SpotlightTabMode.NEW_TAB) {
+                Logger.log("Opening default new tab instead of spotlight new tab.");
+                try {
+                    await chrome.tabs.create({ url: 'chrome://new-tab-page/' });
+                } catch (e) {
+                    await chrome.tabs.create({ url: 'chrome-search://local-ntp/local-ntp.html' });
+                }
+            } else {
+                Logger.log("Aborting spotlight injection.");
+            }
+            return;
+        }
+
         // First, close any existing spotlights in tracked tabs
         await closeSpotlightInTrackedTabs();
 
@@ -553,7 +571,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
                 if (tab && tab.url && tab.url.includes('newtab.html')) {
                     // Navigate to Chrome's default new tab page
-                    await chrome.tabs.update(tab.id, { url: 'chrome://new-tab-page/' });
+                    // Try the standard URL first, then fallback to local NTP
+                    try {
+                        await chrome.tabs.update(tab.id, { url: 'chrome://new-tab-page/' });
+                    } catch (e) {
+                        // Fallback for some browsers or configurations
+                        await chrome.tabs.update(tab.id, { url: 'chrome-search://local-ntp/local-ntp.html' });
+                    }
                 }
                 sendResponse({ success: true });
             } catch (error) {

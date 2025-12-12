@@ -14,9 +14,13 @@ import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
 import { Logger } from '../logger.js';
 
 // Initialize spotlight on page load
+// Initialize spotlight on page load
 document.addEventListener('DOMContentLoaded', async () => {
+    const container = document.getElementById('spotlight-container');
+
     // Check if spotlight is enabled (controls both spotlight and custom new tab)
     const settings = await chrome.storage.sync.get({ enableSpotlight: true });
+
     if (!settings.enableSpotlight) {
         // Request background script to navigate to default new tab
         try {
@@ -28,7 +32,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         return;
     }
-    
+
+    // If enabled, show container and initialize
+    if (container) {
+        container.style.visibility = 'visible';
+    }
     await initializeSpotlight();
 });
 

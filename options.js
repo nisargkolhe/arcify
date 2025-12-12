@@ -28,6 +28,17 @@ const DEFAULT_COLORS = {
   cyan: '#a5e2ea'
 };
 
+function updateAutoArchiveIdleMinutesVisibility(forceEnabled) {
+  const container = document.getElementById('autoArchiveIdleMinutesContainer');
+  const checkbox = document.getElementById('autoArchiveEnabled');
+  const input = document.getElementById('autoArchiveIdleMinutes');
+  if (!container || !checkbox || !input) return;
+
+  const isEnabled = forceEnabled !== undefined ? Boolean(forceEnabled) : Boolean(checkbox.checked);
+  container.style.display = isEnabled ? '' : 'none';
+  input.disabled = !isEnabled;
+}
+
 // Function to apply color overrides to CSS variables
 function applyColorOverrides(colorOverrides) {
   if (!colorOverrides) return;
@@ -118,6 +129,7 @@ async function restoreOptions() {
 
   autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
+  updateAutoArchiveIdleMinutesVisibility(settings.autoArchiveEnabled);
   invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
   enableSpotlightCheckbox.checked = settings.enableSpotlight !== undefined ? settings.enableSpotlight : true; // Default true
   if (debugLoggingEnabledCheckbox) {
@@ -224,7 +236,10 @@ function setupAutoSave() {
   // Auto-save for checkboxes
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   if (autoArchiveEnabledCheckbox) {
-    autoArchiveEnabledCheckbox.addEventListener('change', saveOptions);
+    autoArchiveEnabledCheckbox.addEventListener('change', () => {
+      updateAutoArchiveIdleMinutesVisibility(autoArchiveEnabledCheckbox.checked);
+      saveOptions();
+    });
   }
 
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');

@@ -259,7 +259,8 @@ export const BookmarkUtils = {
             saveSpaces,
             createTabElement,
             activateTabInDOM,
-            Utils
+            Utils,
+            reconcileSpaceTabOrdering
         } = context;
 
         Logger.log('[BookmarkUtils] Opening bookmark as tab:', bookmarkData.url, targetSpaceId);
@@ -283,9 +284,17 @@ export const BookmarkUtils = {
             // Update space data - add to spaceBookmarks for pinned tabs
             const space = spaces.find(s => s.id === targetSpaceId);
             if (space) {
-                space.spaceBookmarks.push(newTab.id);
+                if (!space.spaceBookmarks.includes(newTab.id)) {
+                    space.spaceBookmarks.push(newTab.id);
+                }
                 saveSpaces();
             }
+        }
+
+        // Ensure the tab is placed in the correct position inside the group:
+        // Chrome should always be [space bookmarks][temporary], regardless of invertTabOrder.
+        if (typeof reconcileSpaceTabOrdering === 'function') {
+            await reconcileSpaceTabOrdering(targetSpaceId, { source: 'arcify', movedTabId: newTab.id });
         }
 
         // Replace bookmark-only element with active tab element if provided
