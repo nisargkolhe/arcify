@@ -3,6 +3,21 @@
 
 <head>
     <title>Arc-ify Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
+    <style>
+        .varela-round-regular {
+            font-family: "Varela Round", sans-serif;
+            font-weight: 400;
+            font-style: normal;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: "Varela Round", sans-serif;
+            font-style: normal;
+        }
+    </style>
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -19,19 +34,19 @@
                 this space.</small>
         </div>
 
-        <div class="options-setting-item">
-            <label for="autoArchiveIdleMinutes" class="options-label">Archive Tabs After Idle (minutes):</label>
-            <input type="number" id="autoArchiveIdleMinutes" class="options-input" min="1" step="1">
-            <small class="options-description">Tabs inactive for this duration (and not pinned or audible) will be
-                archived.</small>
-        </div>
-
         <div class="options-setting-item options-setting-toggle">
             <label for="autoArchiveEnabled" class="options-label">Enable Auto-Archiving:</label>
             <div class="toggle-switch-container">
                 <input type="checkbox" id="autoArchiveEnabled" class="ios-toggle">
                 <label for="autoArchiveEnabled" class="toggle-label"></label> <!-- Visual part of the toggle -->
             </div>
+        </div>
+
+        <div class="options-setting-item" id="autoArchiveIdleMinutesContainer">
+            <label for="autoArchiveIdleMinutes" class="options-label">Archive Tabs After Idle (minutes):</label>
+            <input type="number" id="autoArchiveIdleMinutes" class="options-input" min="1" step="1">
+            <small class="options-description">Tabs inactive for this duration (and not pinned or audible) will be
+                archived.</small>
         </div>
 
         <div class="options-setting-item options-setting-toggle">
