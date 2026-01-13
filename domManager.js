@@ -55,8 +55,8 @@ export function setupDOMElements(createNewSpace) {
 
     document.getElementById('createSpaceBtn').addEventListener('click', createNewSpace);
     newTabBtn.addEventListener('click', () => {
-        // Trigger spotlight instead of creating a new tab
-        chrome.runtime.sendMessage({ command: "toggleSpotlightNewTab" });
+        // Open a new tab
+        chrome.tabs.create({});
     });
 
     const createSpaceColorSwatch = document.getElementById('createSpaceColorSwatch');
@@ -558,31 +558,5 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             showUrlCopyToast();
             sendResponse({ success: true });
             return false; // Synchronous response
-        } else if (request.action === "spotlightOpened") {
-            Logger.log("[Spotlight] Spotlight opened with mode:", request.mode);
-            // Highlight new tab button if spotlight is in new-tab mode
-            const newTabBtn = document.getElementById('newTabBtn');
-            if (request.mode === 'new-tab' && newTabBtn) {
-                newTabBtn.classList.add('spotlight-active');
-            }
-        } else if (request.action === "spotlightClosed") {
-            Logger.log("[Spotlight] Spotlight closed");
-            // Remove highlighting from new tab button
-            const newTabBtn = document.getElementById('newTabBtn');
-            if (newTabBtn) {
-                newTabBtn.classList.remove('spotlight-active');
-            }
-        } else if (request.action === "activatePinnedTab") {
-            Logger.log("[Spotlight] Activating pinned tab:", request);
-
-            // Switch to the space if needed
-            if (request.spaceId && currentActiveSpaceId !== request.spaceId) {
-                Logger.log("[Spotlight] Switching to space:", request.spaceId, request.spaceName);
-                setActiveSpaceFunc(request.spaceId);
-            }
-
-            // Use the utility function to handle pinned tab activation
-            activatePinnedTabByURL(request.bookmarkUrl, request.spaceId, request.spaceName);
-        }
     });
 }
