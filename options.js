@@ -61,7 +61,6 @@ async function saveOptions() {
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
-  const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
   const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
   const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
 
@@ -80,7 +79,6 @@ async function saveOptions() {
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
     invertTabOrder: invertTabOrderCheckbox.checked,
-    enableSpotlight: enableSpotlightCheckbox.checked,
     showAllOpenTabsInCollapsedFolders: showAllOpenTabsInCollapsedFoldersCheckbox ? showAllOpenTabsInCollapsedFoldersCheckbox.checked : false,
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
     debugLoggingEnabled: debugLoggingEnabledCheckbox ? debugLoggingEnabledCheckbox.checked : false
@@ -123,7 +121,6 @@ async function restoreOptions() {
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
-  const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
   const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
   const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
 
@@ -134,7 +131,6 @@ async function restoreOptions() {
   autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
   updateAutoArchiveIdleMinutesVisibility(settings.autoArchiveEnabled);
   invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
-  enableSpotlightCheckbox.checked = settings.enableSpotlight !== undefined ? settings.enableSpotlight : true; // Default true
   if (showAllOpenTabsInCollapsedFoldersCheckbox) {
     showAllOpenTabsInCollapsedFoldersCheckbox.checked = settings.showAllOpenTabsInCollapsedFolders !== undefined ? settings.showAllOpenTabsInCollapsedFolders : false; // Default false
   }
@@ -251,11 +247,6 @@ function setupAutoSave() {
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   if (invertTabOrderCheckbox) {
     invertTabOrderCheckbox.addEventListener('change', saveOptions);
-  }
-
-  const enableSpotlightCheckbox = document.getElementById('enableSpotlight');
-  if (enableSpotlightCheckbox) {
-    enableSpotlightCheckbox.addEventListener('change', saveOptions);
   }
 
   const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
