@@ -25,17 +25,18 @@ export class SharedSpotlightLogic {
     static combineResults(instantSuggestion, asyncSuggestions) {
         const combined = [];
 
-        // Add instant suggestion first (if exists)
-        if (instantSuggestion) {
-            combined.push(instantSuggestion);
-        }
-
         // Add async suggestions, filtering out duplicates of the instant suggestion
         for (const asyncResult of asyncSuggestions) {
             const isDuplicate = instantSuggestion && SpotlightUtils.areResultsDuplicate(instantSuggestion, asyncResult);
             if (!isDuplicate) {
                 combined.push(asyncResult);
             }
+        }
+
+        // Add instant suggestion second (or first if contains space) (if exists)
+        if (instantSuggestion) {
+            const hasSpace = instantSuggestion.metadata?.query?.includes(" ");
+            combined.splice(hasSpace ? 0 : 1, 0, instantSuggestion);
         }
 
         return combined;
