@@ -35,8 +35,8 @@ export class SharedSpotlightLogic {
 
         // Add instant suggestion second (or first if contains space) (if exists)
         if (instantSuggestion) {
-            const hasSpace = instantSuggestion.metadata?.query?.includes(" ");
-            combined.splice(hasSpace ? 0 : 1, 0, instantSuggestion);
+            const first = instantSuggestion.metadata?.query?.match(/[^A-z]/);
+            combined.splice(first ? 0 : 1, 0, instantSuggestion);
         }
 
         return combined;
