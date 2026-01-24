@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --config vite.config.dev.js --watch",
-    "build": "vite build",
+    "dev:spotlight": "cd spotlight-extension && npm run dev",
+    "build": "vite build && cd spotlight-extension && npm run build",
+    "build:arcify": "vite build",
+    "build:spotlight": "cd spotlight-extension && npm run build",
     "build:zip": "npm run build && npm run zip",
     "zip": "node scripts/zip.js",
     "preview": "vite preview",
-    "clean": "rm -rf dist dist-dev *.zip",
+    "clean": "rm -rf dist dist-dev spotlight-extension/dist spotlight-extension/dist-dev *.zip",
     "info": "node scripts/build-info.js",
     "release": "node scripts/release.js"
   },
