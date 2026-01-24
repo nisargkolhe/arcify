@@ -6,14 +6,11 @@ class InstallationOnboarding {
         this.currentStep = 1;
         this.totalSteps = 4;
         this.settings = {
-            archiving: false,
-            spotlight: true
+            archiving: false
         };
         this.shortcuts = {
             '_execute_action': 'Alt+S',
-            'quickPinToggle': 'Alt+D',
-            'toggleSpotlight': 'Alt+L',
-            'toggleSpotlightNewTab': 'Alt+T'
+            'quickPinToggle': 'Alt+D'
         };
 
         this.init();
@@ -36,7 +33,6 @@ class InstallationOnboarding {
         if (archiveToggle) {
             archiveToggle.addEventListener('click', () => this.toggleArchiving());
         }
-        document.getElementById('spotlightToggle').addEventListener('click', () => this.toggleSpotlight());
 
         // Progress dots
         document.querySelectorAll('.progress-dot').forEach((dot, index) => {
@@ -70,14 +66,8 @@ class InstallationOnboarding {
             if (this.shortcuts['_execute_action']) {
                 urlParams.set('toggle-sidepanel', this.shortcuts['_execute_action']);
             }
-            if (this.shortcuts['toggleSpotlight']) {
-                urlParams.set('spotlight-search', this.shortcuts['toggleSpotlight']);
-            }
             if (this.shortcuts['quickPinToggle']) {
                 urlParams.set('switch-spaces', this.shortcuts['quickPinToggle']);
-            }
-            if (this.shortcuts['toggleSpotlightNewTab']) {
-                urlParams.set('new-tab', this.shortcuts['toggleSpotlightNewTab']);
             }
 
             const queryString = urlParams.toString();
@@ -163,16 +153,10 @@ class InstallationOnboarding {
 
     updateToggleButtons() {
         const archiveToggle = document.getElementById('archiveToggle');
-        const spotlightToggle = document.getElementById('spotlightToggle');
 
         if (archiveToggle) {
             archiveToggle.textContent = this.settings.archiving ? 'Archiving is Enabled' : 'Enable Tab Archiving';
             archiveToggle.className = `toggle-button ${this.settings.archiving ? 'on' : 'off'}`;
-        }
-
-        if (spotlightToggle) {
-            spotlightToggle.textContent = this.settings.spotlight ? 'Spotlight is Enabled' : 'Enable Spotlight';
-            spotlightToggle.className = `toggle-button ${this.settings.spotlight ? 'on' : 'off'}`;
         }
     }
 
@@ -182,18 +166,11 @@ class InstallationOnboarding {
         this.saveSettings();
     }
 
-    toggleSpotlight() {
-        this.settings.spotlight = !this.settings.spotlight;
-        this.updateToggleButtons();
-        this.saveSettings();
-    }
-
     loadSettings() {
         // Load settings from chrome.storage if available
         if (chrome.storage && chrome.storage.sync) {
-            chrome.storage.sync.get(['autoArchiveEnabled', 'enableSpotlight'], (result) => {
+            chrome.storage.sync.get(['autoArchiveEnabled'], (result) => {
                 this.settings.archiving = result.autoArchiveEnabled !== undefined ? result.autoArchiveEnabled : false;
-                this.settings.spotlight = result.enableSpotlight !== undefined ? result.enableSpotlight : true;
                 this.updateToggleButtons();
             });
         }
@@ -203,8 +180,7 @@ class InstallationOnboarding {
         // Save settings to chrome.storage if available
         if (chrome.storage && chrome.storage.sync) {
             chrome.storage.sync.set({
-                autoArchiveEnabled: this.settings.archiving,
-                enableSpotlight: this.settings.spotlight
+                autoArchiveEnabled: this.settings.archiving
             });
         }
     }
@@ -223,9 +199,7 @@ class InstallationOnboarding {
             // Store shortcuts in instance for URL parameter passing
             this.shortcuts = {
                 '_execute_action': shortcuts['_execute_action'] || 'Alt+S',
-                'quickPinToggle': shortcuts['quickPinToggle'] || 'Alt+D',
-                'toggleSpotlight': shortcuts['toggleSpotlight'] || 'Alt+L',
-                'toggleSpotlightNewTab': shortcuts['toggleSpotlightNewTab'] || 'Alt+T'
+                'quickPinToggle': shortcuts['quickPinToggle'] || 'Alt+D'
             };
             Logger.log('Keyboard shortcuts loaded:', this.shortcuts);
             // Update the shortcut display in step 5
@@ -235,9 +209,7 @@ class InstallationOnboarding {
             // Fallback to default shortcuts
             this.shortcuts = {
                 '_execute_action': 'Alt+S',
-                'quickPinToggle': 'Alt+D',
-                'toggleSpotlight': 'Alt+L',
-                'toggleSpotlightNewTab': 'Alt+T'
+                'quickPinToggle': 'Alt+D'
             };
             this.updateShortcutDisplay(this.shortcuts);
         }
@@ -247,9 +219,7 @@ class InstallationOnboarding {
         // Update shortcut keys in step 5
         const shortcutElements = {
             'toggle-sidepanel': shortcuts['_execute_action'] || 'Alt+S',
-            'spotlight-search': shortcuts['toggleSpotlight'] || 'Alt+L',
-            'switch-spaces': shortcuts['quickPinToggle'] || 'Alt+D', // Using quickPinToggle for space switching
-            'new-tab': shortcuts['toggleSpotlightNewTab'] || 'Alt+T' // New Tab spotlight
+            'switch-spaces': shortcuts['quickPinToggle'] || 'Alt+D'
         };
 
         // Update each shortcut card

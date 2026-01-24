@@ -1,30 +1,18 @@
 /**
  * Background Service Worker (Manifest V3) - Core extension orchestrator
- * 
+ *
  * Purpose: Manages extension lifecycle, message passing, and system integrations
- * Key Functions: Spotlight injection/fallback, auto-archive system, tab activity tracking, Chrome API access
+ * Key Functions: Auto-archive system, tab activity tracking, Chrome API access
  * Architecture: Service worker that handles all Chrome API calls and coordinates between content scripts
- * 
+ *
  * Critical Notes:
- * - Only context with full Chrome API access (tabs, storage, search, etc.)
- * - Handles spotlight injection with automatic popup fallback for restricted URLs
+ * - Only context with full Chrome API access (tabs, storage, etc.)
  * - Manages tab activity tracking for auto-archive functionality
  * - All content script Chrome API requests must route through here via message passing
  */
 
 import { Utils } from './utils.js';
-import { SearchEngine } from './spotlight/shared/search-engine.js';
-import { BackgroundDataProvider } from './spotlight/shared/data-providers/background-data-provider.js';
 import { Logger } from './logger.js';
-
-// Enum for spotlight tab modes
-const SpotlightTabMode = {
-    CURRENT_TAB: 'current-tab',
-    NEW_TAB: 'new-tab'
-};
-
-// Create a single SearchEngine instance with BackgroundDataProvider
-const backgroundSearchEngine = new SearchEngine(new BackgroundDataProvider());
 
 const AUTO_ARCHIVE_ALARM_NAME = 'autoArchiveTabsAlarm';
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
@@ -69,10 +57,6 @@ chrome.runtime.onMessage.addListener(async function (request, sender, sendRespon
     // Forward the pin toggle command to the sidebar
     if (request.command === "toggleSpacePin") {
         chrome.runtime.sendMessage({ command: "toggleSpacePin", tabId: request.tabId });
-    } else if (request.command === "toggleSpotlight") {
-        await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
-    } else if (request.command === "toggleSpotlightNewTab") {
-        await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
     }
 });
 
@@ -96,175 +80,10 @@ chrome.commands.onCommand.addListener(async function (command) {
         Logger.log("sending");
         // Send a message to the sidebar
         chrome.runtime.sendMessage({ command: "PrevTabInSpace" });
-    } else if (command === "toggleSpotlight") {
-        await injectSpotlightScript(SpotlightTabMode.CURRENT_TAB);
-    } else if (command === "toggleSpotlightNewTab") {
-        await injectSpotlightScript(SpotlightTabMode.NEW_TAB);
     } else if (command === "copyCurrentUrl") {
         await copyCurrentTabUrlWithFallback();
     }
 });
-
-// Track tabs that have spotlight open for efficient closing.
-// Mainly used to close spotlight overlays in all tabs when it's
-// closed in 1 / user switches to another tab with overlay open.
-const spotlightOpenTabs = new Set();
-
-// Close spotlight in tracked tabs only
-async function closeSpotlightInTrackedTabs() {
-    try {
-        const closePromises = Array.from(spotlightOpenTabs).map(tabId =>
-            chrome.tabs.sendMessage(tabId, { action: 'closeSpotlight' }).catch(() => {
-                // Remove from tracking if tab no longer exists or script not loaded
-                spotlightOpenTabs.delete(tabId);
-            })
-        );
-        await Promise.all(closePromises);
-        // Clear the set after closing
-        spotlightOpenTabs.clear();
-    } catch (error) {
-        Logger.error('[Background] Error closing spotlight in tracked tabs:', error);
-    }
-}
-
-/**
- * PERFORMANCE-OPTIMIZED SPOTLIGHT ACTIVATION
- * 
- * Primary Strategy: Fast messaging to dormant content script
- * - Content script pre-loaded on all pages at document_start
- * - Instant activation via chrome.tabs.sendMessage() (~50-100ms)
- * - No waiting for page resources or script injection
- * 
- * Fallback Strategy: Legacy script injection
- * - Used when messaging fails (content script not ready, restricted URLs)
- * - Chrome.scripting.executeScript() with variable setup + script injection
- * - Slower but reliable fallback for edge cases
- * 
- * Final Fallback: Popup mode
- * - Used when all content script methods fail (chrome:// URLs, etc.)
- * - Opens extension popup with same spotlight functionality
- */
-
-// Helper function to check if a URL supports content script injection
-function supportsContentScripts(url) {
-    if (!url) return false;
-
-    // URLs that don't support content scripts
-    const restrictedPatterns = [
-        /^chrome:\/\//,
-        /^chrome-extension:\/\//,
-        /^edge:\/\//,
-        /^about:/,
-        /^moz-extension:\/\//,
-        /^vivaldi:\/\//,
-        /^brave:\/\//,
-        /^opera:\/\//
-    ];
-
-    // Check if URL matches any restricted pattern
-    for (const pattern of restrictedPatterns) {
-        if (pattern.test(url)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-// Helper function to activate spotlight via content script messaging
-async function injectSpotlightScript(spotlightTabMode) {
-    try {
-        // Check if spotlight is enabled
-        const settings = await Utils.getSettings();
-        if (!settings.enableSpotlight) {
-            Logger.log("Spotlight is disabled in settings.");
-
-            if (spotlightTabMode === SpotlightTabMode.NEW_TAB) {
-                Logger.log("Opening default new tab instead of spotlight new tab.");
-                try {
-                    await chrome.tabs.create({ url: 'chrome://new-tab-page/' });
-                } catch (e) {
-                    await chrome.tabs.create({ url: 'chrome-search://local-ntp/local-ntp.html' });
-                }
-            } else {
-                Logger.log("Aborting spotlight injection.");
-            }
-            return;
-        }
-
-        // First, close any existing spotlights in tracked tabs
-        await closeSpotlightInTrackedTabs();
-
-        // Get the active tab
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab) {
-            // Check if the tab URL supports content scripts
-            // If not, skip directly to custom new tab fallback
-            if (!supportsContentScripts(tab.url)) {
-                Logger.log("Tab URL doesn't support content scripts, opening custom new tab directly:", tab.url);
-                await fallbackToChromeTabs(spotlightTabMode);
-                return;
-            }
-            // PRIMARY: Try to send activation message to dormant content script
-            // This is 20-40x faster than script injection (50-100ms vs 1-2s)
-            try {
-                const response = await chrome.tabs.sendMessage(tab.id, {
-                    action: 'activateSpotlight',
-                    mode: spotlightTabMode,
-                    tabUrl: tab.url,
-                    tabId: tab.id
-                });
-
-                if (response && response.success) {
-                    // Success! Spotlight activated instantly via messaging
-                    chrome.runtime.sendMessage({
-                        action: 'spotlightOpened',
-                        mode: spotlightTabMode
-                    });
-                    return; // Exit early - no need for fallbacks
-                }
-            } catch (messageError) {
-                Logger.log("Content script messaging failed, using new tab fallback:", messageError);
-                // If messaging fails, fall back to opening spotlight in a new tab
-                await fallbackToChromeTabs(spotlightTabMode);
-                return;
-            }
-        }
-    } catch (error) {
-        Logger.log("All spotlight activation methods failed, using Chrome tab fallback:", error);
-        // Final fallback: Chrome tab operations
-        await fallbackToChromeTabs(spotlightTabMode);
-    }
-}
-
-// Helper function for Chrome tab fallback when spotlight injection fails
-async function fallbackToChromeTabs(spotlightTabMode) {
-    try {
-        // First, close any existing spotlights in tracked tabs
-        await closeSpotlightInTrackedTabs();
-
-        Logger.log(`Falling back to custom new tab page for mode: ${spotlightTabMode}`);
-
-        // Open custom new tab page with spotlight
-        // This provides a better UX than chrome://newtab/ since users can still use spotlight
-        // even when it cannot be injected on restricted pages (chrome://, extension pages, etc.)
-        await chrome.tabs.create({ url: chrome.runtime.getURL('spotlight/newtab.html'), active: true });
-        Logger.log("Spotlight failed - opened custom new tab with spotlight interface");
-
-    } catch (chromeTabError) {
-        Logger.error("Error with Chrome tab fallback:", chromeTabError);
-        // Final fallback: open side panel
-        try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tab) {
-                chrome.sidePanel.open({ windowId: tab.windowId });
-                Logger.log("Opened side panel as final fallback");
-            }
-        } catch (sidePanelError) {
-            Logger.error("All fallbacks failed:", sidePanelError);
-        }
-    }
-}
 
 // Helper function for URL copying via script injection
 async function copyCurrentTabUrlWithFallback() {
@@ -285,9 +104,9 @@ async function copyCurrentTabUrlWithFallback() {
                     // This function runs in webpage context but avoids permission issues
                     // by being injected from extension context
                     navigator.clipboard.writeText(url).then(() => {
-                        Logger.log(`[URLCopy] Script injection succeeded: ${url}`);
+                        console.log(`[URLCopy] Script injection succeeded: ${url}`);
                     }).catch(err => {
-                        Logger.error("[URLCopy] Script injection clipboard failed:", err);
+                        console.error("[URLCopy] Script injection clipboard failed:", err);
                         // Fallback to older method if clipboard API fails
                         const textarea = document.createElement('textarea');
                         textarea.value = url;
@@ -295,7 +114,7 @@ async function copyCurrentTabUrlWithFallback() {
                         textarea.select();
                         document.execCommand('copy');
                         document.body.removeChild(textarea);
-                        Logger.log(`[URLCopy] Fallback copy succeeded: ${url}`);
+                        console.log(`[URLCopy] Fallback copy succeeded: ${url}`);
                     });
                 },
                 args: [tab.url]
@@ -524,9 +343,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 // Track tab activation
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     await updateTabLastActivity(activeInfo.tabId);
-
-    // Close any open spotlights when switching tabs
-    await closeSpotlightInTrackedTabs();
 });
 
 // Track tab updates (e.g., audible status changes)
@@ -545,11 +361,6 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
 
     // Clean up tab name override for closed tab
     await Utils.removeTabNameOverride(tabId);
-
-    // Clean up spotlight tracking for closed tab
-    if (spotlightOpenTabs.has(tabId)) {
-        spotlightOpenTabs.delete(tabId);
-    }
 });
 
 // Optional: Listen for messages from options page to immediately update alarm
@@ -564,30 +375,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.create({ url: message.url });
         sendResponse({ success: true });
         return false; // Synchronous response
-    } else if (message.action === 'navigateToDefaultNewTab') {
-        // Handle navigation to default new tab when custom new tab is disabled
-        (async () => {
-            try {
-                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                if (tab && tab.url && tab.url.includes('newtab.html')) {
-                    // Navigate to Chrome's default new tab page
-                    // Try the standard URL first, then fallback to local NTP
-                    try {
-                        await chrome.tabs.update(tab.id, { url: 'chrome://new-tab-page/' });
-                    } catch (e) {
-                        // Fallback for some browsers or configurations
-                        await chrome.tabs.update(tab.id, { url: 'chrome-search://local-ntp/local-ntp.html' });
-                    }
-                }
-                sendResponse({ success: true });
-            } catch (error) {
-                Logger.error('[Background] Error navigating to default new tab:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
     } else if (message.action === 'switchToTab') {
-        // Handle tab switching for spotlight search results
+        // Handle tab switching for search results
         (async () => {
             try {
                 await chrome.tabs.update(message.tabId, { active: true });
@@ -595,25 +384,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ success: true });
             } catch (error) {
                 Logger.error('[Background] Error switching to tab:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'searchTabs') {
-        // Handle async operation properly
-        (async () => {
-            try {
-                const tabs = await chrome.tabs.query({});
-                const query = message.query?.toLowerCase() || '';
-                const filteredTabs = tabs.filter(tab => {
-                    if (!tab.title || !tab.url) return false;
-                    if (!query) return true;
-                    return tab.title.toLowerCase().includes(query) ||
-                        tab.url.toLowerCase().includes(query);
-                });
-                sendResponse({ success: true, tabs: filteredTabs });
-            } catch (error) {
-                Logger.error('[Background] Error searching tabs:', error);
                 sendResponse({ success: false, error: error.message });
             }
         })();
@@ -641,177 +411,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         })();
         return true; // Async response
-    } else if (message.action === 'searchBookmarks') {
-        (async () => {
-            try {
-                const bookmarks = await chrome.bookmarks.search(message.query);
-                const filteredBookmarks = bookmarks.filter(bookmark => bookmark.url);
-                sendResponse({ success: true, bookmarks: filteredBookmarks });
-            } catch (error) {
-                Logger.error('[Background] Error searching bookmarks:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'searchHistory') {
-        (async () => {
-            try {
-                const historyItems = await chrome.history.search({
-                    text: message.query,
-                    maxResults: 10,
-                    startTime: Date.now() - (7 * 24 * 60 * 60 * 1000) // Last 7 days
-                });
-                sendResponse({ success: true, history: historyItems });
-            } catch (error) {
-                Logger.error('[Background] Error searching history:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'getTopSites') {
-        (async () => {
-            try {
-                const topSites = await chrome.topSites.get();
-                sendResponse({ success: true, topSites: topSites });
-            } catch (error) {
-                Logger.error('[Background] Error getting top sites:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'getAutocomplete') {
-        (async () => {
-            try {
-                const dataProvider = backgroundSearchEngine.dataProvider;
-                const suggestions = await dataProvider.getAutocompleteData(message.query);
-                sendResponse({ success: true, suggestions: suggestions });
-            } catch (error) {
-                Logger.error('[Background] Error getting autocomplete suggestions:', error);
-                sendResponse({ success: false, error: error.message, suggestions: [] });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'getPinnedTabs') {
-        Logger.log('[Background] Received getPinnedTabs message:', message);
-        (async () => {
-            try {
-                const dataProvider = backgroundSearchEngine.dataProvider;
-                Logger.log('[Background] Getting pinned tabs from data provider...');
-                const pinnedTabs = await dataProvider.getPinnedTabsData(message.query);
-                Logger.log('[Background] Sending pinned tabs response:', pinnedTabs.length, 'tabs');
-                sendResponse({ success: true, pinnedTabs: pinnedTabs });
-            } catch (error) {
-                Logger.error('[Background] Error getting pinned tabs:', error);
-                sendResponse({ success: false, error: error.message, pinnedTabs: [] });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'getActiveSpaceColor') {
-        (async () => {
-            try {
-                const spacesResult = await chrome.storage.local.get('spaces');
-                const spaces = spacesResult.spaces || [];
-
-                // Get the current active tab to determine which space it belongs to
-                const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-                if (!activeTab || !activeTab.groupId || activeTab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-                    sendResponse({ success: true, color: 'purple' });
-                    return;
-                }
-
-                // Find the space that matches the active tab's group
-                const activeSpace = spaces.find(space => space.id === activeTab.groupId);
-
-                if (activeSpace && activeSpace.color) {
-                    sendResponse({ success: true, color: activeSpace.color });
-                } else {
-                    sendResponse({ success: true, color: 'purple' });
-                }
-            } catch (error) {
-                Logger.error('[Background] Error getting active space color:', error);
-                sendResponse({ success: false, error: error.message, color: 'purple' });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'performSearch') {
-        // Handle search using the user's default search engine via chrome.search API
-        (async () => {
-            try {
-
-                // Determine disposition based on spotlight tab mode
-                const disposition = message.mode === SpotlightTabMode.NEW_TAB ? 'NEW_TAB' : 'CURRENT_TAB';
-
-                // Use chrome.search API to search with the user's default search engine
-                await chrome.search.query({
-                    text: message.query,
-                    disposition: disposition
-                });
-
-                sendResponse({ success: true });
-            } catch (error) {
-                Logger.error('[Background] Error performing search:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'getSpotlightSuggestions') {
-        // Handle spotlight suggestions requests from overlay.js
-        (async () => {
-            try {
-                const query = message.query.trim();
-
-                // Get suggestions using the background search engine with debouncing
-                const results = query
-                    ? await backgroundSearchEngine.getSpotlightSuggestionsUsingCache(query, message.mode)
-                    : await backgroundSearchEngine.getSpotlightSuggestionsImmediate('', message.mode);
-
-                sendResponse({ success: true, results: results });
-            } catch (error) {
-                Logger.error('[Background] Error getting spotlight suggestions:', error);
-                sendResponse({ success: false, error: error.message, results: [] });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'spotlightHandleResult') {
-        // Handle spotlight result actions from overlay.js and newtab.js
-        (async () => {
-            try {
-                // Validate inputs
-                if (!message.result || !message.result.type || !message.mode) {
-                    throw new Error('Invalid spotlight result message');
-                }
-
-                // Use sender's tab ID if available (for new tab page), otherwise use provided tabId
-                const tabId = (sender.tab && sender.tab.id) ? sender.tab.id : message.tabId;
-
-                // Handle the result action (pass tabId for optimization)
-                await backgroundSearchEngine.handleResultAction(message.result, message.mode, tabId);
-                sendResponse({ success: true });
-            } catch (error) {
-                Logger.error('[Background] Error handling spotlight result:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
-    } else if (message.action === 'spotlightOpened') {
-        // Track when spotlight opens in a tab
-        if (sender.tab && sender.tab.id) {
-            spotlightOpenTabs.add(sender.tab.id);
-        }
-        return false;
-    } else if (message.action === 'spotlightClosed') {
-        // Track when spotlight closes in a tab
-        if (sender.tab && sender.tab.id) {
-            spotlightOpenTabs.delete(sender.tab.id);
-        }
-        return false;
     } else if (message.action === 'activatePinnedTab') {
-        // Only forward if this came from overlay mode (content script)
-        // Popup mode can send directly to sidebar, so don't forward to prevent double tabs
-        if (sender.tab) {  // Message came from content script (overlay)
-            chrome.runtime.sendMessage(message);
-        }
+        // Forward pinned tab activation to sidebar
+        chrome.runtime.sendMessage(message);
         sendResponse({ success: true });
         return false; // Synchronous response
     }

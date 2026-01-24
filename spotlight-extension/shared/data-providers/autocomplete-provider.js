@@ -16,7 +16,7 @@ import { SearchResult, ResultType } from '../search-types.js';
 import { websiteNameExtractor } from '../website-name-extractor.js';
 import { getAutocompleteScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
-import { Logger } from '../../../logger.js';
+import { Logger } from '../../logger.js';
 
 export class AutocompleteProvider {
     constructor() {

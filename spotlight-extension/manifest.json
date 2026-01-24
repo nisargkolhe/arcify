@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "Arcify Spotlight",
+  "version": "1.0.0",
+  "description": "Search/command bar for tabs, bookmarks, and history",
+  "permissions": [
+    "tabs",
+    "storage",
+    "bookmarks",
+    "commands",
+    "favicon",
+    "scripting",
+    "search",
+    "topSites",
+    "history"
+  ],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "overlay.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "_favicon/*",
+        "shared/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "extension_ids": [
+        "*"
+      ]
+    }
+  ],
+  "externally_connectable": {
+    "ids": ["*"]
+  },
+  "icons": {
+    "128": "assets/icon.png"
+  },
+  "commands": {
+    "toggleSpotlight": {
+      "suggested_key": {
+        "default": "Alt+L"
+      },
+      "description": "Current Tab URL"
+    },
+    "toggleSpotlightNewTab": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "New Tab"
+    }
+  }
+}

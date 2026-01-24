@@ -1,7 +1,7 @@
 // message-client.js - Shared message passing abstraction for spotlight components
 // Consolidates chrome.runtime.sendMessage patterns from overlay.js and popup.js
 
-import { Logger } from '../../logger.js';
+import { Logger } from '../logger.js';
 
 export class SpotlightMessageClient {
     // Get suggestions from background script

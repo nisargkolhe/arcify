@@ -18,7 +18,7 @@ import { SelectionManager } from './shared/selection-manager.js';
 import { SpotlightMessageClient } from './shared/message-client.js';
 import { SpotlightTabMode } from './shared/search-types.js';
 import { SharedSpotlightLogic } from './shared/shared-component-logic.js';
-import { Logger } from '../logger.js';
+import { Logger } from './logger.js';
 
 /**
  * DORMANT CONTENT SCRIPT ARCHITECTURE

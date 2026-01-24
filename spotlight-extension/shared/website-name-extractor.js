@@ -13,7 +13,7 @@
  */
 
 import { POPULAR_SITES } from './popular-sites.js';
-import { Logger } from '../../logger.js';
+import { Logger } from '../logger.js';
 
 export class WebsiteNameExtractor {
     constructor() {

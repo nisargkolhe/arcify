@@ -13,34 +13,16 @@
     "commands",
     "favicon",
     "scripting",
-    "search",
-    "topSites",
-    "history",
     "clipboardWrite"
   ],
   "side_panel": {
     "default_path": "sidebar.html"
   },
   "action": {},
-  "chrome_url_overrides": {
-    "newtab": "spotlight/newtab.html"
-  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "spotlight/overlay.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": [
@@ -48,8 +30,7 @@
         "onboarding.js",
         "installation-onboarding.js",
         "assets/*",
-        "_favicon/*",
-        "spotlight/shared/*"
+        "_favicon/*"
       ],
       "matches": [
         "<all_urls>"
@@ -59,6 +40,9 @@
       ]
     }
   ],
+  "externally_connectable": {
+    "ids": ["*"]
+  },
   "icons": {
     "128": "assets/icon.png"
   },
@@ -80,18 +64,6 @@
     },
     "PrevTabInSpace": {
       "description": "Navigates to prev tab in space"
-    },
-    "toggleSpotlight": {
-      "suggested_key": {
-        "default": "Alt+L"
-      },
-      "description": "Current Tab URL"
-    },
-    "toggleSpotlightNewTab": {
-      "suggested_key": {
-        "default": "Alt+T"
-      },
-      "description": "New Tab"
     },
     "copyCurrentUrl": {
       "description": "Copy current tab URL"

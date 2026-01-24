@@ -13,7 +13,7 @@
  */
 
 import { ResultType, SpotlightTabMode } from './search-types.js';
-import { Logger } from '../../logger.js';
+import { Logger } from '../logger.js';
 
 // Search Engine with caching
 export class SearchEngine {

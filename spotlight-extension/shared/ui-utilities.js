@@ -15,8 +15,8 @@
 import { ResultType, SpotlightTabMode } from './search-types.js';
 import { websiteNameExtractor } from './website-name-extractor.js';
 import { BASE_SCORES } from './scoring-constants.js';
-import { Utils } from '../../utils.js';
-import { Logger } from '../../logger.js';
+import { Utils } from '../utils.js';
+import { Logger } from '../logger.js';
 
 export class SpotlightUtils {
     // Helper to properly prefix URLs with protocol

@@ -79,13 +79,11 @@ const Utils = {
         const defaultSettings = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
-            autoArchiveIdleMinutes: 360, // Default: 30 minutes
-            enableSpotlight: true, // Default: enabled (controls both spotlight and custom new tab)
+            autoArchiveIdleMinutes: 360, // Default: 6 hours
             invertTabOrder: true, // Default: enabled (New tabs/High index on top)
             colorOverrides: null, // Default: no color overrides
             debugLoggingEnabled: false, // Default: disabled (controls debug logging)
             showAllOpenTabsInCollapsedFolders: false, // Default: Arc behavior (only show active tab in collapsed folder)
-            // ... other settings ...
         };
         const result = await chrome.storage.sync.get(defaultSettings);
         Logger.log("Retrieved settings:", result);

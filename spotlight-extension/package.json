@@ -1,0 +1,24 @@
+{
+  "name": "arcify-spotlight",
+  "version": "1.0.0",
+  "description": "Arcify Spotlight - Search/command bar for tabs, bookmarks, and history",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --config vite.config.dev.js --watch",
+    "build": "vite build",
+    "clean": "rm -rf dist dist-dev"
+  },
+  "devDependencies": {
+    "fs-extra": "^11.2.0",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  },
+  "keywords": [
+    "chrome-extension",
+    "spotlight",
+    "search",
+    "productivity"
+  ],
+  "author": "Nisarg Kolhe",
+  "license": "GPL-3.0"
+}

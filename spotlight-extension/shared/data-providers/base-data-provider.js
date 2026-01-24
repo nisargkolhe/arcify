@@ -4,7 +4,7 @@ import { SearchResult, ResultType } from '../search-types.js';
 import { findMatchingDomains } from '../popular-sites.js';
 import { BASE_SCORES, SCORE_BONUSES, getFuzzyMatchScore } from '../scoring-constants.js';
 import { SpotlightUtils } from '../ui-utilities.js';
-import { Logger } from '../../../logger.js';
+import { Logger } from '../../logger.js';
 
 export class BaseDataProvider {
     constructor() {

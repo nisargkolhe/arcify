@@ -2,8 +2,8 @@
 
 import { BaseDataProvider } from './base-data-provider.js';
 import { AutocompleteProvider } from './autocomplete-provider.js';
-import { BookmarkUtils } from '../../../bookmark-utils.js';
-import { Logger } from '../../../logger.js';
+import { BookmarkUtils } from '../../bookmark-utils.js';
+import { Logger } from '../../logger.js';
 
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity';
 
