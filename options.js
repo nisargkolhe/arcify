@@ -86,9 +86,6 @@ function applyColorOverrides(colorOverrides) {
 async function saveOptions() {
   const defaultSpaceNameSelect = document.getElementById('defaultSpaceName');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
-  const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
-  const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
-  const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
 
   // Collect color overrides (only non-default values)
   const colorOverrides = {};
@@ -100,11 +97,12 @@ async function saveOptions() {
   });
 
   const settings = {
-    defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
-    autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
-    autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
-    invertTabOrder: invertTabOrderCheckbox.checked,
-    showAllOpenTabsInCollapsedFolders: showAllOpenTabsInCollapsedFoldersCheckbox ? showAllOpenTabsInCollapsedFoldersCheckbox.checked : false,
+    defaultSpaceName: defaultSpaceNameSelect?.value || 'Home',
+    autoArchiveEnabled: getCheckboxValue(document.getElementById('autoArchiveEnabled'), false),
+    autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput?.value, 10) || 360,
+    invertTabOrder: getCheckboxValue(document.getElementById('invertTabOrder'), true),
+    enableSpotlight: getCheckboxValue(document.getElementById('enableSpotlight'), true),
+    showAllOpenTabsInCollapsedFolders: getCheckboxValue(document.getElementById('showAllOpenTabsInCollapsedFolders'), false),
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
     debugLoggingEnabled: getCheckboxValue(document.getElementById('debugLoggingEnabled'), false)
   };
@@ -138,11 +136,6 @@ function showToast() {
 // Function to restore options from chrome.storage
 async function restoreOptions() {
   const settings = await Utils.getSettings();
-  const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
-  const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
-  const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
-  const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
-  const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
 
   await populateSpacesDropdown(settings.defaultSpaceName);
 
@@ -159,13 +152,6 @@ async function restoreOptions() {
     autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
   }
   updateAutoArchiveIdleMinutesVisibility(settings.autoArchiveEnabled);
-  invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
-  if (showAllOpenTabsInCollapsedFoldersCheckbox) {
-    showAllOpenTabsInCollapsedFoldersCheckbox.checked = settings.showAllOpenTabsInCollapsedFolders !== undefined ? settings.showAllOpenTabsInCollapsedFolders : false; // Default false
-  }
-  if (debugLoggingEnabledCheckbox) {
-    debugLoggingEnabledCheckbox.checked = settings.debugLoggingEnabled !== undefined ? settings.debugLoggingEnabled : false; // Default false
-  }
 
   // Restore color overrides
   const colorOverrides = settings.colorOverrides || {};
@@ -261,20 +247,11 @@ function setupAutoSave() {
   const checkboxIds = ['invertTabOrder', 'enableSpotlight', 'showAllOpenTabsInCollapsedFolders', 'debugLoggingEnabled'];
   checkboxIds.forEach(id => addListenerIfExists(id, 'change', saveOptions));
 
-  const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
-  if (invertTabOrderCheckbox) {
-    invertTabOrderCheckbox.addEventListener('change', saveOptions);
-  }
-
-  const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
-  if (showAllOpenTabsInCollapsedFoldersCheckbox) {
-    showAllOpenTabsInCollapsedFoldersCheckbox.addEventListener('change', saveOptions);
-  }
-
-  const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
-  if (debugLoggingEnabledCheckbox) {
-    debugLoggingEnabledCheckbox.addEventListener('change', saveOptions);
-  }
+  // Auto-archive checkbox needs special handling to update visibility
+  const autoArchiveCheckbox = addListenerIfExists('autoArchiveEnabled', 'change', () => {
+    updateAutoArchiveIdleMinutesVisibility(autoArchiveCheckbox?.checked);
+    saveOptions();
+  });
 
   // Auto-save for number input (with debounce)
   addListenerIfExists('autoArchiveIdleMinutes', 'input', debouncedSave);
