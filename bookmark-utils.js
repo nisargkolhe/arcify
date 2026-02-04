@@ -23,74 +23,51 @@ export const BookmarkUtils = {
      * @returns {Promise<Object|null>} The Arcify folder object or null if not found
      */
     async findArcifyFolder() {
-        Logger.log('[BookmarkUtils] Finding Arcify folder...');
-
         try {
-            // Method 1: Try the standard search first (this should work in most cases)
-            Logger.log('[BookmarkUtils] Method 1: Searching for Arcify folder by title...');
+            // Method 1: Try the standard search first (most common case)
             const searchResults = await chrome.bookmarks.search({ title: 'Arcify' });
-
-            if (searchResults && searchResults.length > 0) {
-                // Verify this is actually a folder (not a bookmark)
-                const arcifyFolder = searchResults.find(result => !result.url);
-                if (arcifyFolder) {
-                    Logger.log('[BookmarkUtils] Found Arcify folder via search:', arcifyFolder.id);
-                    return arcifyFolder;
-                }
+            const arcifyViaSearch = searchResults?.find(result => !result.url);
+            if (arcifyViaSearch) {
+                Logger.log('[BookmarkUtils] Found Arcify folder via search:', arcifyViaSearch.id);
+                return arcifyViaSearch;
             }
 
-            Logger.log('[BookmarkUtils] Method 1 failed, trying Method 2: Traversing bookmark tree...');
-
             // Method 2: Traverse the bookmark tree manually
-            // This is more reliable as it doesn't depend on search functionality
             const rootChildren = await chrome.bookmarks.getChildren('0');
-            Logger.log('[BookmarkUtils] Root folders found:', rootChildren.map(child => ({ id: child.id, title: child.title })));
-
-            // Check each root folder for Arcify folder
             for (const rootFolder of rootChildren) {
-                Logger.log(`[BookmarkUtils] Checking folder: ${rootFolder.title} (ID: ${rootFolder.id})`);
-
                 try {
                     const children = await chrome.bookmarks.getChildren(rootFolder.id);
                     const arcifyFolder = children.find(child => child.title === 'Arcify' && !child.url);
-
                     if (arcifyFolder) {
-                        Logger.log(`[BookmarkUtils] Found Arcify folder in ${rootFolder.title}:`, arcifyFolder.id);
+                        Logger.log('[BookmarkUtils] Found Arcify folder in', rootFolder.title);
                         return arcifyFolder;
                     }
-                } catch (error) {
-                    Logger.warn(`[BookmarkUtils] Error checking folder ${rootFolder.title}:`, error);
+                } catch {
                     continue;
                 }
             }
 
-            // Method 3: Try to find by checking "Other Bookmarks" specifically
-            Logger.log('[BookmarkUtils] Method 2 failed, trying Method 3: Check Other Bookmarks specifically...');
-
-            // Find "Other Bookmarks" folder - it could have different names in different locales
+            // Method 3: Check "Other Bookmarks" specifically (handles locale variations)
             const otherBookmarksFolder = rootChildren.find(folder =>
-                folder.id === '2' || // Standard ID for Other Bookmarks
+                folder.id === '2' ||
                 folder.title.toLowerCase().includes('other') ||
                 folder.title.toLowerCase().includes('bookmark')
             );
 
             if (otherBookmarksFolder) {
-                Logger.log(`[BookmarkUtils] Found Other Bookmarks folder: ${otherBookmarksFolder.title} (ID: ${otherBookmarksFolder.id})`);
-
                 try {
-                    const otherBookmarksChildren = await chrome.bookmarks.getChildren(otherBookmarksFolder.id);
-                    const arcifyFolder = otherBookmarksChildren.find(child => child.title === 'Arcify' && !child.url);
-
+                    const children = await chrome.bookmarks.getChildren(otherBookmarksFolder.id);
+                    const arcifyFolder = children.find(child => child.title === 'Arcify' && !child.url);
                     if (arcifyFolder) {
-                        Logger.log('[BookmarkUtils] Found Arcify folder in Other Bookmarks:', arcifyFolder.id);
+                        Logger.log('[BookmarkUtils] Found Arcify folder in Other Bookmarks');
                         return arcifyFolder;
                     }
-                } catch (error) {
-                    Logger.warn('[BookmarkUtils] Error checking Other Bookmarks folder:', error);
+                } catch {
+                    // Ignore error
                 }
             }
 
-            Logger.log('[BookmarkUtils] All methods failed - Arcify folder not found');
+            Logger.log('[BookmarkUtils] Arcify folder not found');
             return null;
 
         } catch (error) {
@@ -211,33 +188,28 @@ export const BookmarkUtils = {
     },
 
     /**
-     * Find a bookmark by URL in an array of bookmarks
-     * @param {Array} bookmarks - Array of bookmark objects
+     * Find an item by URL in an array of objects with url property
+     * @param {Array} items - Array of objects with url property (bookmarks, tabs, etc.)
      * @param {string} url - URL to search for
-     * @returns {Object|null} The matching bookmark or null
+     * @returns {Object|null} The matching item or null
+     */
+    _findByUrl(items, url) {
+        if (!items || !url) return null;
+        return items.find(item => item.url === url) || null;
+    },
+
+    /**
+     * Find a bookmark by URL in an array of bookmarks
      */
     findBookmarkByUrl(bookmarks, url) {
-        if (!bookmarks || !url) return null;
-
-        return bookmarks.find(b => {
-            if (!b.url) return false;
-            return b.url === url;
-        }) || null;
+        return this._findByUrl(bookmarks, url);
     },
 
     /**
      * Find a tab by URL in an array of tabs
-     * @param {Array} tabs - Array of tab objects
-     * @param {string} url - URL to search for
-     * @returns {Object|null} The matching tab or null
      */
     findTabByUrl(tabs, url) {
-        if (!tabs || !url) return null;
-
-        return tabs.find(t => {
-            if (!t.url) return false;
-            return t.url === url;
-        }) || null;
+        return this._findByUrl(tabs, url);
     },
 
     /**

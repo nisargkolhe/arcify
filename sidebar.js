@@ -17,16 +17,29 @@ import { ChromeHelper } from './chromeHelper.js';
 import { FOLDER_CLOSED_ICON, FOLDER_CLOSED_DOTS_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
-import { setupDOMElements, showSpaceNameInput, activateTabInDOM, activateSpaceInDOM, showTabContextMenu, showArchivedTabsPopup, setupQuickPinListener } from './domManager.js';
+import {
+    setupDOMElements,
+    showSpaceNameInput,
+    activateTabInDOM,
+    activateSpaceInDOM,
+    showTabContextMenu,
+    showArchivedTabsPopup,
+    setupQuickPinListener,
+    getDragAfterElement,
+    getSpaceElement,
+    getContainers,
+    getTabElement,
+    getPinnedContainer,
+    getTempContainer,
+    clearAllActiveStates,
+    hideAllDropIndicators,
+    showDropIndicator,
+    getDropPosition,
+    handleEmptyContainerDrop
+} from './domManager.js';
 import { BookmarkUtils } from './bookmark-utils.js';
 import { Logger } from './logger.js';
-
-// Constants
-const MouseButton = {
-    LEFT: 0,
-    MIDDLE: 1,
-    RIGHT: 2
-};
+import { MOUSE_BUTTON, CSS_CLASSES, TIMING } from './constants.js';
 
 // DOM Elements
 const spacesList = document.getElementById('spacesList');
@@ -268,9 +281,8 @@ async function updatePinnedFavicons() {
 
             faviconElement.appendChild(img);
             faviconElement.addEventListener('mousedown', (event) => {
-                if (event.button === MouseButton.LEFT) {
-                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                    document.querySelectorAll('.pinned-favicon').forEach(t => t.classList.remove('active'));
+                if (event.button === MOUSE_BUTTON.LEFT) {
+                    clearAllActiveStates();
                     // Add active class to clicked tab
                     faviconElement.classList.add('active');
                     chrome.tabs.update(tab.id, { active: true });
@@ -1149,103 +1161,28 @@ async function updateSpaceSwitcher() {
 
 }
 
+// Wrapper functions that use the unified getDragAfterElement from domManager.js
 function getDragAfterElementSwitcher(container, x) {
-    const draggableElements = [...container.querySelectorAll('button:not(.dragging-switcher)')]; // Select only non-dragging buttons
-
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        // *** Calculate offset based on X axis (left and width) ***
-        const offset = x - box.left - box.width / 2;
-
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
-
-function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.tab:not(.dragging), .folder:not(.dragging)')]
-
-    // If no draggable elements exist, return the placeholder as a reference for empty containers
-    if (draggableElements.length === 0) {
-        const placeholder = container.querySelector('.tab-placeholder');
-        return placeholder || null;
-    }
-
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect()
-        const offset = y - box.top - box.height / 2
-
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child }
-        } else {
-            return closest
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element
-}
-
-function getDragAfterElementFavicon(container, x) {
-    const draggableElements = [...container.querySelectorAll('.pinned-favicon:not(.dragging)')]
-
-    // If no pinned favicons exist, return the placeholder container as a reference
-    if (draggableElements.length === 0) {
-        const placeholder = container.querySelector('.pinned-placeholder-container');
-        return placeholder || null;
-    }
-
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect()
-        const offset = x - box.left - box.width / 2
-
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child }
-        } else {
-            return closest
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element
-}
-
-// Helper functions for drop indicator management
-function hideAllDropIndicators() {
-    // Remove all drop indicator classes from all elements
-    document.querySelectorAll('.drop-indicator-horizontal, .drop-indicator-vertical').forEach(element => {
-        element.classList.remove('drop-indicator-horizontal', 'drop-indicator-vertical', 'above', 'below', 'left', 'right');
+    return getDragAfterElement(container, x, {
+        axis: 'x',
+        selector: 'button:not(.dragging-switcher)'
     });
 }
 
-function showDropIndicator(targetElement, position, isHorizontal = false) {
-    // First, hide all existing indicators
-    hideAllDropIndicators();
-
-    if (!targetElement) return;
-
-    if (isHorizontal) {
-        // For horizontal favicons (left/right positioning)
-        targetElement.classList.add('drop-indicator-vertical');
-        targetElement.classList.add(position); // 'left' or 'right'
-    } else {
-        // For vertical sidebar tabs (above/below positioning)
-        targetElement.classList.add('drop-indicator-horizontal');
-        targetElement.classList.add(position); // 'above' or 'below'
-    }
+function getDragAfterElementTabs(container, y) {
+    return getDragAfterElement(container, y, {
+        axis: 'y',
+        selector: '.tab:not(.dragging), .folder:not(.dragging)',
+        placeholderSelector: '.tab-placeholder'
+    });
 }
 
-function getDropPosition(element, clientX, clientY, isHorizontal = false) {
-    if (!element) return null;
-
-    const rect = element.getBoundingClientRect();
-
-    if (isHorizontal) {
-        // For horizontal favicons, use X position to determine left/right
-        const centerX = rect.left + rect.width / 2;
-        return clientX < centerX ? 'left' : 'right';
-    } else {
-        // For vertical tabs, use Y position to determine above/below
-        const centerY = rect.top + rect.height / 2;
-        return clientY < centerY ? 'above' : 'below';
-    }
+function getDragAfterElementFavicon(container, x) {
+    return getDragAfterElement(container, x, {
+        axis: 'x',
+        selector: '.pinned-favicon:not(.dragging)',
+        placeholderSelector: '.pinned-placeholder-container'
+    });
 }
 
 function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
@@ -1267,26 +1204,6 @@ function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
     } else { // position === 'right'
         return afterIndex + 1; // Insert after the target element  
     }
-}
-
-// Helper function to handle empty container drops consistently
-function handleEmptyContainerDrop(container, draggingElement, placeholder) {
-    if (!container || !draggingElement || !placeholder) return false;
-
-    // Append element to container
-    container.appendChild(draggingElement);
-
-    // Hide placeholder appropriately based on type
-    if (placeholder.classList.contains('pinned-placeholder-container')) {
-        // For favorites area - use display none
-        placeholder.style.display = 'none';
-    } else if (placeholder.classList.contains('tab-placeholder')) {
-        // For space containers - use hidden class
-        placeholder.classList.add('hidden');
-    }
-
-    Logger.log('Handled empty container drop, hiding placeholder');
-    return true;
 }
 
 // Helper function to set up drag event listeners for tab elements
@@ -1910,18 +1827,6 @@ function uniqPreserveOrder(ids) {
     return out;
 }
 
-function getSpaceElementById(spaceId) {
-    return document.querySelector(`[data-space-id="${spaceId}"]`);
-}
-
-function getPinnedContainer(spaceElement) {
-    return spaceElement?.querySelector('[data-tab-type="pinned"]') ?? null;
-}
-
-function getTempContainer(spaceElement) {
-    return spaceElement?.querySelector('[data-tab-type="temporary"]') ?? null;
-}
-
 /**
  * Flatten visual order of pinned section for a space:
  * - root-level `.tab[data-tab-id]` in order
@@ -2089,7 +1994,7 @@ async function reconcileSpaceTabOrdering(spaceId, opts = {}) {
 
     // Update DOM: keep this conservative (temporary list only).
     // Pinned section can include folders; we do not reshuffle folder structure based on Chrome.
-    const spaceElement = getSpaceElementById(spaceId);
+    const spaceElement = getSpaceElement(spaceId);
     if (spaceElement) {
         const tempContainer = getTempContainer(spaceElement);
         if (tempContainer) {
@@ -2160,7 +2065,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 }
 
                 // Get the element we're dragging over to show drop indicator
-                const afterElement = getDragAfterElement(targetContainer, e.clientY);
+                const afterElement = getDragAfterElementTabs(targetContainer, e.clientY);
                 if (afterElement && targetContainer.contains(afterElement)) {
                     // Check if this is a placeholder (empty container)
                     if (afterElement.classList.contains('tab-placeholder')) {
@@ -2229,7 +2134,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 const targetContainer = targetFolder || container;
 
                 // Calculate drop position using same logic as indicators
-                const afterElement = getDragAfterElement(targetContainer, e.clientY);
+                const afterElement = getDragAfterElementTabs(targetContainer, e.clientY);
                 if (afterElement && targetContainer.contains(afterElement)) {
                     // Check if this is a placeholder (empty container)
                     if (afterElement.classList.contains('tab-placeholder')) {
@@ -3024,16 +2929,15 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
     // Handle mousedown events (left-click to open, middle-click to close)
     tabElement.addEventListener('mousedown', async (event) => {
-        if (event.button === MouseButton.MIDDLE) {
+        if (event.button === MOUSE_BUTTON.MIDDLE) {
             event.preventDefault(); // Prevent default middle-click actions (like autoscroll)
             closeTab(tabElement, tab, isPinned, isBookmarkOnly);
-        } else if (event.button === MouseButton.LEFT) {
+        } else if (event.button === MOUSE_BUTTON.LEFT) {
             // Don't activate tab when clicking close button
             if (event.target === actionButton) return;
 
             // Remove active class from all tabs and favicons
-            document.querySelectorAll('.tab.active').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.pinned-favicon.active').forEach(t => t.classList.remove('active'));
+            clearAllActiveStates();
 
             let chromeTab = null;
             try {
@@ -4026,56 +3930,13 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
     processingTabMoves.delete(tabId);
 }
 
+// Tab navigation functions delegate to Utils to avoid code duplication
 async function movToNextTabInSpace(tabId, sourceSpace) {
-    const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
-    const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
-
-    const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
-    const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
-
-    if (indexInTemporaryTabs != -1) {
-        if (indexInTemporaryTabs < temporaryTabs.length - 1) {
-            chrome.tabs.update(temporaryTabs[indexInTemporaryTabs + 1], { active: true })
-        } else if (spaceBookmarks.length > 0) {
-            chrome.tabs.update(spaceBookmarks[0], { active: true })
-        } else {
-            chrome.tabs.update(temporaryTabs[0], { active: true })
-        }
-    } else if (indexInBookmarks != -1) {
-        if (indexInBookmarks < spaceBookmarks.length - 1) {
-            chrome.tabs.update(spaceBookmarks[indexInBookmarks + 1], { active: true })
-        } else if (temporaryTabs.length > 0) {
-            chrome.tabs.update(temporaryTabs[0], { active: true })
-        } else {
-            chrome.tabs.update(spaceBookmarks[0], { active: true })
-        }
-    }
+    return Utils.movToNextTabInSpace(tabId, sourceSpace);
 }
 
 async function movToPrevTabInSpace(tabId, sourceSpace) {
-    const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
-    const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
-
-    const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
-    const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
-
-    if (indexInTemporaryTabs != -1) {
-        if (indexInTemporaryTabs > 0) {
-            chrome.tabs.update(temporaryTabs[indexInTemporaryTabs - 1], { active: true })
-        } else if (spaceBookmarks.length > 0) {
-            chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], { active: true })
-        } else {
-            chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], { active: true })
-        }
-    } else if (indexInBookmarks != -1) {
-        if (indexInBookmarks > 0) {
-            chrome.tabs.update(spaceBookmarks[indexInBookmarks - 1], { active: true })
-        } else if (temporaryTabs.length > 0) {
-            chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], { active: true })
-        } else {
-            chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], { active: true })
-        }
-    }
+    return Utils.movToPrevTabInSpace(tabId, sourceSpace);
 }
 // Reusable function to set up folder context menu
 function setupFolderContextMenu(folderElement, space, item = null) {

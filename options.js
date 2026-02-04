@@ -28,6 +28,34 @@ const DEFAULT_COLORS = {
   cyan: '#a5e2ea'
 };
 
+const COLOR_NAMES = Object.keys(DEFAULT_COLORS);
+
+// Helper to get color picker element ID from color name
+function getColorPickerId(colorName) {
+  return `color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`;
+}
+
+// Helper to safely get checkbox value with default
+function getCheckboxValue(element, defaultValue) {
+  return element ? element.checked : defaultValue;
+}
+
+// Helper to safely set checkbox value with default
+function setCheckboxValue(element, value, defaultValue) {
+  if (element) {
+    element.checked = value !== undefined ? value : defaultValue;
+  }
+}
+
+// Helper to add event listener if element exists
+function addListenerIfExists(elementId, event, handler) {
+  const element = document.getElementById(elementId);
+  if (element) {
+    element.addEventListener(event, handler);
+  }
+  return element;
+}
+
 function updateAutoArchiveIdleMinutesVisibility(forceEnabled) {
   const container = document.getElementById('autoArchiveIdleMinutesContainer');
   const checkbox = document.getElementById('autoArchiveEnabled');
@@ -57,44 +85,48 @@ function applyColorOverrides(colorOverrides) {
 // Function to save options to chrome.storage
 async function saveOptions() {
   const defaultSpaceNameSelect = document.getElementById('defaultSpaceName');
-  const defaultSpaceName = defaultSpaceNameSelect.value;
-  const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+<<<<<<< HEAD
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
   const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
+=======
+>>>>>>> main
 
-  // Get color overrides
+  // Collect color overrides (only non-default values)
   const colorOverrides = {};
-  const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
-  colorNames.forEach(colorName => {
-    const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+  COLOR_NAMES.forEach(colorName => {
+    const colorPicker = document.getElementById(getColorPickerId(colorName));
     if (colorPicker && colorPicker.value !== DEFAULT_COLORS[colorName]) {
       colorOverrides[colorName] = colorPicker.value;
     }
   });
 
   const settings = {
+<<<<<<< HEAD
     defaultSpaceName: defaultSpaceName || 'Home', // Default to 'Home' if empty
     autoArchiveEnabled: autoArchiveEnabledCheckbox.checked,
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput.value, 10) || 360,
     invertTabOrder: invertTabOrderCheckbox.checked,
     showAllOpenTabsInCollapsedFolders: showAllOpenTabsInCollapsedFoldersCheckbox ? showAllOpenTabsInCollapsedFoldersCheckbox.checked : false,
+=======
+    defaultSpaceName: defaultSpaceNameSelect?.value || 'Home',
+    autoArchiveEnabled: getCheckboxValue(document.getElementById('autoArchiveEnabled'), false),
+    autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput?.value, 10) || 360,
+    invertTabOrder: getCheckboxValue(document.getElementById('invertTabOrder'), true),
+    enableSpotlight: getCheckboxValue(document.getElementById('enableSpotlight'), true),
+    showAllOpenTabsInCollapsedFolders: getCheckboxValue(document.getElementById('showAllOpenTabsInCollapsedFolders'), false),
+>>>>>>> main
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
-    debugLoggingEnabled: debugLoggingEnabledCheckbox ? debugLoggingEnabledCheckbox.checked : false
+    debugLoggingEnabled: getCheckboxValue(document.getElementById('debugLoggingEnabled'), false)
   };
 
   try {
     await chrome.storage.sync.set(settings);
     Logger.log('Settings saved:', settings);
 
-    // Apply color overrides immediately
     applyColorOverrides(settings.colorOverrides);
-
-    // Notify background script to update the alarm immediately
     await chrome.runtime.sendMessage({ action: 'updateAutoArchiveSettings' });
-
-    // Show toast notification
     showToast();
   } catch (error) {
     Logger.error('Error saving settings:', error);
@@ -118,18 +150,31 @@ function showToast() {
 // Function to restore options from chrome.storage
 async function restoreOptions() {
   const settings = await Utils.getSettings();
+<<<<<<< HEAD
   const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   const showAllOpenTabsInCollapsedFoldersCheckbox = document.getElementById('showAllOpenTabsInCollapsedFolders');
   const debugLoggingEnabledCheckbox = document.getElementById('debugLoggingEnabled');
+=======
+>>>>>>> main
 
-  // Populate spaces dropdown
   await populateSpacesDropdown(settings.defaultSpaceName);
 
-  autoArchiveEnabledCheckbox.checked = settings.autoArchiveEnabled;
-  autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
+  // Restore checkbox values
+  setCheckboxValue(document.getElementById('autoArchiveEnabled'), settings.autoArchiveEnabled, false);
+  setCheckboxValue(document.getElementById('invertTabOrder'), settings.invertTabOrder, true);
+  setCheckboxValue(document.getElementById('enableSpotlight'), settings.enableSpotlight, true);
+  setCheckboxValue(document.getElementById('showAllOpenTabsInCollapsedFolders'), settings.showAllOpenTabsInCollapsedFolders, false);
+  setCheckboxValue(document.getElementById('debugLoggingEnabled'), settings.debugLoggingEnabled, false);
+
+  // Restore number input
+  const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+  if (autoArchiveIdleMinutesInput) {
+    autoArchiveIdleMinutesInput.value = settings.autoArchiveIdleMinutes;
+  }
   updateAutoArchiveIdleMinutesVisibility(settings.autoArchiveEnabled);
+<<<<<<< HEAD
   invertTabOrderCheckbox.checked = settings.invertTabOrder !== undefined ? settings.invertTabOrder : true; // Default true
   if (showAllOpenTabsInCollapsedFoldersCheckbox) {
     showAllOpenTabsInCollapsedFoldersCheckbox.checked = settings.showAllOpenTabsInCollapsedFolders !== undefined ? settings.showAllOpenTabsInCollapsedFolders : false; // Default false
@@ -137,18 +182,18 @@ async function restoreOptions() {
   if (debugLoggingEnabledCheckbox) {
     debugLoggingEnabledCheckbox.checked = settings.debugLoggingEnabled !== undefined ? settings.debugLoggingEnabled : false; // Default false
   }
+=======
+>>>>>>> main
 
   // Restore color overrides
   const colorOverrides = settings.colorOverrides || {};
-  const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
-  colorNames.forEach(colorName => {
-    const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+  COLOR_NAMES.forEach(colorName => {
+    const colorPicker = document.getElementById(getColorPickerId(colorName));
     if (colorPicker) {
       colorPicker.value = colorOverrides[colorName] || DEFAULT_COLORS[colorName];
     }
   });
 
-  // Apply color overrides on load
   applyColorOverrides(colorOverrides);
 }
 
@@ -204,14 +249,12 @@ function setupAdvancedOptions() {
   }
 
   // Setup color reset buttons
-  const resetButtons = document.querySelectorAll('.color-reset-btn');
-  resetButtons.forEach(button => {
+  document.querySelectorAll('.color-reset-btn').forEach(button => {
     button.addEventListener('click', () => {
       const colorName = button.dataset.color;
-      const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
+      const colorPicker = document.getElementById(getColorPickerId(colorName));
       if (colorPicker && DEFAULT_COLORS[colorName]) {
         colorPicker.value = DEFAULT_COLORS[colorName];
-        // Trigger auto-save after reset
         saveOptions();
       }
     });
@@ -230,20 +273,13 @@ function debouncedSave() {
 // Function to setup auto-save listeners
 function setupAutoSave() {
   // Auto-save for dropdown
-  const defaultSpaceNameSelect = document.getElementById('defaultSpaceName');
-  if (defaultSpaceNameSelect) {
-    defaultSpaceNameSelect.addEventListener('change', saveOptions);
-  }
+  addListenerIfExists('defaultSpaceName', 'change', saveOptions);
 
-  // Auto-save for checkboxes
-  const autoArchiveEnabledCheckbox = document.getElementById('autoArchiveEnabled');
-  if (autoArchiveEnabledCheckbox) {
-    autoArchiveEnabledCheckbox.addEventListener('change', () => {
-      updateAutoArchiveIdleMinutesVisibility(autoArchiveEnabledCheckbox.checked);
-      saveOptions();
-    });
-  }
+  // Auto-save for checkboxes (most just save immediately)
+  const checkboxIds = ['invertTabOrder', 'enableSpotlight', 'showAllOpenTabsInCollapsedFolders', 'debugLoggingEnabled'];
+  checkboxIds.forEach(id => addListenerIfExists(id, 'change', saveOptions));
 
+<<<<<<< HEAD
   const invertTabOrderCheckbox = document.getElementById('invertTabOrder');
   if (invertTabOrderCheckbox) {
     invertTabOrderCheckbox.addEventListener('change', saveOptions);
@@ -258,20 +294,20 @@ function setupAutoSave() {
   if (debugLoggingEnabledCheckbox) {
     debugLoggingEnabledCheckbox.addEventListener('change', saveOptions);
   }
+=======
+  // Auto-archive checkbox needs special handling to update visibility
+  const autoArchiveCheckbox = addListenerIfExists('autoArchiveEnabled', 'change', () => {
+    updateAutoArchiveIdleMinutesVisibility(autoArchiveCheckbox?.checked);
+    saveOptions();
+  });
+>>>>>>> main
 
   // Auto-save for number input (with debounce)
-  const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
-  if (autoArchiveIdleMinutesInput) {
-    autoArchiveIdleMinutesInput.addEventListener('input', debouncedSave);
-  }
+  addListenerIfExists('autoArchiveIdleMinutes', 'input', debouncedSave);
 
   // Auto-save for color pickers (with debounce)
-  const colorNames = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'];
-  colorNames.forEach(colorName => {
-    const colorPicker = document.getElementById(`color${colorName.charAt(0).toUpperCase() + colorName.slice(1)}`);
-    if (colorPicker) {
-      colorPicker.addEventListener('input', debouncedSave);
-    }
+  COLOR_NAMES.forEach(colorName => {
+    addListenerIfExists(getColorPickerId(colorName), 'input', debouncedSave);
   });
 }
 

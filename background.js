@@ -17,6 +17,20 @@ import { Logger } from './logger.js';
 const AUTO_ARCHIVE_ALARM_NAME = 'autoArchiveTabsAlarm';
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
 
+// Helper to handle async message responses with consistent error handling
+function handleAsyncMessage(handler, sendResponse, errorContext, defaultErrorData = {}) {
+    (async () => {
+        try {
+            const result = await handler();
+            sendResponse({ success: true, ...result });
+        } catch (error) {
+            Logger.error(`[Background] Error ${errorContext}:`, error);
+            sendResponse({ success: false, error: error.message, ...defaultErrorData });
+        }
+    })();
+    return true; // Indicates async response
+}
+
 // Configure Chrome side panel behavior
 chrome.sidePanel.setPanelBehavior({
     openPanelOnActionClick: true
@@ -376,41 +390,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
         return false; // Synchronous response
     } else if (message.action === 'switchToTab') {
-        // Handle tab switching for search results
-        (async () => {
-            try {
-                await chrome.tabs.update(message.tabId, { active: true });
-                await chrome.windows.update(message.windowId, { focused: true });
-                sendResponse({ success: true });
-            } catch (error) {
-                Logger.error('[Background] Error switching to tab:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
+        return handleAsyncMessage(async () => {
+            await chrome.tabs.update(message.tabId, { active: true });
+            await chrome.windows.update(message.windowId, { focused: true });
+            return {};
+        }, sendResponse, 'switching to tab');
+
+    } else if (message.action === 'searchTabs') {
+        return handleAsyncMessage(async () => {
+            const tabs = await chrome.tabs.query({});
+            const query = message.query?.toLowerCase() || '';
+            const filteredTabs = tabs.filter(tab => {
+                if (!tab.title || !tab.url) return false;
+                if (!query) return true;
+                return tab.title.toLowerCase().includes(query) ||
+                    tab.url.toLowerCase().includes(query);
+            });
+            return { tabs: filteredTabs };
+        }, sendResponse, 'searching tabs');
+
     } else if (message.action === 'getRecentTabs') {
-        (async () => {
-            try {
-                const tabs = await chrome.tabs.query({});
-                const storage = await chrome.storage.local.get([TAB_ACTIVITY_STORAGE_KEY]);
-                const activityData = storage[TAB_ACTIVITY_STORAGE_KEY] || {};
+        return handleAsyncMessage(async () => {
+            const tabs = await chrome.tabs.query({});
+            const storage = await chrome.storage.local.get([TAB_ACTIVITY_STORAGE_KEY]);
+            const activityData = storage[TAB_ACTIVITY_STORAGE_KEY] || {};
 
-                const tabsWithActivity = tabs
-                    .filter(tab => tab.url && tab.title)
-                    .map(tab => ({
-                        ...tab,
-                        lastActivity: activityData[tab.id] || 0
-                    }))
-                    .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
-                    .slice(0, message.limit || 5);
+            const tabsWithActivity = tabs
+                .filter(tab => tab.url && tab.title)
+                .map(tab => ({ ...tab, lastActivity: activityData[tab.id] || 0 }))
+                .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
+                .slice(0, message.limit || 5);
 
-                sendResponse({ success: true, tabs: tabsWithActivity });
-            } catch (error) {
-                Logger.error('[Background] Error getting recent tabs:', error);
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true; // Async response
+            return { tabs: tabsWithActivity };
+        }, sendResponse, 'getting recent tabs');
+
+    } else if (message.action === 'searchBookmarks') {
+        return handleAsyncMessage(async () => {
+            const bookmarks = await chrome.bookmarks.search(message.query);
+            return { bookmarks: bookmarks.filter(b => b.url) };
+        }, sendResponse, 'searching bookmarks');
+        
     } else if (message.action === 'activatePinnedTab') {
         // Forward pinned tab activation to sidebar
         chrome.runtime.sendMessage(message);

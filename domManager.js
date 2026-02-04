@@ -572,3 +572,191 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
         }
     });
 }
+
+// ============================================================================
+// Unified Drag Helper Functions
+// ============================================================================
+
+/**
+ * Unified function to find the element to insert after during drag-and-drop.
+ * Replaces getDragAfterElementSwitcher, getDragAfterElement, and getDragAfterElementFavicon.
+ *
+ * @param {HTMLElement} container - The container element
+ * @param {number} position - The mouse position (clientX for horizontal, clientY for vertical)
+ * @param {Object} options - Configuration options
+ * @param {string} options.axis - 'x' for horizontal, 'y' for vertical (default: 'y')
+ * @param {string} options.selector - CSS selector for draggable elements
+ * @param {string} options.placeholderSelector - CSS selector for placeholder element
+ * @returns {HTMLElement|null} - The element to insert after, or null
+ */
+export function getDragAfterElement(container, position, options = {}) {
+    const { axis = 'y', selector, placeholderSelector } = options;
+    const draggableElements = [...container.querySelectorAll(selector)];
+
+    // If no draggable elements exist, return the placeholder as a reference for empty containers
+    if (draggableElements.length === 0) {
+        return placeholderSelector ? container.querySelector(placeholderSelector) : null;
+    }
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = axis === 'x'
+            ? position - box.left - box.width / 2
+            : position - box.top - box.height / 2;
+
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        }
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+// ============================================================================
+// Container Query Helpers
+// ============================================================================
+
+/**
+ * Get a space element by its ID
+ * @param {number|string} spaceId - The space ID
+ * @returns {HTMLElement|null}
+ */
+export function getSpaceElement(spaceId) {
+    return document.querySelector(`[data-space-id="${spaceId}"]`);
+}
+
+/**
+ * Get both pinned and temporary containers for a space element
+ * @param {HTMLElement} spaceElement - The space element
+ * @returns {{pinned: HTMLElement|null, temp: HTMLElement|null}}
+ */
+export function getContainers(spaceElement) {
+    return {
+        pinned: spaceElement?.querySelector('[data-tab-type="pinned"]') ?? null,
+        temp: spaceElement?.querySelector('[data-tab-type="temporary"]') ?? null
+    };
+}
+
+/**
+ * Get a tab element by its ID
+ * @param {number|string} tabId - The tab ID
+ * @returns {HTMLElement|null}
+ */
+export function getTabElement(tabId) {
+    return document.querySelector(`[data-tab-id="${tabId}"]`);
+}
+
+/**
+ * Get pinned container for a space element
+ * @param {HTMLElement} spaceElement - The space element
+ * @returns {HTMLElement|null}
+ */
+export function getPinnedContainer(spaceElement) {
+    return spaceElement?.querySelector('[data-tab-type="pinned"]') ?? null;
+}
+
+/**
+ * Get temporary container for a space element
+ * @param {HTMLElement} spaceElement - The space element
+ * @returns {HTMLElement|null}
+ */
+export function getTempContainer(spaceElement) {
+    return spaceElement?.querySelector('[data-tab-type="temporary"]') ?? null;
+}
+
+// ============================================================================
+// Active State Management
+// ============================================================================
+
+/**
+ * Clear active state from all tabs and pinned favicons
+ */
+export function clearAllActiveStates() {
+    document.querySelectorAll('.tab, .pinned-favicon')
+        .forEach(el => el.classList.remove('active'));
+}
+
+// ============================================================================
+// Drop Indicator Functions
+// ============================================================================
+
+/**
+ * Hide all drop indicators in the document
+ */
+export function hideAllDropIndicators() {
+    document.querySelectorAll('.drop-indicator-horizontal, .drop-indicator-vertical').forEach(element => {
+        element.classList.remove('drop-indicator-horizontal', 'drop-indicator-vertical', 'above', 'below', 'left', 'right');
+    });
+}
+
+/**
+ * Show a drop indicator on the target element
+ * @param {HTMLElement} targetElement - The element to show the indicator on
+ * @param {string} position - Position: 'above', 'below', 'left', or 'right'
+ * @param {boolean} isHorizontal - True for horizontal layout (favicons), false for vertical (tabs)
+ */
+export function showDropIndicator(targetElement, position, isHorizontal = false) {
+    // First, hide all existing indicators
+    hideAllDropIndicators();
+
+    if (!targetElement) return;
+
+    if (isHorizontal) {
+        // For horizontal favicons (left/right positioning)
+        targetElement.classList.add('drop-indicator-vertical');
+        targetElement.classList.add(position); // 'left' or 'right'
+    } else {
+        // For vertical sidebar tabs (above/below positioning)
+        targetElement.classList.add('drop-indicator-horizontal');
+        targetElement.classList.add(position); // 'above' or 'below'
+    }
+}
+
+/**
+ * Get the drop position relative to an element
+ * @param {HTMLElement} element - The target element
+ * @param {number} clientX - Mouse X position
+ * @param {number} clientY - Mouse Y position
+ * @param {boolean} isHorizontal - True for horizontal layout, false for vertical
+ * @returns {string|null} - Position: 'above', 'below', 'left', 'right', or null
+ */
+export function getDropPosition(element, clientX, clientY, isHorizontal = false) {
+    if (!element) return null;
+
+    const rect = element.getBoundingClientRect();
+
+    if (isHorizontal) {
+        // For horizontal favicons, use X position to determine left/right
+        const centerX = rect.left + rect.width / 2;
+        return clientX < centerX ? 'left' : 'right';
+    } else {
+        // For vertical tabs, use Y position to determine above/below
+        const centerY = rect.top + rect.height / 2;
+        return clientY < centerY ? 'above' : 'below';
+    }
+}
+
+/**
+ * Handle empty container drops consistently
+ * @param {HTMLElement} container - The container element
+ * @param {HTMLElement} draggingElement - The element being dragged
+ * @param {HTMLElement} placeholder - The placeholder element
+ * @returns {boolean} - True if handled successfully
+ */
+export function handleEmptyContainerDrop(container, draggingElement, placeholder) {
+    if (!container || !draggingElement || !placeholder) return false;
+
+    // Append element to container
+    container.appendChild(draggingElement);
+
+    // Hide placeholder appropriately based on type
+    if (placeholder.classList.contains('pinned-placeholder-container')) {
+        // For favorites area - use display none
+        placeholder.style.display = 'none';
+    } else if (placeholder.classList.contains('tab-placeholder')) {
+        // For space containers - use hidden class
+        placeholder.classList.add('hidden');
+    }
+
+    Logger.log('Handled empty container drop, hiding placeholder');
+    return true;
+}

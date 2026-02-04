@@ -396,57 +396,30 @@ const Utils = {
         }
         return false; // Bookmark not found
     },
-    movToNextTabInSpace: async function (tabId, sourceSpace) {
+    // Navigate to adjacent tab within a space (next or previous)
+    _navigateTabInSpace: async function (tabId, sourceSpace, direction) {
         const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
         const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
+        const allTabs = [...spaceBookmarks, ...temporaryTabs];
 
-        const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
-        const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
+        if (allTabs.length === 0) return;
 
-        if (indexInTemporaryTabs != -1) {
-            if (indexInTemporaryTabs < temporaryTabs.length - 1) {
-                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs + 1], { active: true })
-            } else if (spaceBookmarks.length > 0) {
-                chrome.tabs.update(spaceBookmarks[0], { active: true })
-            } else {
-                chrome.tabs.update(temporaryTabs[0], { active: true })
-            }
-        } else if (indexInBookmarks != -1) {
-            if (indexInBookmarks < spaceBookmarks.length - 1) {
-                chrome.tabs.update(spaceBookmarks[indexInBookmarks + 1], { active: true })
-            } else if (temporaryTabs.length > 0) {
-                chrome.tabs.update(temporaryTabs[0], { active: true })
-            } else {
-                chrome.tabs.update(spaceBookmarks[0], { active: true })
-            }
-        }
+        const currentIndex = allTabs.indexOf(tabId);
+        if (currentIndex === -1) return;
+
+        const nextIndex = direction === 'next'
+            ? (currentIndex + 1) % allTabs.length
+            : (currentIndex - 1 + allTabs.length) % allTabs.length;
+
+        chrome.tabs.update(allTabs[nextIndex], { active: true });
     },
+
+    movToNextTabInSpace: async function (tabId, sourceSpace) {
+        return this._navigateTabInSpace(tabId, sourceSpace, 'next');
+    },
+
     movToPrevTabInSpace: async function (tabId, sourceSpace) {
-
-
-        const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
-        const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
-
-        const indexInTemporaryTabs = temporaryTabs.findIndex(id => id === tabId);
-        const indexInBookmarks = spaceBookmarks.findIndex(id => id === tabId);
-
-        if (indexInTemporaryTabs != -1) {
-            if (indexInTemporaryTabs > 0) {
-                chrome.tabs.update(temporaryTabs[indexInTemporaryTabs - 1], { active: true })
-            } else if (spaceBookmarks.length > 0) {
-                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], { active: true })
-            } else {
-                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], { active: true })
-            }
-        } else if (indexInBookmarks != -1) {
-            if (indexInBookmarks > 0) {
-                chrome.tabs.update(spaceBookmarks[indexInBookmarks - 1], { active: true })
-            } else if (temporaryTabs.length > 0) {
-                chrome.tabs.update(temporaryTabs[temporaryTabs.length - 1], { active: true })
-            } else {
-                chrome.tabs.update(spaceBookmarks[spaceBookmarks.length - 1], { active: true })
-            }
-        }
+        return this._navigateTabInSpace(tabId, sourceSpace, 'prev');
     },
     findActiveSpaceAndTab: async function () {
         Logger.log("[TabNavigation] finding space");
