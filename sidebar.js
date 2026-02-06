@@ -3279,6 +3279,75 @@ function handleTabUpdate(tabId, changeInfo, tab) {
         }
         Logger.log('Tab updated:', tabId, changeInfo, spaces);
 
+        // Check if a temporary tab's new URL matches a pinned bookmark in the space
+        if (changeInfo.url) {
+            const space = spaces.find(s => s.temporaryTabs.includes(tabId));
+            if (space) {
+                try {
+                    const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+                    const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+                    const spaceFolder = spaceFolders.find(f => f.title === space.name);
+                    if (spaceFolder) {
+                        // Try exact URL match first, then base URL match (same as loadTabs init logic)
+                        let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { url: changeInfo.url });
+                        if (!bookmarkResult) {
+                            // Base URL match: check all bookmarks ignoring query params/hash
+                            const allBookmarks = await BookmarkUtils.getBookmarksFromFolderRecursive(spaceFolder.id);
+                            const newUrlKey = Utils.getPinnedUrlKey(changeInfo.url);
+                            const baseMatch = allBookmarks.find(b => Utils.getPinnedUrlKey(b.url) === newUrlKey);
+                            if (baseMatch) {
+                                bookmarkResult = { bookmark: baseMatch };
+                            }
+                        }
+                        if (bookmarkResult) {
+                            Logger.log('[PinnedMatch] Temp tab URL matches bookmark, promoting to pinned:', tabId, changeInfo.url);
+                            // Move tab from temporaryTabs to spaceBookmarks
+                            space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
+                            space.spaceBookmarks.push(tabId);
+                            saveSpaces();
+
+                            // Remove the temporary tab element
+                            const tempTabEl = document.querySelector(`[data-tab-id="${tabId}"]`);
+                            if (tempTabEl) tempTabEl.remove();
+
+                            // Find and replace the bookmark-only element with an active pinned tab
+                            const bookmarkOnlyEl = document.querySelector(`.bookmark-only[data-bookmark-id="${bookmarkResult.bookmark.id}"]`)
+                                || document.querySelector(`.bookmark-only[data-url="${bookmarkResult.bookmark.url}"]`);
+
+                            const chromeTab = await chrome.tabs.get(tabId);
+                            chromeTab.pinnedUrl = bookmarkResult.bookmark.url;
+                            chromeTab.bookmarkId = bookmarkResult.bookmark.id;
+                            const newTabElement = await createTabElement(chromeTab, true);
+
+                            if (bookmarkOnlyEl) {
+                                bookmarkOnlyEl.replaceWith(newTabElement);
+                            } else {
+                                // No bookmark-only element found — append to pinned container
+                                const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
+                                const pinnedContainer = spaceElement?.querySelector('[data-tab-type="pinned"]');
+                                if (pinnedContainer) pinnedContainer.appendChild(newTabElement);
+                            }
+
+                            // Set pinned tab state
+                            await Utils.setPinnedTabState(tabId, {
+                                pinnedUrl: bookmarkResult.bookmark.url,
+                                bookmarkId: bookmarkResult.bookmark.id
+                            });
+
+                            // Activate in DOM if this tab is the active Chrome tab
+                            if (chromeTab.active) {
+                                activateTabInDOM(tabId);
+                            }
+
+                            return; // Skip normal update handling — tab has been promoted
+                        }
+                    }
+                } catch (err) {
+                    Logger.error('[PinnedMatch] Error checking bookmark match:', err);
+                }
+            }
+        }
+
         // Update tab element if it exists
         const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
         if (tabElement) {
