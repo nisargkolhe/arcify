@@ -1,6 +1,6 @@
 {
   "name": "arcify",
-  "version": "4.0.3",
+  "version": "5.0.0",
   "description": "A sidebar extension that replicates Arc browser's tab management system",
   "type": "module",
   "scripts": {
