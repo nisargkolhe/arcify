@@ -55,7 +55,6 @@ export function setupDOMElements(createNewSpace) {
 
     document.getElementById('createSpaceBtn').addEventListener('click', createNewSpace);
     newTabBtn.addEventListener('click', () => {
-        // Create a new tab (will use Spotlight newtab override if that extension is installed)
         chrome.tabs.create({});
     });
 

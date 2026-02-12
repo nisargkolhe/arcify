@@ -205,38 +205,6 @@ describe('Options Page', () => {
       }
     });
 
-    test('should toggle enableSpotlight checkbox if present', async () => {
-      try {
-        logTestStep('Toggling enableSpotlight...');
-
-        const exists = await optionsPage.evaluate(() => {
-          return !!document.getElementById('enableSpotlight');
-        });
-
-        if (!exists) {
-          logTestStep('enableSpotlight element not present in DOM, skipping');
-          return;
-        }
-
-        const initialState = await optionsPage.evaluate(() => {
-          return document.getElementById('enableSpotlight').checked;
-        });
-
-        await optionsPage.evaluate(() => document.getElementById('enableSpotlight').click());
-        await delay(800);
-
-        const newState = await optionsPage.evaluate(() => {
-          return document.getElementById('enableSpotlight').checked;
-        });
-
-        expect(newState).toBe(!initialState);
-        logTestStep(`enableSpotlight toggled from ${initialState} to ${newState}`);
-      } catch (error) {
-        await takeScreenshotOnFailure(optionsPage, 'toggle-enablespotlight-failure');
-        throw error;
-      }
-    });
-
     test('should toggle showAllOpenTabsInCollapsedFolders checkbox', async () => {
       try {
         logTestStep('Toggling showAllOpenTabsInCollapsedFolders...');
