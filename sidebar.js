@@ -720,24 +720,30 @@ async function initSidebar() {
             const groupColor = await Utils.getTabGroupColor(defaultSpaceName);
             await chrome.tabGroups.update(groupId, { title: defaultSpaceName, color: groupColor });
 
-            // Create default space with UUID
+            // Ensure the bookmark folder exists first so we can anchor durable identity to it.
+            let bookmarkFolder = subFolders.find(f => !f.url && f.title == defaultSpaceName);
+            if (!bookmarkFolder) {
+                bookmarkFolder = await chrome.bookmarks.create({
+                    parentId: spacesFolder.id,
+                    title: defaultSpaceName
+                });
+            }
+            const defaultRegistryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(bookmarkFolder.id, {
+                name: defaultSpaceName,
+                color: groupColor,
+            });
+
+            // Create default space with durable identity
             const defaultSpace = {
                 id: groupId,
-                uuid: Utils.generateUUID(),
+                spaceUuid: defaultRegistryEntry?.spaceUuid ?? Utils.generateUUID(),
+                bookmarkFolderId: bookmarkFolder.id,
+                uuid: defaultRegistryEntry?.spaceUuid ?? Utils.generateUUID(),
                 name: defaultSpaceName,
                 color: groupColor,
                 spaceBookmarks: [],
                 temporaryTabs: currentTabs.map(tab => tab.id),
             };
-
-            // Create bookmark folder for space bookmarks using UUID
-            const bookmarkFolder = subFolders.find(f => !f.url && f.title == defaultSpaceName);
-            if (!bookmarkFolder) {
-                await chrome.bookmarks.create({
-                    parentId: spacesFolder.id,
-                    title: defaultSpaceName
-                });
-            }
 
             spaces = [defaultSpace];
             saveSpaces();
@@ -775,12 +781,13 @@ async function initSidebar() {
                 Logger.log("processing group", group);
 
                 const mainFolder = await chrome.bookmarks.getSubTree(spacesFolder.id);
-                const bookmarkFolder = mainFolder[0].children?.find(f => f.title == group.title);
+                let bookmarkFolder = mainFolder[0].children?.find(f => f.title == group.title);
                 Logger.log("looking for existing folder", group.title, mainFolder, bookmarkFolder);
                 let spaceBookmarks = [];
                 if (!bookmarkFolder) {
                     Logger.log("creating new folder", group.title)
-                    await chrome.bookmarks.create({
+                    // Capture the created folder so we can anchor this space's durable identity to it.
+                    bookmarkFolder = await chrome.bookmarks.create({
                         parentId: spacesFolder.id,
                         title: group.title
                     });
@@ -794,9 +801,17 @@ async function initSidebar() {
 
                     Logger.log("space bookmarks in", group.title, spaceBookmarks);
                 }
+                // Durable identity: a stable spaceUuid anchored to the bookmark folder id, so a
+                // space keeps its identity across restarts even as its Chrome group id changes.
+                const registryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(bookmarkFolder.id, {
+                    name: group.title,
+                    color: group.color,
+                });
                 const space = {
                     id: group.id,
-                    uuid: Utils.generateUUID(),
+                    spaceUuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
+                    bookmarkFolderId: bookmarkFolder.id,
+                    uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
                     name: group.title,
                     color: group.color,
                     spaceBookmarks: spaceBookmarks,
@@ -1469,10 +1484,16 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
         const groupColor = await Utils.getTabGroupColor(spaceName);
         const groupId = await ChromeHelper.createNewTabGroup(tabToMove, spaceName, groupColor);
         const spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(spaceFolder, groupId, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
+        const registryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(spaceFolder.id, {
+            name: spaceName,
+            color: groupColor,
+        });
 
         const space = {
             id: groupId,
-            uuid: Utils.generateUUID(),
+            spaceUuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
+            bookmarkFolderId: spaceFolder.id,
+            uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             name: spaceName,
             color: groupColor,
             spaceBookmarks: spaceBookmarks,
@@ -3386,17 +3407,23 @@ async function createNewSpace() {
         const newTab = await ChromeHelper.createNewTab();
         const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceName, spaceColor);
 
+        // Create bookmark folder for new space, then anchor durable identity to it.
+        const newSpaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
+        const registryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(newSpaceFolder.id, {
+            name: spaceName,
+            color: spaceColor,
+        });
+
         const space = {
             id: groupId,
-            uuid: Utils.generateUUID(),
+            spaceUuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
+            bookmarkFolderId: newSpaceFolder.id,
+            uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             name: spaceName,
             color: spaceColor,
             spaceBookmarks: [],
             temporaryTabs: [newTab.id]
         };
-
-        // Create bookmark folder for new space
-        await LocalStorage.getOrCreateSpaceFolder(space.name);
 
         spaces.push(space);
         Logger.log('New space created:', { spaceId: space.id, spaceName: space.name, spaceColor: space.color });
@@ -4093,7 +4120,10 @@ async function deleteSpace(spaceId) {
         const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
         const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
         const spaceFolder = spaceFolders.find(f => f.title === space.name);
-        await chrome.bookmarks.removeTree(spaceFolder.id);
+        // Clean up the durable registry entry keyed by the folder id (before removing folder).
+        const folderIdToForget = space.bookmarkFolderId ?? spaceFolder?.id;
+        if (folderIdToForget) await LocalStorage.removeSpaceRegistryEntry(folderIdToForget);
+        if (spaceFolder) await chrome.bookmarks.removeTree(spaceFolder.id);
 
         // Save changes
         saveSpaces();
