@@ -561,6 +561,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.tabs.onMoved.addListener(handleTabMove);
     chrome.tabs.onActivated.addListener(handleTabActivated);
     chrome.tabGroups.onRemoved.addListener(handleTabGroupRemoved);
+    chrome.tabGroups.onCreated.addListener(async (group) => {
+        // Adopt a late-restored tab group into a same-named space whose persisted id went
+        // stale, rather than leaving it orphaned (which snowballs into duplicate ghost
+        // groups). Guarded so it never fights Arcify's own group creation, and it is a safe
+        // no-op for arbitrary user-made groups — we don't auto-create spaces here (B20).
+        if (isCreatingSpace) return;
+        if (currentWindow && group.windowId !== currentWindow.id) return;
+        if (spaces.some(s => s.id === group.id)) return;
+        try {
+            const liveGroupIds = new Set((await chrome.tabGroups.query({})).map(g => g.id));
+            const staleSpace = spaces.find(s => s.name === group.title && !liveGroupIds.has(s.id));
+            if (staleSpace) {
+                Logger.log('onCreated: adopting restored group', group.id, 'into space', staleSpace.id);
+                adoptGroupIntoSpace(staleSpace.id, group.id);
+            }
+        } catch (error) {
+            Logger.warn('Error adopting created tab group:', error);
+        }
+    });
 
     // Setup Quick Pin listener
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, setActiveSpace, activatePinnedTabByURL);
@@ -662,6 +681,19 @@ async function initSidebar() {
         Logger.log("spacesFolder", spacesFolder);
         const subFolders = await chrome.bookmarks.getChildren(spacesFolder.id);
         Logger.log("subFolders", subFolders);
+
+        // Restore-race guard (B18): if there are no live tab groups but the user DOES have
+        // space folders, we are almost certainly running before Chrome session restore has
+        // repopulated the groups. Creating a default group now would duplicate the restored
+        // ones into ghosts on every restart. Wait briefly for restore to settle first.
+        const existingSpaceFolders = subFolders.filter(f => !f.url);
+        if (tabGroups.length === 0 && existingSpaceFolders.length > 0) {
+            Logger.log('No live groups but space folders exist; waiting for session restore...');
+            tabGroups = await waitForTabGroupsToRestore();
+            allTabs = await chrome.tabs.query({ currentWindow: true });
+            Logger.log('After restore wait, tabGroups:', tabGroups.length);
+        }
+
         if (tabGroups.length === 0) {
             let currentTabs = allTabs.filter(tab => tab.id && !tab.pinned) ?? [];
 
@@ -1287,6 +1319,44 @@ function clearFolderOpenTimer() {
     currentHoveredFolder = null;
 }
 
+/**
+ * Rebind a space (and its DOM element / active-space pointers) from a stale group id to
+ * a live one, WITHOUT creating a new group. This is the core of "adopt, don't recreate":
+ * on restart Chrome restores a space's tab group with a NEW id, so the persisted id goes
+ * stale — adopting the live group instead of minting a fresh one is what stops ghost /
+ * duplicate tab groups from accumulating (B16/B19/B20).
+ */
+function adoptGroupIntoSpace(oldSpaceId, newGroupId) {
+    if (oldSpaceId === newGroupId) return;
+    spaces = spaces.map(s => (s.id === oldSpaceId ? { ...s, id: newGroupId } : s));
+
+    const spaceEl = document.querySelector(`[data-space-id="${oldSpaceId}"]`);
+    if (spaceEl) {
+        spaceEl.dataset.spaceId = newGroupId;
+        spaceEl.dataset.spaceUuid = newGroupId;
+    }
+    if (activeSpaceId === oldSpaceId) activeSpaceId = newGroupId;
+    if (previousSpaceId === oldSpaceId) previousSpaceId = newGroupId;
+    saveSpaces();
+}
+
+/**
+ * Chrome session restore can populate tab groups AFTER the side panel's DOMContentLoaded
+ * fires. Running the "no live groups -> create a default group" path mid-restore mints a
+ * duplicate group and dumps tabs into it; restore then re-adds the real groups, leaving a
+ * ghost — and it repeats every restart (B18). When zero live groups are visible but the
+ * user has space folders (groups are expected), poll briefly for restore to settle.
+ */
+async function waitForTabGroupsToRestore(maxWaitMs = 3000, intervalMs = 200) {
+    const start = Date.now();
+    let groups = await chrome.tabGroups.query({});
+    while (groups.length === 0 && Date.now() - start < maxWaitMs) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+        groups = await chrome.tabGroups.query({});
+    }
+    return groups;
+}
+
 async function setActiveSpace(spaceId, updateTab = true) {
     Logger.log('Setting active space:', spaceId);
 
@@ -1296,13 +1366,27 @@ async function setActiveSpace(spaceId, updateTab = true) {
         Logger.log('Previous space recorded:', previousSpaceId);
     }
 
+    let tabGroups = await chrome.tabGroups.query({});
+
+    // Adopt-before-create: if this space's persisted group id is no longer live (e.g. the
+    // group was restored with a new id after restart), rebind the space to the live group
+    // with the same name instead of minting a duplicate group further down (B19).
+    if (!tabGroups.some(group => group.id === spaceId)) {
+        const space = spaces.find(s => s.id === spaceId);
+        const candidate = space ? tabGroups.find(g => g.title === space.name) : null;
+        if (candidate) {
+            Logger.log('Adopting live group', candidate.id, 'for space', spaceId, '(stale id)');
+            adoptGroupIntoSpace(spaceId, candidate.id);
+            spaceId = candidate.id;
+        }
+    }
+
     // Update global state
     activeSpaceId = spaceId;
 
     // Centralize logic in our new helper function
     await activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher);
 
-    let tabGroups = await chrome.tabGroups.query({});
     let tabGroupsToClose = tabGroups.filter(group => group.id !== spaceId);
 
     // Use a proper async loop instead of forEach
