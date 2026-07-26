@@ -24,12 +24,38 @@ const newTabBtn = document.getElementById('newTabBtn');
 const spaceTemplate = document.getElementById('spaceTemplate');
 
 export function setupDOMElements(createNewSpace) {
+    // Mouse-wheel scroll support for the space chip strip.
+    //
+    // Why this handler exists: the strip has `overflow-x: auto`, so trackpad
+    // horizontal swipes already scroll it natively (with momentum). But a
+    // standard vertical mouse wheel has no horizontal axis, so users with a
+    // mouse couldn't scroll the chips at all. This handler translates vertical
+    // wheel ticks into horizontal scrollLeft to fix that.
+    //
+    // Why it used to break chip scrolling: a later "swipe gesture" feature
+    // added a wheel listener on #sidebar-container that switches the active
+    // space whenever |deltaX| > 25. Because the chip strip lives inside
+    // #sidebar-container, every wheel event here also bubbled into that
+    // handler. Result: horizontal trackpad swipes that were meant to scroll
+    // the chips would instead switch spaces mid-gesture, and the original
+    // version of this handler (which preventDefault'd everything and only
+    // read deltaY) killed native momentum and ignored deltaX, making
+    // trackpad scroll feel slow and unpredictable.
+    //
+    // Two guards make the fix robust:
+    //   1. If the gesture is primarily horizontal, do nothing — let the
+    //      browser's native overflow-x scrolling handle it (this keeps
+    //      momentum and the correct direction on trackpads).
+    //   2. Always stopPropagation so the outer space-switch handler never
+    //      sees chip-strip gestures, regardless of axis.
     spaceSwitcher.addEventListener('wheel', (event) => {
+        if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+            event.stopPropagation();
+            return;
+        }
         event.preventDefault();
-
-        const scrollAmount = event.deltaY;
-
-        spaceSwitcher.scrollLeft += scrollAmount;
+        event.stopPropagation();
+        spaceSwitcher.scrollLeft += event.deltaY;
     }, { passive: false });
 
     // Add event listeners for buttons
