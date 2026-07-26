@@ -312,7 +312,11 @@ async function updatePinnedFavicons() {
         }
     }
 
-    // Add drag and drop event listeners
+    // Add drag and drop event listeners ONCE. updatePinnedFavicons() is called from many
+    // handlers; re-adding these container listeners every call leaked duplicate handlers
+    // that fired repeatedly (B8). Guard on a dataset flag so they bind exactly once.
+    if (!pinnedFavicons.dataset.dragListenersBound) {
+        pinnedFavicons.dataset.dragListenersBound = 'true';
     pinnedFavicons.addEventListener('dragover', e => {
         e.preventDefault();
         e.currentTarget.classList.add('drag-over');
@@ -438,6 +442,7 @@ async function updatePinnedFavicons() {
             }
         }
     });
+    } // end bind-once guard for pinnedFavicons drag listeners
 }
 
 // Utility function to activate a pinned tab by URL (reuses existing bookmark opening logic)
@@ -3532,22 +3537,10 @@ function handleTabUpdate(tabId, changeInfo, tab) {
 
             if (changeInfo.pinned !== undefined) {
                 if (changeInfo.pinned) {
-                    // Find which space this tab belongs to
-                    const spaceWithTab = spaces.find(space =>
-                        space.spaceBookmarks.includes(tabId) ||
-                        space.temporaryTabs.includes(tabId)
-                    );
-
-                    // If tab was in a space and was bookmarked, remove it from bookmarks
-                    if (spaceWithTab && spaceWithTab.spaceBookmarks.includes(tabId)) {
-                        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-                        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-                        const spaceFolder = spaceFolders.find(f => f.title === spaceWithTab.name);
-
-                        if (spaceFolder) {
-                            await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
-                        }
-                    }
+                    // Chrome-native-pinning a favorite must NOT delete its bookmark — the
+                    // bookmark is the only durable record of the favorite. We only detach the
+                    // runtime binding (remove the tab-id from the space arrays + pinned state)
+                    // so the favorite persists as an unrealized bookmark and re-binds on unpin.
 
                     // Remove tab from all spaces data when it becomes pinned
                     spaces.forEach(space => {
@@ -3650,9 +3643,14 @@ async function handleTabRemove(tabId) {
             shownTabIds.delete(tabId);
         }
     }
-    const activeSpace = spaces.find(s => s.id === activeSpaceId);
-    Logger.log("activeSpace", activeSpace);
-    const isPinned = activeSpace.spaceBookmarks.find(id => id === tabId) != null;
+    // Judge pinned-ness against the space that actually OWNS the closed tab, not the
+    // active space — closing a favorite in a non-active space must still convert it to a
+    // bookmark-only element, and an undefined active space must not throw before cleanup.
+    const owningSpace = spaces.find(s =>
+        s.spaceBookmarks.includes(tabId) || s.temporaryTabs.includes(tabId)
+    );
+    Logger.log("owningSpace", owningSpace);
+    const isPinned = owningSpace ? owningSpace.spaceBookmarks.includes(tabId) : false;
     Logger.log("isPinned", isPinned);
 
     if (isPinned) {
@@ -3661,7 +3659,7 @@ async function handleTabRemove(tabId) {
             // Find the bookmark in Chrome bookmarks for this space
             const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
             const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-            const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
+            const spaceFolder = spaceFolders.find(f => f.title === owningSpace.name);
 
             if (spaceFolder) {
                 // Try to get tab URL from Chrome API first, then fall back to DOM extraction
@@ -3718,7 +3716,7 @@ async function handleTabRemove(tabId) {
                         title: matchingBookmark.title,
                         url: matchingBookmark.url,
                         favIconUrl: null,
-                        spaceName: activeSpace.name
+                        spaceName: owningSpace.name
                     };
                     const bookmarkElement = await createTabElement(bookmarkTab, true, true);
 
@@ -4046,10 +4044,28 @@ async function handleTabGroupRemoved(groupId) {
             }
         }
     }
+
+    // Clean up the ghost space: without this, a removed group leaves its space in the
+    // `spaces` array and a dead element in the DOM until the sidebar is reopened (B5).
+    // NOTE: we deliberately do NOT delete the space's bookmark folder here — a group can
+    // vanish (e.g. its last tab moved away) without the user intending to lose favorites.
+    const removedSpace = spaces.find(s => s.id === groupId);
+    if (removedSpace) {
+        spaces = spaces.filter(s => s.id !== groupId);
+
+        const spaceElement = document.querySelector(`[data-space-id="${groupId}"]`);
+        if (spaceElement) {
+            spaceElement.remove();
+        }
+
+        saveSpaces();
+        await updateSpaceSwitcher();
+    }
 }
 
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
     processingTabMoves.add(tabId);
+    try {
     // Remove tab from its original space data first
     const sourceSpace = spaces.find(s =>
         s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
@@ -4158,7 +4174,11 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
     // 5. Save the updated spaces to storage
     saveSpaces();
-    processingTabMoves.delete(tabId);
+    } finally {
+        // Always release the processing lock, even on the early `space not found`
+        // return or any throw above — otherwise future moves for this tab are ignored.
+        processingTabMoves.delete(tabId);
+    }
 }
 
 // Tab navigation functions delegate to Utils to avoid code duplication

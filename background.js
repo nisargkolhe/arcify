@@ -431,24 +431,28 @@ async function runAutoArchiveCheck() {
         const activityResult = await chrome.storage.local.get(TAB_ACTIVITY_STORAGE_KEY);
         const tabActivity = activityResult[TAB_ACTIVITY_STORAGE_KEY] || {};
 
-        // --- Fetch spaces data to check against bookmarks ---
-        const spacesResult = await chrome.storage.local.get('spaces');
-        const spaces = spacesResult.spaces || [];
-        const bookmarkedUrls = new Set();
-        spaces.forEach(space => {
-            if (space.spaceBookmarks) {
-                // Assuming spaceBookmarks stores URLs directly.
-                // If it stores tab IDs or other objects, adjust this logic.
-                space.spaceBookmarks.forEach(bookmark => {
-                    // Check if bookmark is an object with a url or just a url string
-                    if (typeof bookmark === 'string') {
-                        bookmarkedUrls.add(bookmark);
-                    } else if (bookmark && bookmark.url) {
-                        bookmarkedUrls.add(bookmark.url);
+        // --- Build the protected favorite set from the durable Arcify bookmark tree ---
+        // NOTE: space.spaceBookmarks holds ephemeral tab-IDs (not URLs), so the old
+        // check here was always empty and never protected favorites from archiving.
+        // The Arcify bookmark folder is the durable record of favorites; collect its
+        // URLs normalized with the same pinned-URL key the renderer uses (origin+path).
+        const protectedUrlKeys = new Set();
+        try {
+            const [arcifyFolder] = await chrome.bookmarks.search({ title: 'Arcify' });
+            if (arcifyFolder) {
+                const [subTree] = await chrome.bookmarks.getSubTree(arcifyFolder.id);
+                const collectUrls = (node) => {
+                    if (!node) return;
+                    if (node.url) {
+                        protectedUrlKeys.add(Utils.getPinnedUrlKey(node.url));
                     }
-                });
+                    if (node.children) node.children.forEach(collectUrls);
+                };
+                collectUrls(subTree);
             }
-        });
+        } catch (bookmarkError) {
+            Logger.warn('Auto-archive: could not read Arcify bookmark tree for protection:', bookmarkError);
+        }
 
         // Get all non-pinned tabs across all windows
         const tabs = await chrome.tabs.query({ pinned: false });
@@ -461,8 +465,10 @@ async function runAutoArchiveCheck() {
                 continue;
             }
 
-            if (bookmarkedUrls.has(tab.url)) {
-                // Optionally update activity for bookmarked tabs so they don't get checked repeatedly
+            // Protect Arcify favorites: never archive a tab whose URL matches a bookmark
+            // in the Arcify tree (compared by origin+pathname to tolerate query/hash drift).
+            if (protectedUrlKeys.has(Utils.getPinnedUrlKey(tab.url))) {
+                // Refresh activity so protected favorites aren't re-checked repeatedly.
                 await updateTabLastActivity(tab.id);
                 continue;
             }
