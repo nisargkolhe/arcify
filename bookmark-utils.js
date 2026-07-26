@@ -354,7 +354,7 @@ export const BookmarkUtils = {
      * @param {Set} claimedTabIds - Tab IDs already bound to a bookmark in this run (shared across recursion)
      * @returns {Promise<Array>} Array of tab IDs that match bookmarks
      */
-    async matchTabsWithBookmarks(folder, groupId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null) {
+    async matchTabsWithBookmarks(folder, groupId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null, getUrlKey = null) {
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folder.id);
         const tabs = await chrome.tabs.query({ groupId: groupId });
@@ -365,7 +365,16 @@ export const BookmarkUtils = {
                 // This is a bookmark. Pick the first matching tab that hasn't already
                 // been bound to another bookmark in this run, so URL twins don't both
                 // get claimed by a single bookmark.
-                const tab = tabs.find(t => t.url === item.url && !claimed.has(t.id));
+                let tab = tabs.find(t => t.url === item.url && !claimed.has(t.id));
+                // Fallback: match by URL key (origin+pathname) — the SAME key the renderer
+                // uses. Without this, a favorite whose tab navigated away from the exact
+                // bookmarked URL before restart isn't matched here, so it lands in
+                // temporaryTabs as a duplicate while its bookmark renders as an empty
+                // placeholder (B12). The key fallback re-binds it to its tab.
+                if (!tab && getUrlKey) {
+                    const targetKey = getUrlKey(item.url);
+                    tab = tabs.find(t => !claimed.has(t.id) && getUrlKey(t.url) === targetKey);
+                }
                 if (tab) {
                     claimed.add(tab.id);
                     bookmarks.push(tab.id);
@@ -383,7 +392,7 @@ export const BookmarkUtils = {
                 }
             } else {
                 // This is a folder, recursively process it
-                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, groupId, setTabNameOverride, setPinnedTabState, claimed);
+                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, groupId, setTabNameOverride, setPinnedTabState, claimed, getUrlKey);
                 bookmarks.push(...subFolderBookmarks);
             }
         }

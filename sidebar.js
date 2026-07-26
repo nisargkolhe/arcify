@@ -779,7 +779,7 @@ async function initSidebar() {
                     Logger.log("found folder", group.title)
                     // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
 
-                    spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(bookmarkFolder, group.id, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils));
+                    spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(bookmarkFolder, group.id, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
                     // Remove null values from spaceBookmarks
                     spaceBookmarks = spaceBookmarks.filter(id => id !== null);
 
@@ -1449,7 +1449,7 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
 
         const groupColor = await Utils.getTabGroupColor(spaceName);
         const groupId = await ChromeHelper.createNewTabGroup(tabToMove, spaceName, groupColor);
-        const spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(spaceFolder, groupId, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils));
+        const spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(spaceFolder, groupId, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
 
         const space = {
             id: groupId,
@@ -3401,23 +3401,56 @@ async function createNewSpace() {
     }
 }
 
-function cleanTemporaryTabs(spaceId) {
+/**
+ * Collect the URL keys (origin+pathname) of every favorite bookmark in a space's folder.
+ * Used to protect favorites from bulk-close operations even if a favorite's tab id leaked
+ * into temporaryTabs or its tab navigated away from the exact bookmarked URL.
+ */
+async function getSpaceFavoriteUrlKeys(spaceName) {
+    const keys = new Set();
+    try {
+        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
+        const spaceFolder = spaceFolders.find(f => !f.url && f.title === spaceName);
+        if (!spaceFolder) return keys;
+        const [subTree] = await chrome.bookmarks.getSubTree(spaceFolder.id);
+        const walk = (node) => {
+            if (!node) return;
+            if (node.url) keys.add(Utils.getPinnedUrlKey(node.url));
+            if (node.children) node.children.forEach(walk);
+        };
+        walk(subTree);
+    } catch (error) {
+        Logger.warn('Could not read favorite URL keys for space:', spaceName, error);
+    }
+    return keys;
+}
+
+async function cleanTemporaryTabs(spaceId) {
     Logger.log('Cleaning temporary tabs for space:', spaceId);
     const space = spaces.find(s => s.id === spaceId);
-    if (space) {
-        Logger.log("space.temporaryTabs", space.temporaryTabs);
+    if (!space) return;
 
-        // iterate through temporary tabs and remove them with index
-        space.temporaryTabs.forEach((tabId, index) => {
-            if (index == space.temporaryTabs.length - 1) {
-                createNewTab();
-            }
-            chrome.tabs.remove(tabId);
-        });
+    // Derive the closable set from LIVE group tabs minus favorites, rather than trusting
+    // space.temporaryTabs (which can contain stale ids, or a leaked favorite id — B2).
+    const groupTabs = await chrome.tabs.query({ groupId: spaceId });
+    const protectedIds = new Set(space.spaceBookmarks);
+    const favoriteUrlKeys = await getSpaceFavoriteUrlKeys(space.name);
+    const closable = groupTabs.filter(t =>
+        !protectedIds.has(t.id) && !favoriteUrlKeys.has(Utils.getPinnedUrlKey(t.url))
+    );
 
-        space.temporaryTabs = [];
-        saveSpaces();
+    // If nothing would survive in the group, open a fresh tab so the group (space) doesn't
+    // collapse out of existence when all its tabs close.
+    if (closable.length > 0 && closable.length === groupTabs.length) {
+        await createNewTab();
     }
+
+    closable.forEach(t => chrome.tabs.remove(t.id));
+
+    // temporaryTabs is a derived view of non-favorite group tabs; keep only surviving favorites.
+    space.temporaryTabs = space.temporaryTabs.filter(id => protectedIds.has(id));
+    saveSpaces();
 }
 
 function handleTabCreated(tab) {
@@ -4017,10 +4050,11 @@ async function deleteSpace(spaceId) {
     Logger.log('Deleting space:', spaceId);
     const space = spaces.find(s => s.id === spaceId);
     if (space) {
-        // Close all tabs in the space
-        [...space.spaceBookmarks, ...space.temporaryTabs].forEach(tabId => {
-            chrome.tabs.remove(tabId);
-        });
+        // Close the tabs that are ACTUALLY in this group right now. Trusting the in-memory
+        // id arrays risks closing an unrelated tab whose id was reused after a stale entry
+        // lingered (B3); querying the live group closes exactly the right tabs.
+        const groupTabs = await chrome.tabs.query({ groupId: spaceId });
+        groupTabs.forEach(t => chrome.tabs.remove(t.id));
 
         // Remove space from array
         spaces = spaces.filter(s => s.id !== spaceId);
