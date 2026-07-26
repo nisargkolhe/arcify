@@ -694,6 +694,16 @@ async function initSidebar() {
             Logger.log('After restore wait, tabGroups:', tabGroups.length);
         }
 
+        // Prune stale pinned-tab bindings left over from previous sessions (B11) before we
+        // rebuild this session's bindings below. Uses ALL live tabs so other windows aren't
+        // affected.
+        try {
+            const allWindowTabs = await chrome.tabs.query({});
+            await Utils.prunePinnedTabStates(allWindowTabs.map(t => t.id));
+        } catch (e) {
+            Logger.warn('Could not prune stale pinned tab states:', e);
+        }
+
         if (tabGroups.length === 0) {
             let currentTabs = allTabs.filter(tab => tab.id && !tab.pinned) ?? [];
 

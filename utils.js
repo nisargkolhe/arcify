@@ -149,23 +149,58 @@ const Utils = {
         return states[tabId] || null;
     },
 
+    // Serialization chain for pinnedTabStatesById read-modify-write ops. Without this,
+    // concurrent set/remove callers (e.g. sidebar init's Promise.all over groups) each read
+    // the SAME base object and write it back, so the last write clobbers earlier bindings —
+    // dropping favorites' tab<->bookmark links (B10). Chaining makes each op atomic.
+    _pinnedStateChain: Promise.resolve(),
+    _serializePinnedStateOp: function (op) {
+        const run = this._pinnedStateChain.then(op, op);
+        // Keep the chain alive even if an op rejects, so one failure can't wedge the queue.
+        this._pinnedStateChain = run.then(() => { }, () => { });
+        return run;
+    },
+
     setPinnedTabState: async function (tabId, state) {
         if (!tabId || !state) return;
-        const states = await this.getPinnedTabStates();
-        states[tabId] = {
-            pinnedUrl: state.pinnedUrl || null,
-            bookmarkId: state.bookmarkId || null
-        };
-        await this.savePinnedTabStates(states);
+        return this._serializePinnedStateOp(async () => {
+            const states = await this.getPinnedTabStates();
+            states[tabId] = {
+                pinnedUrl: state.pinnedUrl || null,
+                bookmarkId: state.bookmarkId || null
+            };
+            await this.savePinnedTabStates(states);
+        });
     },
 
     removePinnedTabState: async function (tabId) {
         if (!tabId) return;
-        const states = await this.getPinnedTabStates();
-        if (states[tabId]) {
-            delete states[tabId];
-            await this.savePinnedTabStates(states);
-        }
+        return this._serializePinnedStateOp(async () => {
+            const states = await this.getPinnedTabStates();
+            if (states[tabId]) {
+                delete states[tabId];
+                await this.savePinnedTabStates(states);
+            }
+        });
+    },
+
+    // Drop pinnedTabStatesById entries whose tab id is no longer a live tab. Keyed by
+    // ephemeral tab id, this map otherwise accumulates dead keys across restarts, and a
+    // reused id could inherit a stale binding (B11). Called once on startup. Pass ALL live
+    // tab ids (across windows) so multi-window bindings aren't wrongly pruned.
+    prunePinnedTabStates: async function (validTabIds) {
+        const valid = new Set((validTabIds || []).map(id => String(id)));
+        return this._serializePinnedStateOp(async () => {
+            const states = await this.getPinnedTabStates();
+            let changed = false;
+            for (const key of Object.keys(states)) {
+                if (!valid.has(String(key))) {
+                    delete states[key];
+                    changed = true;
+                }
+            }
+            if (changed) await this.savePinnedTabStates(states);
+        });
     },
 
     getTabGroupColor: async function (groupName) {
