@@ -682,16 +682,17 @@ async function initSidebar() {
         const subFolders = await chrome.bookmarks.getChildren(spacesFolder.id);
         Logger.log("subFolders", subFolders);
 
-        // Restore-race guard (B18): if there are no live tab groups but the user DOES have
-        // space folders, we are almost certainly running before Chrome session restore has
-        // repopulated the groups. Creating a default group now would duplicate the restored
-        // ones into ghosts on every restart. Wait briefly for restore to settle first.
+        // Restore-race guard (B18): if the user has space folders but FEWER live groups than
+        // folders (including zero), Chrome session restore is very likely still in progress.
+        // Snapshotting now would mint duplicate groups for the not-yet-restored spaces. Wait
+        // for restore to actually settle first (stable tab/group counts), then re-read.
         const existingSpaceFolders = subFolders.filter(f => !f.url);
-        if (tabGroups.length === 0 && existingSpaceFolders.length > 0) {
-            Logger.log('No live groups but space folders exist; waiting for session restore...');
-            tabGroups = await waitForTabGroupsToRestore();
+        if (existingSpaceFolders.length > 0 && tabGroups.length < existingSpaceFolders.length) {
+            Logger.log('Live groups fewer than known spaces; waiting for session restore to settle...',
+                tabGroups.length, existingSpaceFolders.length);
+            tabGroups = await waitForChromeStateToSettle();
             allTabs = await chrome.tabs.query({ currentWindow: true });
-            Logger.log('After restore wait, tabGroups:', tabGroups.length);
+            Logger.log('After restore settle, tabGroups:', tabGroups.length);
         }
 
         // Prune stale pinned-tab bindings left over from previous sessions (B11) before we
@@ -747,22 +748,20 @@ async function initSidebar() {
             const ungroupedTabs = allTabs.filter(tab => tab.groupId === -1 && !tab.pinned);
             let defaultGroupId = null;
 
-            // If there are ungrouped tabs, check for existing Default group or create new one
+            // If there are ungrouped tabs (genuinely ungrouped now that restore has settled),
+            // move them into this window's Default group, creating it if needed. Single-window
+            // model: match the Default group within the current window and never mint a
+            // "<name><windowId>"-suffixed group (that suffix broke the folder<->group name join
+            // and fragmented favorites — B17).
             if (ungroupedTabs.length > 0) {
                 Logger.log("found ungrouped tabs", ungroupedTabs);
-                const defaultGroup = tabGroups.find(group => group.title === defaultSpaceName);
+                const defaultGroup = tabGroups.find(group =>
+                    group.title === defaultSpaceName && group.windowId === currentWindow.id
+                );
                 if (defaultGroup) {
                     Logger.log("found existing default group", defaultGroup);
-                    if (defaultGroup.windowId === currentWindow.id) {
-                        // Move ungrouped tabs to existing Default group
-                        await chrome.tabs.group({ tabIds: ungroupedTabs.map(tab => tab.id), groupId: defaultGroup.id });
-                    } else {
-                        // Create new Default group
-                        defaultGroupId = await chrome.tabs.group({ tabIds: ungroupedTabs.map(tab => tab.id) });
-                        await chrome.tabGroups.update(defaultGroupId, { title: defaultSpaceName + currentWindow.id, color: 'grey' });
-                    }
+                    await chrome.tabs.group({ tabIds: ungroupedTabs.map(tab => tab.id), groupId: defaultGroup.id });
                 } else {
-                    // Create new Default group
                     defaultGroupId = await chrome.tabs.group({ tabIds: ungroupedTabs.map(tab => tab.id) });
                     await chrome.tabGroups.update(defaultGroupId, { title: defaultSpaceName, color: 'grey' });
                 }
@@ -1351,16 +1350,26 @@ function adoptGroupIntoSpace(oldSpaceId, newGroupId) {
 }
 
 /**
- * Chrome session restore can populate tab groups AFTER the side panel's DOMContentLoaded
- * fires. Running the "no live groups -> create a default group" path mid-restore mints a
- * duplicate group and dumps tabs into it; restore then re-adds the real groups, leaving a
- * ghost — and it repeats every restart (B18). When zero live groups are visible but the
- * user has space folders (groups are expected), poll briefly for restore to settle.
+ * Chrome session restore populates tabs and tab groups ASYNCHRONOUSLY after the side
+ * panel's DOMContentLoaded fires — and it does so incrementally, one group at a time. If
+ * initSidebar snapshots that partial state, it (a) may mint a default group when it sees
+ * zero groups, and (b) will run the "regroup ungrouped tabs" path over tabs that are still
+ * mid-restore, yanking them into a new group before Chrome restores their real one. Either
+ * way we get duplicate/ghost groups with fresh colors, repeating every restart (B18).
+ *
+ * Waiting only for the FIRST group to appear (the old behavior) was not enough — it exits
+ * mid-restore. Instead, poll until the (groupCount, tabCount) signature is unchanged across
+ * two consecutive polls, i.e. restore has actually settled. Returns the settled groups.
  */
-async function waitForTabGroupsToRestore(maxWaitMs = 3000, intervalMs = 200) {
+async function waitForChromeStateToSettle(maxWaitMs = 5000, intervalMs = 250) {
     const start = Date.now();
+    let prevSignature = null;
     let groups = await chrome.tabGroups.query({});
-    while (groups.length === 0 && Date.now() - start < maxWaitMs) {
+    while (Date.now() - start < maxWaitMs) {
+        const tabs = await chrome.tabs.query({});
+        const signature = `${groups.length}:${tabs.length}`;
+        if (signature === prevSignature) break; // stable across two consecutive polls
+        prevSignature = signature;
         await new Promise(resolve => setTimeout(resolve, intervalMs));
         groups = await chrome.tabGroups.query({});
     }
