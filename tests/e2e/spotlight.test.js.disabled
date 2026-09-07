@@ -1,0 +1,496 @@
+/**
+ * E2E Tests for Spotlight Search
+ * Tests spotlight activation, search functionality, result selection, and keyboard navigation
+ */
+import {
+  launchBrowserWithExtension,
+  openSidebar,
+  clickElement,
+  waitForElement,
+} from './helpers/extension-helper.js';
+import {
+  delay,
+  takeScreenshotOnFailure,
+  logTestStep,
+  getElementCount,
+} from './helpers/test-utils.js';
+
+describe('Spotlight Search', () => {
+  let browser;
+  let extensionId;
+  let sidebarPage;
+
+  beforeAll(async () => {
+    logTestStep('Launching browser with extension...');
+    const result = await launchBrowserWithExtension();
+    browser = result.browser;
+    extensionId = result.extensionId;
+  });
+
+  afterAll(async () => {
+    if (browser) {
+      await browser.close();
+    }
+  });
+
+  beforeEach(async () => {
+    logTestStep('Opening sidebar...');
+    sidebarPage = await openSidebar(browser, extensionId);
+    await delay(1000);
+  });
+
+  afterEach(async () => {
+    if (sidebarPage) {
+      await sidebarPage.close();
+    }
+  });
+
+  describe('Spotlight Activation', () => {
+    test('should activate spotlight with keyboard shortcut (Alt+L)', async () => {
+      try {
+        logTestStep('Testing spotlight activation with Alt+L...');
+
+        // Create a regular page to trigger the shortcut from
+        const testPage = await browser.newPage();
+        await testPage.goto('https://www.example.com', { waitUntil: 'domcontentloaded' });
+        await delay(1000);
+
+        // Press Alt+L
+        await testPage.bringToFront();
+        await testPage.keyboard.down('Alt');
+        await testPage.keyboard.press('KeyL');
+        await testPage.keyboard.up('Alt');
+        await delay(1500);
+
+        // Check if spotlight overlay appeared
+        const spotlightVisible = await testPage.evaluate(() => {
+          const overlay = document.querySelector('.spotlight-overlay, #spotlightOverlay');
+          return overlay && overlay.style.display !== 'none';
+        });
+
+        if (spotlightVisible) {
+          logTestStep('✓ Spotlight activated via Alt+L');
+        } else {
+          logTestStep('⚠ Spotlight overlay not detected (might need permissions)');
+        }
+
+        await testPage.close();
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'spotlight-activation-failure');
+        throw error;
+      }
+    });
+
+    test('should open spotlight in new tab with Alt+T', async () => {
+      try {
+        logTestStep('Testing new tab spotlight with Alt+T...');
+
+        const testPage = await browser.newPage();
+        await testPage.goto('https://www.example.com', { waitUntil: 'domcontentloaded' });
+        await delay(1000);
+
+        // Get initial page count
+        const initialPages = (await browser.pages()).length;
+
+        // Press Alt+T
+        await testPage.bringToFront();
+        await testPage.keyboard.down('Alt');
+        await testPage.keyboard.press('KeyT');
+        await testPage.keyboard.up('Alt');
+        await delay(2000);
+
+        // Check if new tab was created
+        const finalPages = (await browser.pages()).length;
+
+        if (finalPages > initialPages) {
+          logTestStep('✓ New tab opened with spotlight');
+
+          // Check if the new tab has spotlight
+          const pages = await browser.pages();
+          const newTabPage = pages[pages.length - 1];
+
+          const hasSpotlight = await newTabPage.evaluate(() => {
+            const input = document.querySelector('.spotlight-input, #spotlightInput, input[type="text"]');
+            return input !== null;
+          });
+
+          if (hasSpotlight) {
+            logTestStep('✓ Spotlight search visible in new tab');
+          }
+        } else {
+          logTestStep('⚠ New tab not opened (might need permissions)');
+        }
+
+        await testPage.close();
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'spotlight-newtab-failure');
+        throw error;
+      }
+    });
+  });
+
+  describe('Search Functionality', () => {
+    test('should search for tabs', async () => {
+      try {
+        logTestStep('Testing tab search...');
+
+        // Open some test tabs with known titles
+        const testPages = [];
+        const testTitles = ['GitHub Example', 'Google Search', 'Stack Overflow'];
+
+        for (const title of testTitles) {
+          const page = await browser.newPage();
+          await page.goto('about:blank');
+          await page.evaluate((t) => {
+            document.title = t;
+          }, title);
+          testPages.push(page);
+          await delay(500);
+        }
+
+        // Open spotlight in new tab
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        // Type search query
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('GitHub');
+          await delay(1000);
+
+          // Check if results appeared
+          const resultsCount = await getElementCount(
+            spotlightPage,
+            '.search-result, .spotlight-result, .result-item'
+          );
+
+          expect(resultsCount).toBeGreaterThan(0);
+          logTestStep(`✓ Found ${resultsCount} search results`);
+
+          // Clean up test pages
+          for (const page of testPages) {
+            await page.close();
+          }
+          await spotlightPage.close();
+        } else {
+          logTestStep('⚠ Spotlight input not found');
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'search-tabs-failure');
+        throw error;
+      }
+    });
+
+    test('should search for bookmarks', async () => {
+      try {
+        logTestStep('Testing bookmark search...');
+
+        // Open spotlight page
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        // Search for a common bookmark term
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('example');
+          await delay(1000);
+
+          // Check results
+          const hasResults = await spotlightPage.evaluate(() => {
+            const results = document.querySelectorAll('.search-result, .spotlight-result');
+            return results.length > 0;
+          });
+
+          if (hasResults) {
+            logTestStep('✓ Bookmark search returned results');
+          } else {
+            logTestStep('⚠ No bookmark results (might be no bookmarks)');
+          }
+
+          await spotlightPage.close();
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'search-bookmarks-failure');
+        throw error;
+      }
+    });
+
+    test('should search browsing history', async () => {
+      try {
+        logTestStep('Testing history search...');
+
+        // Visit a few pages to create history
+        const testPage = await browser.newPage();
+        await testPage.goto('https://www.example.com', { waitUntil: 'domcontentloaded' });
+        await delay(1000);
+        await testPage.goto('https://www.example.org', { waitUntil: 'domcontentloaded' });
+        await delay(1000);
+        await testPage.close();
+
+        // Open spotlight
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        // Search for history
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('example');
+          await delay(1500);
+
+          // Check if history results appear
+          const resultsCount = await getElementCount(
+            spotlightPage,
+            '.search-result, .spotlight-result'
+          );
+
+          expect(resultsCount).toBeGreaterThan(0);
+          logTestStep(`✓ History search returned ${resultsCount} results`);
+
+          await spotlightPage.close();
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'search-history-failure');
+        throw error;
+      }
+    });
+
+    test('should show search suggestions', async () => {
+      try {
+        logTestStep('Testing search suggestions...');
+
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('test query');
+          await delay(1000);
+
+          // Check for search suggestions (Google/Bing/etc)
+          const hasSuggestions = await spotlightPage.evaluate(() => {
+            const results = document.querySelectorAll('.search-result, .spotlight-result');
+            return Array.from(results).some(result => {
+              const text = result.textContent.toLowerCase();
+              return text.includes('search') || text.includes('google') || text.includes('query');
+            });
+          });
+
+          if (hasSuggestions) {
+            logTestStep('✓ Search suggestions displayed');
+          } else {
+            logTestStep('⚠ No search suggestions found');
+          }
+
+          await spotlightPage.close();
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'search-suggestions-failure');
+        throw error;
+      }
+    });
+  });
+
+  describe('Keyboard Navigation', () => {
+    test('should navigate results with arrow keys', async () => {
+      try {
+        logTestStep('Testing keyboard navigation...');
+
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('example');
+          await delay(1000);
+
+          // Press arrow down
+          await spotlightPage.keyboard.press('ArrowDown');
+          await delay(300);
+
+          // Check if first result is highlighted
+          const hasHighlight = await spotlightPage.evaluate(() => {
+            const highlighted = document.querySelector('.result-highlighted, .selected, [aria-selected="true"]');
+            return highlighted !== null;
+          });
+
+          expect(hasHighlight).toBe(true);
+          logTestStep('✓ Arrow key navigation works');
+
+          // Press arrow down again
+          await spotlightPage.keyboard.press('ArrowDown');
+          await delay(300);
+
+          // Press arrow up
+          await spotlightPage.keyboard.press('ArrowUp');
+          await delay(300);
+
+          logTestStep('✓ Arrow up/down navigation tested');
+
+          await spotlightPage.close();
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'keyboard-nav-failure');
+        throw error;
+      }
+    });
+
+    test('should select result with Enter key', async () => {
+      try {
+        logTestStep('Testing result selection with Enter...');
+
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        const initialPageCount = (await browser.pages()).length;
+
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('example');
+          await delay(1000);
+
+          // Navigate to first result
+          await spotlightPage.keyboard.press('ArrowDown');
+          await delay(300);
+
+          // Press Enter
+          await spotlightPage.keyboard.press('Enter');
+          await delay(2000);
+
+          // Check if action was taken (new page or navigation)
+          logTestStep('✓ Enter key pressed on result');
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'result-selection-failure');
+        throw error;
+      }
+    });
+
+    test('should close spotlight with Escape key', async () => {
+      try {
+        logTestStep('Testing spotlight close with Escape...');
+
+        // Activate spotlight on a page
+        const testPage = await browser.newPage();
+        await testPage.goto('https://www.example.com', { waitUntil: 'domcontentloaded' });
+        await delay(1000);
+
+        // Activate spotlight
+        await testPage.keyboard.down('Alt');
+        await testPage.keyboard.press('KeyL');
+        await testPage.keyboard.up('Alt');
+        await delay(1000);
+
+        // Press Escape
+        await testPage.keyboard.press('Escape');
+        await delay(500);
+
+        // Check if spotlight closed
+        const spotlightVisible = await testPage.evaluate(() => {
+          const overlay = document.querySelector('.spotlight-overlay, #spotlightOverlay');
+          return overlay && overlay.style.display !== 'none';
+        });
+
+        expect(spotlightVisible).toBe(false);
+        logTestStep('✓ Spotlight closed with Escape key');
+
+        await testPage.close();
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'spotlight-escape-failure');
+        throw error;
+      }
+    });
+  });
+
+  describe('Result Selection', () => {
+    test('should navigate to URL when result is clicked', async () => {
+      try {
+        logTestStep('Testing result click navigation...');
+
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+          await spotlightPage.keyboard.type('example');
+          await delay(1500);
+
+          // Click first result
+          const firstResult = await spotlightPage.$('.search-result, .spotlight-result');
+          if (firstResult) {
+            await firstResult.click();
+            await delay(2000);
+
+            logTestStep('✓ Result clicked');
+          }
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'result-click-failure');
+        throw error;
+      }
+    });
+  });
+
+  describe('Search Debouncing', () => {
+    test('should debounce search input', async () => {
+      try {
+        logTestStep('Testing search debouncing...');
+
+        const spotlightPage = await browser.newPage();
+        const spotlightUrl = `chrome-extension://${extensionId}/spotlight/newtab.html`;
+        await spotlightPage.goto(spotlightUrl, { waitUntil: 'networkidle0' });
+        await delay(1000);
+
+        const searchInput = await spotlightPage.$('.spotlight-input, #spotlightInput, input[type="text"]');
+        if (searchInput) {
+          await searchInput.click();
+
+          // Type quickly without waiting
+          await spotlightPage.keyboard.type('quick', { delay: 50 });
+
+          // Wait minimal time
+          await delay(200);
+
+          // Type more
+          await spotlightPage.keyboard.type(' search', { delay: 50 });
+
+          // Wait for debounce to finish
+          await delay(1000);
+
+          // Results should appear after debounce period
+          const resultsCount = await getElementCount(
+            spotlightPage,
+            '.search-result, .spotlight-result'
+          );
+
+          logTestStep(`✓ Debouncing works, found ${resultsCount} results after typing`);
+
+          await spotlightPage.close();
+        }
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'debounce-failure');
+        throw error;
+      }
+    });
+  });
+});

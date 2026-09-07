@@ -16,7 +16,12 @@
             font-style: normal;
         }
 
-        h1, h2, h3, h4, h5, h6 {
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
             font-family: "Varela Round", sans-serif;
             font-style: normal;
         }
@@ -85,15 +90,14 @@
                             <div class="instructions">
                                 <h3>How to set up keyboard shortcuts:</h3>
                                 <ol>
-                                    <li>Open Chrome Extensions page (chrome://extensions/shortcuts)</li>
-                                    <li>Go to the keyboard shortcuts section</li>
+                                    <li>Open Chrome Extensions Keyboard Shortcuts page <a href="#" id="shortcuts-link"
+                                            class="shortcuts-link">chrome://extensions/shortcuts</a></li>
                                     <li>Find Arcify and customize the shortcuts</li>
                                 </ol>
 
                                 <h3 style="margin-top: 2rem;">Recommended Shortcuts:</h3>
                                 <ul style="list-style: none; padding-left: 0;">
                                     <li>🎯 <strong>Toggle Sidepanel</strong>: <kbd>Cmd/Ctrl + S</kbd></li>
-                                    <li>🔍 <strong>Spotlight</strong>: <kbd>Cmd/Ctrl + T</kbd></li>
                                     <li>📌 <strong>Quick Pin/Unpin</strong>: <kbd>Cmd/Ctrl + D</kbd></li>
                                 </ul>
                             </div>
@@ -140,38 +144,34 @@
             <!-- Step 4: Spotlight -->
             <div class="step" id="step4">
                 <div class="step-content">
-                    <h2 class="step-title">Spotlight Search</h2>
-                    <p class="step-description">
-                        Spotlight is a powerful search feature that helps you quickly find and switch between tabs,
-                        bookmarks, and more.
-                    </p>
+                    <h2 class="step-title">Meet Arcify Spotlight</h2>
+                    <p class="step-description">Spotlight is now its separate extension. Install it to supercharge your
+                        browsing.</p>
 
                     <div class="step-layout">
                         <div class="gif-section">
                             <div class="gif-placeholder">
-                                <img src="assets/spotlight.gif" alt="Spotlight search tutorial">
+                                <img src="assets/spotlight.gif" alt="Arcify Spotlight preview">
                             </div>
                         </div>
-
                         <div class="instructions-section">
                             <div class="instructions">
-                                <h3>Spotlight features:</h3>
+                                <h3>Arcify Spotlight</h3>
                                 <ul style="list-style: none; padding-left: 0;">
-                                    <li>🔍 Search across all your tabs and bookmarks</li>
-                                    <li>⚡ Quick tab switching with keyboard shortcuts</li>
-                                    <li>📚 Access to recent tabs and browsing history</li>
-                                    <li>🎯 Smart suggestions and autocomplete</li>
+                                    <li style="margin-bottom: 0.5rem;">Search across all your open tabs instantly</li>
+                                    <li style="margin-bottom: 0.5rem;">Find bookmarks and browsing history in one place
+                                    </li>
+                                    <li style="margin-bottom: 0.5rem;">Smart suggestions with keyboard-first navigation
+                                    </li>
                                 </ul>
-                                <button class="toggle-button on" id="spotlightToggle">
-                                    Spotlight is Enabled
-                                </button>
-                                <small style="display: block; margin-top: 0.5rem; color: var(--text-secondary);">
-                                    When enabled, Spotlight is available via keyboard shortcuts and new tabs will show the Spotlight interface.
-                                </small>
+                                <a href="https://chromewebstore.google.com/detail/arcify-spotlight/pegemlhekkccgoidiphojbpnabahjmff" target="_blank" rel="noopener noreferrer"
+                                    class="cws-button" style="display: inline-block; margin-top: 1rem;">Get Arcify
+                                    Spotlight</a>
+                                <p class="promo-note" style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">Free
+                                    companion extension from the Chrome Web Store</p>
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
 
@@ -190,23 +190,10 @@
                             <div class="shortcut-description">Open or close the Arcify sidepanel</div>
                         </div>
 
-
                         <div class="shortcut-card">
                             <div class="shortcut-key" data-shortcut="switch-spaces">Alt+D</div>
                             <div class="shortcut-title">Quick Pin/Unpin Tab</div>
                             <div class="shortcut-description">Quickly pin or unpin the current tab</div>
-                        </div>
-
-                        <div class="shortcut-card">
-                            <div class="shortcut-key" data-shortcut="new-tab">Alt+T</div>
-                            <div class="shortcut-title">Spotlight</div>
-                            <div class="shortcut-description">Open spotlight to switch tabs or open a new tab.</div>
-                        </div>
-
-                        <div class="shortcut-card">
-                            <div class="shortcut-key" data-shortcut="spotlight-search">Alt+L</div>
-                            <div class="shortcut-title">Current Tab</div>
-                            <div class="shortcut-description">Edit or copy the current tab's URL in spotlight.</div>
                         </div>
                     </div>
 

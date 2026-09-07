@@ -354,6 +354,96 @@ kbd {
     white-space: nowrap;
 }
 
+/* Companion Promo Card */
+.companion-promo-card {
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    max-width: 800px;
+    width: 100%;
+    margin: 2rem auto;
+    transition: box-shadow 0.3s ease;
+}
+
+.companion-promo-card:hover {
+    box-shadow: var(--shadow-hover);
+}
+
+.promo-card-preview {
+    width: 100%;
+    overflow: hidden;
+}
+
+.promo-card-preview img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.promo-card-info {
+    padding: 2rem;
+    text-align: left;
+}
+
+.promo-card-info h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.feature-highlights {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 1.5rem;
+}
+
+.feature-highlights li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    line-height: 1.6;
+}
+
+.feature-highlights li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary-color);
+}
+
+.cws-button {
+    display: inline-block;
+    background: var(--primary-color);
+    color: white;
+    text-decoration: none;
+    padding: 0.875rem 2rem;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.cws-button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+    background: var(--secondary-color);
+}
+
+.promo-note {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
 @media (min-width: 1200px) {
     .step-layout {
         flex-direction: row;

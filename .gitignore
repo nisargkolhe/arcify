@@ -40,5 +40,9 @@ lerna-debug.log*
 CLAUDE.md
 .claude/*
 
-# Playwright
+# Testing
 test-results/
+tests/e2e/screenshots/
+coverage/
+.nyc_output/
+junit.xml

@@ -59,7 +59,7 @@ export const CSS_CLASSES = {
 
     // UI feedback classes
     ERROR_POPUP: 'error-popup',
-    SPOTLIGHT_ACTIVE: 'spotlight-active',
+
     URL_CHANGED_SLASH: 'tab-url-changed-slash',
 
     // Context menu classes
