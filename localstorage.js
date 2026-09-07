@@ -15,6 +15,74 @@
 import { Logger } from './logger.js';
 
 const LocalStorage = {
+    // --- Durable space registry (Phase 4 foundation) ---
+    // Maps a space's DURABLE anchor — its Arcify bookmark folder id (survives restart) — to
+    // a stable spaceUuid plus remembered name/color/order. This gives each space an identity
+    // independent of the ephemeral Chrome tab-group id, so later work can key off spaceUuid
+    // instead of the group id (RC-1). Additive: it does not replace the existing model yet.
+    // Writes are serialized because initSidebar builds spaces concurrently (Promise.all).
+    _registryChain: Promise.resolve(),
+    _serializeRegistryOp: function (op) {
+        const run = this._registryChain.then(op, op);
+        this._registryChain = run.then(() => { }, () => { });
+        return run;
+    },
+    getSpaceRegistry: async function () {
+        const result = await chrome.storage.local.get('spaceRegistry');
+        return result.spaceRegistry || {};
+    },
+    saveSpaceRegistry: async function (registry) {
+        await chrome.storage.local.set({ spaceRegistry: registry || {} });
+    },
+    // Get the durable entry for a space's bookmark folder, creating it (with a fresh
+    // spaceUuid) on first sight. On creation the passed name/color seed the entry.
+    getOrCreateSpaceRegistryEntry: async function (bookmarkFolderId, attrs = {}) {
+        if (!bookmarkFolderId) return null;
+        return this._serializeRegistryOp(async () => {
+            const registry = await this.getSpaceRegistry();
+            let entry = registry[bookmarkFolderId];
+            if (!entry) {
+                const spaceUuid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : `space-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                entry = {
+                    spaceUuid,
+                    bookmarkFolderId,
+                    name: attrs.name ?? null,
+                    color: attrs.color ?? null,
+                    order: attrs.order ?? 0,
+                };
+                registry[bookmarkFolderId] = entry;
+                await this.saveSpaceRegistry(registry);
+            }
+            return entry;
+        });
+    },
+    removeSpaceRegistryEntry: async function (bookmarkFolderId) {
+        if (!bookmarkFolderId) return;
+        return this._serializeRegistryOp(async () => {
+            const registry = await this.getSpaceRegistry();
+            if (registry[bookmarkFolderId]) {
+                delete registry[bookmarkFolderId];
+                await this.saveSpaceRegistry(registry);
+            }
+        });
+    },
+    // Update a registry entry's mutable attributes (name/color/order) so the durable record
+    // tracks the user's renames/recolors. No-op if the entry doesn't exist yet.
+    updateSpaceRegistryEntry: async function (bookmarkFolderId, attrs = {}) {
+        if (!bookmarkFolderId) return;
+        return this._serializeRegistryOp(async () => {
+            const registry = await this.getSpaceRegistry();
+            const entry = registry[bookmarkFolderId];
+            if (!entry) return;
+            if (attrs.name !== undefined) entry.name = attrs.name;
+            if (attrs.color !== undefined) entry.color = attrs.color;
+            if (attrs.order !== undefined) entry.order = attrs.order;
+            await this.saveSpaceRegistry(registry);
+        });
+    },
+
     getOrCreateArcifyFolder: async function () {
         let [folder] = await chrome.bookmarks.search({ title: 'Arcify' });
         if (!folder) {

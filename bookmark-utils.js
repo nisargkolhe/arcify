@@ -350,33 +350,89 @@ export const BookmarkUtils = {
      * @param {Object} folder - Bookmark folder object
      * @param {number} groupId - Tab group ID to match against
      * @param {Function} setTabNameOverride - Function to set tab name overrides
+     * @param {Function} setPinnedTabState - Function to persist tab->bookmark binding
+     * @param {Set} claimedTabIds - Tab IDs already bound to a bookmark in this run (shared across recursion)
      * @returns {Promise<Array>} Array of tab IDs that match bookmarks
      */
-    async matchTabsWithBookmarks(folder, groupId, setTabNameOverride = null) {
+    async matchTabsWithBookmarks(folder, groupId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null, getUrlKey = null) {
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folder.id);
         const tabs = await chrome.tabs.query({ groupId: groupId });
+        const claimed = claimedTabIds || new Set();
 
         for (const item of items) {
             if (item.url) {
-                // This is a bookmark
-                const tab = tabs.find(t => t.url === item.url);
+                // This is a bookmark. Pick the first matching tab that hasn't already
+                // been bound to another bookmark in this run, so URL twins don't both
+                // get claimed by a single bookmark.
+                let tab = tabs.find(t => t.url === item.url && !claimed.has(t.id));
+                // Fallback: match by URL key (origin+pathname) — the SAME key the renderer
+                // uses. Without this, a favorite whose tab navigated away from the exact
+                // bookmarked URL before restart isn't matched here, so it lands in
+                // temporaryTabs as a duplicate while its bookmark renders as an empty
+                // placeholder (B12). The key fallback re-binds it to its tab.
+                if (!tab && getUrlKey) {
+                    const targetKey = getUrlKey(item.url);
+                    tab = tabs.find(t => !claimed.has(t.id) && getUrlKey(t.url) === targetKey);
+                }
                 if (tab) {
+                    claimed.add(tab.id);
                     bookmarks.push(tab.id);
                     // Set tab name override with the bookmark's title if needed
                     if (item.title && item.title !== tab.title && setTabNameOverride) {
                         await setTabNameOverride(tab.id, tab.url, item.title);
                         Logger.log(`[BookmarkUtils] Override set for tab ${tab.id} from bookmark: ${item.title}`);
                     }
+                    // Persist tab->bookmark binding so the renderer's primary matcher
+                    // (byBookmarkId) survives across sessions and isn't displaced by
+                    // newly opened URL twins.
+                    if (setPinnedTabState) {
+                        await setPinnedTabState(tab.id, { pinnedUrl: item.url, bookmarkId: item.id });
+                    }
                 }
             } else {
                 // This is a folder, recursively process it
-                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, groupId, setTabNameOverride);
+                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, groupId, setTabNameOverride, setPinnedTabState, claimed, getUrlKey);
                 bookmarks.push(...subFolderBookmarks);
             }
         }
 
         return bookmarks;
+    },
+
+    /**
+     * Find a bookmark in a folder tree whose URL key matches `targetUrlKey` and
+     * which is NOT already represented by an open pinned tab in this space.
+     * Used to auto-bind a newly opened tab to an unrealized pinned bookmark.
+     *
+     * @param {string} folderId - Root folder id to walk (the space's bookmark folder)
+     * @param {string} targetUrlKey - URL key (origin+pathname) to match against
+     * @param {(url: string) => string} getUrlKey - URL-key function (Utils.getPinnedUrlKey)
+     * @param {Set<string>} claimedBookmarkIds - Bookmark IDs already bound to an open tab
+     * @param {Set<string>} claimedUrlKeys - URL keys already bound to an open tab
+     * @returns {Promise<Object|null>} The matching bookmark node, or null
+     */
+    async findUnboundPinnedBookmarkByUrlKey(folderId, targetUrlKey, getUrlKey, claimedBookmarkIds, claimedUrlKeys) {
+        if (!folderId || !targetUrlKey) return null;
+        try {
+            const items = await chrome.bookmarks.getChildren(folderId);
+            for (const item of items) {
+                if (item.url) {
+                    if (claimedBookmarkIds.has(item.id)) continue;
+                    const itemKey = getUrlKey(item.url);
+                    if (itemKey !== targetUrlKey) continue;
+                    if (claimedUrlKeys.has(itemKey)) continue;
+                    return item;
+                }
+                // Folder — recurse
+                const nested = await this.findUnboundPinnedBookmarkByUrlKey(item.id, targetUrlKey, getUrlKey, claimedBookmarkIds, claimedUrlKeys);
+                if (nested) return nested;
+            }
+            return null;
+        } catch (e) {
+            Logger.warn(`[BookmarkUtils] findUnboundPinnedBookmarkByUrlKey error in folder ${folderId}:`, e);
+            return null;
+        }
     },
 
     /**
