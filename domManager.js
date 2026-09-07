@@ -1,3 +1,4 @@
+import { firstUnusedColor } from './space-colors.js';
 /**
  * DOMManager - Sidebar DOM manipulation and UI component management
  * 
@@ -23,7 +24,7 @@ const addSpaceBtn = document.getElementById('addSpaceBtn');
 const newTabBtn = document.getElementById('newTabBtn');
 const spaceTemplate = document.getElementById('spaceTemplate');
 
-export function setupDOMElements(createNewSpace) {
+export function setupDOMElements(createNewSpace, getSpaces = () => []) {
     // Mouse-wheel scroll support for the space chip strip.
     //
     // Why this handler exists: the strip has `overflow-x: auto`, so trackpad
@@ -74,6 +75,13 @@ export function setupDOMElements(createNewSpace) {
             spaceSwitcher.style.visibility = 'visible';
         } else {
             spaceNameInput.value = '';
+            document.getElementById('createSpaceBtn').disabled = true;
+            const select = document.getElementById('spaceColor');
+            const palette = [...select.options].map(option => option.value);
+            select.value = firstUnusedColor(getSpaces(), palette);
+            document.querySelectorAll('#createSpaceColorSwatch .color-swatch').forEach(swatch => {
+                swatch.classList.toggle('selected', swatch.dataset.color === select.value);
+            });
             spaceSwitcher.style.opacity = '0';
             spaceSwitcher.style.visibility = 'hidden';
         }
@@ -256,7 +264,7 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
                 // Set the space as active, but prevent it from auto-activating a different tab
                 await setActiveSpace(space.id, false);
                 // Explicitly activate the tab that was just moved
-                await chrome.tabs.update(tab.id, { active: true });
+                await Utils.focusTab(tab.id);
             });
             submenu.appendChild(submenuItem);
         });
@@ -395,7 +403,7 @@ export async function showArchivedTabsPopup(activeSpaceId) {
     toggleWrapper.appendChild(toggle);
     toggleWrapper.appendChild(slider);
     toggleLabel.appendChild(toggleWrapper);
-    toggleLabel.appendChild(document.createTextNode('Enable Archiving'));
+    toggleLabel.appendChild(document.createTextNode('Auto-archive inactive tabs'));
     controls.appendChild(toggleLabel);
 
     // Archive time input (styled) - display in hours, store in minutes
@@ -430,18 +438,8 @@ export async function showArchivedTabsPopup(activeSpaceId) {
 
     // --- End Archiving Controls ---
 
-    if (!archivingEnabled) {
-        message.textContent = 'Tab Archiving is disabled. Use the toggle above to enable.';
-        list.style.display = 'none';
-        return;
-    }
-
-    if (!(await Utils.isArchivingEnabled())) {
-        message.textContent = 'Tab Archiving is disabled. Go to extension settings to enable.';
-        list.style.display = 'none';
-        return;
-    }
-
+    // Manual archives remain restorable even when automatic cleanup is off.
+    message.style.display = 'block';
     const allArchived = await Utils.getArchivedTabs();
     if (allArchived.length === 0) {
         message.textContent = 'No archived tabs.';
@@ -475,6 +473,7 @@ export async function showArchivedTabsPopup(activeSpaceId) {
                 Utils.restoreArchivedTab(archivedTab);
                 item.remove();
                 if (list.children.length === 0) {
+                    message.textContent = 'No archived tabs.';
                     message.style.display = 'block';
                     list.style.display = 'none';
                 }

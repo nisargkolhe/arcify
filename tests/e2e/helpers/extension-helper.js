@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
  * @returns {Promise<{browser: Browser, extensionId: string}>}
  */
 export async function launchBrowserWithExtension(options = {}) {
-  const extensionPath = options.extensionPath || path.resolve(__dirname, '../../../dist');
+  const extensionPath = options.extensionPath || process.env.ARCIFY_TEST_EXTENSION_PATH || path.resolve(__dirname, '../../../dist');
   // Default: headless (uses Chrome's new headless mode which supports extensions)
   // Set DEBUG=true or HEADED=true to see the browser window
   const isDebug = process.env.DEBUG === 'true' || process.env.HEADED === 'true';
@@ -226,10 +226,9 @@ export async function typeIntoField(page, selector, text) {
 }
 
 /**
- * Create a new space by creating a Chrome tab group via APIs.
- * The sidebar must be closed first to prevent its handleTabCreated listener
- * from moving the new tab to the active space. Returns a new sidebar page
- * that has discovered the new tab group.
+ * Create a new extension-owned space through the sidebar UI.
+ * Opens a sidebar and uses its Create Space form. DOM clicks avoid depending on
+ * compositor frames when Chrome focuses a different tab during the test.
  * @param {object} browser - Puppeteer browser instance
  * @param {string} extensionId - Extension ID
  * @param {string} name - Space name
@@ -237,24 +236,17 @@ export async function typeIntoField(page, selector, text) {
  * @returns {Promise<Page>} New sidebar page
  */
 export async function createSpace(browser, extensionId, name, color = 'grey') {
-  // Use a helper page (options.html) to call Chrome APIs
-  // The sidebar is already closed by the caller to prevent interference
-  const helperPage = await browser.newPage();
-  await helperPage.goto(`chrome-extension://${extensionId}/options.html`, {
-    waitUntil: 'domcontentloaded',
-  });
-  await new Promise(r => setTimeout(r, 500));
-
-  await helperPage.evaluate(async (spaceName, spaceColor) => {
-    const newTab = await chrome.tabs.create({ active: false });
-    const groupId = await chrome.tabs.group({ tabIds: [newTab.id] });
-    await chrome.tabGroups.update(groupId, { title: spaceName, color: spaceColor });
-  }, name, color);
-
-  await helperPage.close();
-
-  // Open a fresh sidebar - initSidebar() will discover the new tab group
-  return await openSidebar(browser, extensionId);
+  const page = await openSidebar(browser, extensionId);
+  await page.$eval('#addSpaceBtn', button => button.click());
+  await page.type('#newSpaceName', name);
+  await page.select('#spaceColor', color);
+  await page.$eval('#createSpaceBtn', button => button.click());
+  await page.waitForFunction(spaceName => [...document.querySelectorAll('.space-name')].some(el => el.value === spaceName), { polling: 100 }, name);
+  await page.waitForFunction(async spaceName => {
+    const { spaces = [] } = await chrome.storage.local.get('spaces');
+    return spaces.some(s => s.name === spaceName);
+  }, { polling: 100 }, name);
+  return page;
 }
 
 /**

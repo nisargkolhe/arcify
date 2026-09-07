@@ -1,3 +1,5 @@
+import { registerTourMessages } from './tour-state.js';
+registerTourMessages();
 /**
  * Background Service Worker (Manifest V3) - Core extension orchestrator
  *
@@ -10,6 +12,16 @@
  * - Manages tab activity tracking for auto-archive functionality
  * - All content script Chrome API requests must route through here via message passing
  */
+
+import { SpaceStore, ownerOf } from './space-store.js';
+
+const spaceStore = new SpaceStore();
+spaceStore.install();
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== 'spaceStore') return;
+    spaceStore.dispatch(message).then(spaces => sendResponse({ success: true, spaces }), error => sendResponse({ success: false, error: error.message }));
+    return true;
+});
 
 import { Utils } from './utils.js';
 import { Logger } from './logger.js';
@@ -44,8 +56,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         if (!result.onboardingCompleted) {
             chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
         }
-    } else if (details.reason === 'update') {
-        chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
     }
 
     if (chrome.contextMenus) {
@@ -67,7 +77,9 @@ if (chrome.contextMenus) {
 }
 
 // Listen for messages from the content script (sidebar)
-chrome.runtime.onMessage.addListener(async function (request, sender, sendResponse) {
+// Do not return a Promise for unrelated messages: it can win the response race
+// against the asynchronous space-store handler on Chrome versions with Promise replies.
+chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     // Forward the pin toggle command to the sidebar
     if (request.command === "toggleSpacePin") {
         chrome.runtime.sendMessage({ command: "toggleSpacePin", tabId: request.tabId });
@@ -312,11 +324,11 @@ async function runAutoArchiveCheck() {
             const tabData = {
                 url: tab.url,
                 name: tab.title || tab.url, // Use URL if title is empty
-                spaceId: tab.groupId // Archive within its current group/space
+                spaceId: ownerOf(await spaceStore.dispatch({ action: 'get' }), tab.id)?.id
             };
 
-            // Check if spaceId is valid (i.e., tab is actually in a group)
-            if (tabData.spaceId && tabData.spaceId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+            // Archive only tabs owned by an extension space.
+            if (tabData.spaceId) {
                 await Utils.addArchivedTab(tabData);
                 await chrome.tabs.remove(tab.id); // Close the tab after archiving
                 await removeTabLastActivity(tab.id); // Remove activity timestamp after archiving

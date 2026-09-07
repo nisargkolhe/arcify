@@ -7,6 +7,7 @@ import fs from 'fs-extra';
 function getExtensionInputs() {
   return {
     sidebar: resolve(process.cwd(), 'sidebar.html'),
+    'tutorial-practice': resolve(process.cwd(), 'tutorial-practice.html'),
     options: resolve(process.cwd(), 'options.html'),
     onboarding: resolve(process.cwd(), 'onboarding.html'),
     'installation-onboarding': resolve(process.cwd(), 'installation-onboarding.html'),

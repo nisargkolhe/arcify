@@ -1,8 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>Arc-ify Settings</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arcify Settings</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
@@ -22,147 +24,171 @@
 </head>
 
 <body class="options-page">
-    <div class="options-container">
-        <h1 class="options-title">Arcify Settings</h1>
+    <main class="options-container">
+        <header class="options-header">
+            <h1 class="options-title">Arcify Settings</h1>
+            <p class="options-description">Changes save automatically.</p>
+        </header>
 
-        <div class="options-setting-item">
-            <label for="defaultSpaceName" class="options-label">Default Space:</label>
-            <select id="defaultSpaceName" class="options-input">
-                <option value="">Loading spaces...</option>
-            </select>
-            <small class="options-description">On startup with no tab groups, Arcify will put all the open tabs into
-                this space.</small>
-        </div>
+        <section class="options-section" aria-labelledby="gettingStartedHeading">
+            <h2 id="gettingStartedHeading" class="options-section-title">Getting started</h2>
+            <p class="options-description">Explore spaces, pinned tabs, folders, favorites, and archiving with highlights in your sidebar.</p>
+            <a href="installation-onboarding.html?replay=1" target="_blank" rel="noopener" class="options-label">Replay the interactive guide</a>
+        </section>
 
-        <div class="options-setting-item options-setting-toggle">
-            <label for="autoArchiveEnabled" class="options-label">Enable Auto-Archiving:</label>
-            <div class="toggle-switch-container">
-                <input type="checkbox" id="autoArchiveEnabled" class="ios-toggle">
-                <label for="autoArchiveEnabled" class="toggle-label"></label> <!-- Visual part of the toggle -->
+        <section class="options-section" aria-labelledby="tabsHeading">
+            <h2 id="tabsHeading" class="options-section-title">Tabs &amp; spaces</h2>
+            <div class="options-setting-item options-setting-field">
+                <div class="options-setting-copy">
+                    <label for="defaultSpaceName" class="options-label">Default space</label>
+                    <p id="defaultSpaceDescription" class="options-description">Tabs without an opener or an active space for their window start in this space.</p>
+                </div>
+                <select id="defaultSpaceName" class="options-input" aria-describedby="defaultSpaceDescription">
+                    <option value="">Loading spaces...</option>
+                </select>
             </div>
-        </div>
-
-        <div class="options-setting-item" id="autoArchiveIdleMinutesContainer">
-            <label for="autoArchiveIdleMinutes" class="options-label">Archive Tabs After Idle (minutes):</label>
-            <input type="number" id="autoArchiveIdleMinutes" class="options-input" min="1" step="1">
-            <small class="options-description">Tabs inactive for this duration (and not pinned or audible) will be
-                archived.</small>
-        </div>
-
-        <div class="options-setting-item options-setting-toggle">
-            <label for="invertTabOrder" class="options-label">Invert Tab Order:</label>
-            <div class="toggle-switch-container">
-                <input type="checkbox" id="invertTabOrder" class="ios-toggle">
-                <label for="invertTabOrder" class="toggle-label"></label>
+            <div class="options-setting-item options-setting-toggle">
+                <div class="options-setting-copy">
+                    <label for="invertTabOrder" class="options-label">Show new tabs at the top</label>
+                    <p id="invertTabOrderDescription" class="options-description">Turn off to show new tabs at the bottom.</p>
+                </div>
+                <div class="toggle-switch-container">
+                    <input type="checkbox" id="invertTabOrder" class="ios-toggle" aria-describedby="invertTabOrderDescription">
+                    <label for="invertTabOrder" class="toggle-label" aria-hidden="true"></label>
+                </div>
             </div>
-            <small class="options-description">When enabled (default), new tabs appear at the top. Disable to match
-                Chrome's order (new tabs at bottom).</small>
-        </div>
-
-        <div class="options-setting-item options-setting-toggle">
-            <label for="showAllOpenTabsInCollapsedFolders" class="options-label">Show All Open Tabs in Collapsed Folders:</label>
-            <div class="toggle-switch-container">
-                <input type="checkbox" id="showAllOpenTabsInCollapsedFolders" class="ios-toggle">
-                <label for="showAllOpenTabsInCollapsedFolders" class="toggle-label"></label>
+            <div class="options-setting-item options-setting-toggle">
+                <div class="options-setting-copy">
+                    <label for="showAllOpenTabsInCollapsedFolders" class="options-label">Show all open tabs in collapsed folders</label>
+                    <p id="showAllOpenTabsInCollapsedFoldersDescription" class="options-description">When off, only the active tab appears under a collapsed folder.</p>
+                </div>
+                <div class="toggle-switch-container">
+                    <input type="checkbox" id="showAllOpenTabsInCollapsedFolders" class="ios-toggle" aria-describedby="showAllOpenTabsInCollapsedFoldersDescription">
+                    <label for="showAllOpenTabsInCollapsedFolders" class="toggle-label" aria-hidden="true"></label>
+                </div>
             </div>
-            <small class="options-description">Default (off): show only the active tab under a collapsed folder (Arc behavior). Turn on to show all open tabs under collapsed folders.</small>
-        </div>
+            <div class="options-setting-item options-setting-toggle">
+                <div class="options-setting-copy">
+                    <label for="syncTabGroups" class="options-label">Sync spaces to Chrome tab groups</label>
+                    <p id="syncTabGroupsDescription" class="options-description">Mirror space membership, names, colors, and tab order to Chrome groups. Spaces stay saved independently. Turning this off leaves existing groups unchanged.</p>
+                </div>
+                <div class="toggle-switch-container">
+                    <input type="checkbox" id="syncTabGroups" class="ios-toggle" aria-describedby="syncTabGroupsDescription">
+                    <label for="syncTabGroups" class="toggle-label" aria-hidden="true"></label>
+                </div>
+            </div>
+        </section>
 
-        <!-- Advanced Options Section -->
-        <div class="advanced-options-section">
-            <button type="button" class="advanced-options-toggle" id="advancedOptionsToggle">
-                <span class="advanced-options-toggle-text">Advanced Options</span>
-                <span class="advanced-options-chevron"></span>
-            </button>
+        <section class="options-section" aria-labelledby="archiveHeading">
+            <h2 id="archiveHeading" class="options-section-title">Auto-archiving</h2>
+            <div class="options-setting-item options-setting-toggle">
+                <div class="options-setting-copy">
+                    <label for="autoArchiveEnabled" class="options-label">Enable auto-archiving</label>
+                    <p id="autoArchiveEnabledDescription" class="options-description">Archive inactive tabs automatically. Pinned tabs and tabs playing audio stay open.</p>
+                </div>
+                <div class="toggle-switch-container">
+                    <input type="checkbox" id="autoArchiveEnabled" class="ios-toggle" aria-describedby="autoArchiveEnabledDescription">
+                    <label for="autoArchiveEnabled" class="toggle-label" aria-hidden="true"></label>
+                </div>
+            </div>
+            <div class="options-setting-item options-setting-field options-dependent-setting" id="autoArchiveIdleMinutesContainer" style="display: none;">
+                <div class="options-setting-copy">
+                    <label for="autoArchiveIdleMinutes" class="options-label">Archive tabs after</label>
+                    <p id="archiveIntervalDescription" class="options-description">Minutes of inactivity before a tab is archived.</p>
+                </div>
+                <input type="number" id="autoArchiveIdleMinutes" class="options-input" min="1" step="1" required aria-describedby="archiveIntervalDescription" disabled>
+            </div>
+        </section>
+
+        <section class="options-section" aria-labelledby="colorsHeading">
+            <h2 id="colorsHeading" class="options-section-title">Colors</h2>
+            <p class="options-description">Customize the palette used throughout the extension. Dark variants are generated automatically.</p>
+            <div class="color-overrides-grid">
+                <div class="color-override-item">
+                    <label for="colorGrey" class="color-override-label">Grey</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorGrey" class="color-picker" value="#cccccc">
+                        <button type="button" class="color-reset-btn" data-color="grey" aria-label="Reset grey color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorBlue" class="color-override-label">Blue</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorBlue" class="color-picker" value="#8bb3f3">
+                        <button type="button" class="color-reset-btn" data-color="blue" aria-label="Reset blue color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorRed" class="color-override-label">Red</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorRed" class="color-picker" value="#ff9e97">
+                        <button type="button" class="color-reset-btn" data-color="red" aria-label="Reset red color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorYellow" class="color-override-label">Yellow</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorYellow" class="color-picker" value="#ffe29f">
+                        <button type="button" class="color-reset-btn" data-color="yellow" aria-label="Reset yellow color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorGreen" class="color-override-label">Green</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorGreen" class="color-picker" value="#8bda99">
+                        <button type="button" class="color-reset-btn" data-color="green" aria-label="Reset green color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorPink" class="color-override-label">Pink</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorPink" class="color-picker" value="#fbaad7">
+                        <button type="button" class="color-reset-btn" data-color="pink" aria-label="Reset pink color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorPurple" class="color-override-label">Purple</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorPurple" class="color-picker" value="#d6a6ff">
+                        <button type="button" class="color-reset-btn" data-color="purple" aria-label="Reset purple color to default">Reset</button>
+                    </div>
+                </div>
+                <div class="color-override-item">
+                    <label for="colorCyan" class="color-override-label">Cyan</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="colorCyan" class="color-picker" value="#a5e2ea">
+                        <button type="button" class="color-reset-btn" data-color="cyan" aria-label="Reset cyan color to default">Reset</button>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <section class="advanced-options-section" aria-labelledby="advancedOptionsToggle">
+            <h2>
+                <button type="button" class="advanced-options-toggle" id="advancedOptionsToggle" aria-expanded="false" aria-controls="advancedOptionsContent">
+                    <span class="advanced-options-toggle-text">Advanced Options</span>
+                    <span class="advanced-options-chevron" aria-hidden="true"></span>
+                </button>
+            </h2>
             <div class="advanced-options-content" id="advancedOptionsContent" style="display: none;">
-                <h3 class="advanced-options-title">Color Overrides</h3>
-                <small class="options-description">Override the default colors used throughout the extension. Dark
-                    variants will be automatically generated.</small>
-
-                <div class="color-overrides-grid">
-                    <div class="color-override-item">
-                        <label for="colorGrey" class="color-override-label">Grey:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorGrey" class="color-picker" value="#cccccc">
-                            <button type="button" class="color-reset-btn" data-color="grey">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorBlue" class="color-override-label">Blue:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorBlue" class="color-picker" value="#8bb3f3">
-                            <button type="button" class="color-reset-btn" data-color="blue">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorRed" class="color-override-label">Red:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorRed" class="color-picker" value="#ff9e97">
-                            <button type="button" class="color-reset-btn" data-color="red">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorYellow" class="color-override-label">Yellow:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorYellow" class="color-picker" value="#ffe29f">
-                            <button type="button" class="color-reset-btn" data-color="yellow">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorGreen" class="color-override-label">Green:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorGreen" class="color-picker" value="#8bda99">
-                            <button type="button" class="color-reset-btn" data-color="green">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorPink" class="color-override-label">Pink:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorPink" class="color-picker" value="#fbaad7">
-                            <button type="button" class="color-reset-btn" data-color="pink">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorPurple" class="color-override-label">Purple:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorPurple" class="color-picker" value="#d6a6ff">
-                            <button type="button" class="color-reset-btn" data-color="purple">Reset</button>
-                        </div>
-                    </div>
-                    <div class="color-override-item">
-                        <label for="colorCyan" class="color-override-label">Cyan:</label>
-                        <div class="color-picker-wrapper">
-                            <input type="color" id="colorCyan" class="color-picker" value="#a5e2ea">
-                            <button type="button" class="color-reset-btn" data-color="cyan">Reset</button>
-                        </div>
-                    </div>
-                </div>
-
-                <h3 class="advanced-options-title">Debug Options</h3>
                 <div class="options-setting-item options-setting-toggle">
-                    <label for="debugLoggingEnabled" class="options-label">Enable Debug Logging:</label>
-                    <div class="toggle-switch-container">
-                        <input type="checkbox" id="debugLoggingEnabled" class="ios-toggle">
-                        <label for="debugLoggingEnabled" class="toggle-label"></label>
+                    <div class="options-setting-copy">
+                        <label for="debugLoggingEnabled" class="options-label">Enable debug logging</label>
+                        <p id="debugLoggingEnabledDescription" class="options-description">Write detailed logs to the console for troubleshooting.</p>
                     </div>
-                    <small class="options-description">When enabled, detailed debug logs will be written to the console. Useful for troubleshooting.</small>
+                    <div class="toggle-switch-container">
+                        <input type="checkbox" id="debugLoggingEnabled" class="ios-toggle" aria-describedby="debugLoggingEnabledDescription">
+                        <label for="debugLoggingEnabled" class="toggle-label" aria-hidden="true"></label>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
-    <!-- Toast notification -->
-    <div id="saveToast" class="save-toast">
-        <span class="toast-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="12" height="12" focusable="false" aria-hidden="true">
-                <path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"></path>
-            </svg>
-        </span>
+    <div id="saveToast" class="save-toast" role="status" aria-live="polite" aria-atomic="true">
         <span class="toast-message">Settings saved</span>
     </div>
-
-    <script type="module" src="utils.js"></script>
-    <script type="module" src="options.js"></script> <!-- Ensure options.js is type="module" if it uses imports -->
+    <script type="module" src="options.js"></script>
 </body>
-
 </html>

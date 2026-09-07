@@ -55,6 +55,19 @@ describe('Options Page', () => {
   // 1. Options Page Load
   // ---------------------------------------------------------------------------
   describe('Options Page Load', () => {
+    test('should keep colors visible outside Advanced at desktop and narrow widths', async () => {
+      for (const width of [1280, 375]) {
+        await optionsPage.setViewport({ width, height: 900 });
+        const layout = await optionsPage.evaluate(() => ({
+          colorsVisible: [...document.querySelectorAll('.color-picker')].every(input => input.getClientRects().length > 0),
+          colorsInAdvanced: document.querySelector('#advancedOptionsContent .color-picker') !== null,
+          expanded: document.getElementById('advancedOptionsToggle').getAttribute('aria-expanded'),
+          overflows: document.documentElement.scrollWidth > innerWidth,
+        }));
+        expect(layout).toEqual({ colorsVisible: true, colorsInAdvanced: false, expanded: 'false', overflows: false });
+      }
+    });
+
     test('should load the options page successfully', async () => {
       try {
         logTestStep('Verifying options page loaded...');

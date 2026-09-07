@@ -1,3 +1,4 @@
+import { getSpaceTabs, spaceRequest } from './space-client.js';
 /**
  * Bookmark Utils - Consolidated bookmark operations for Arcify Chrome Extension
  * 
@@ -82,18 +83,18 @@ export const BookmarkUtils = {
      * @param {string} folderId - ID of the folder to search
      * @param {Object} options - Options for filtering and processing
      * @param {boolean} options.includeTabIds - Whether to include tab IDs for matching tabs
-     * @param {number} options.groupId - Group ID to match tabs against (if includeTabIds is true)
+     * @param {string} options.spaceId - Space ID to match tabs against (if includeTabIds is true)
      * @returns {Promise<Array>} Array of bookmark objects
      */
     async getBookmarksFromFolderRecursive(folderId, options = {}) {
-        const { includeTabIds = false, groupId = null } = options;
+        const { includeTabIds = false, spaceId = null } = options;
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folderId);
 
         // Get tabs once if needed for matching
         let tabs = [];
-        if (includeTabIds && groupId !== null) {
-            tabs = await chrome.tabs.query({ groupId: groupId });
+        if (includeTabIds && spaceId !== null) {
+            tabs = await getSpaceTabs(spaceId);
         }
 
         for (const item of items) {
@@ -218,7 +219,7 @@ export const BookmarkUtils = {
      * @param {string} bookmarkData.url - Bookmark URL
      * @param {string} bookmarkData.title - Bookmark title
      * @param {string} bookmarkData.spaceName - Space name the bookmark belongs to
-     * @param {number} targetSpaceId - Space ID to open the tab in
+     * @param {string} targetSpaceId - Space ID to open the tab in
      * @param {HTMLElement} replaceElement - DOM element to replace with active tab element (optional)
      * @param {Object} context - Context object with required functions and data
      * @returns {Object} The created Chrome tab object
@@ -232,12 +233,12 @@ export const BookmarkUtils = {
             createTabElement,
             activateTabInDOM,
             Utils,
-            reconcileSpaceTabOrdering
+            persistSpaceTabOrder
         } = context;
 
         Logger.log('[BookmarkUtils] Opening bookmark as tab:', bookmarkData.url, targetSpaceId);
 
-        // Create new tab with bookmark URL in the target group
+        // Create the bookmark tab and assign its target space
         const newTab = await chrome.tabs.create({
             url: bookmarkData.url,
             active: true,
@@ -249,8 +250,16 @@ export const BookmarkUtils = {
             await Utils.setTabNameOverride(newTab.id, bookmarkData.url, bookmarkData.title);
         }
 
-        // Immediately group the new tab
-        await chrome.tabs.group({ tabIds: [newTab.id], groupId: targetSpaceId });
+        // Assign the new tab in extension storage
+        await spaceRequest('assign', { tabId: newTab.id, spaceId: targetSpaceId, pinned: isPinned });
+        for (const space of spaces) {
+            space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== newTab.id);
+            space.temporaryTabs = space.temporaryTabs.filter(id => id !== newTab.id);
+        }
+        if (!isPinned) {
+            spaces.find(s => s.id === targetSpaceId)?.temporaryTabs.push(newTab.id);
+            await saveSpaces();
+        }
 
         if (isPinned) {
             // Update space data - add to spaceBookmarks for pinned tabs
@@ -271,10 +280,9 @@ export const BookmarkUtils = {
             }
         }
 
-        // Ensure the tab is placed in the correct position inside the group:
-        // Chrome should always be [space bookmarks][temporary], regardless of invertTabOrder.
-        if (typeof reconcileSpaceTabOrdering === 'function') {
-            await reconcileSpaceTabOrdering(targetSpaceId, { source: 'arcify', movedTabId: newTab.id });
+        // Persist the bookmark section order independently of the native tab strip.
+        if (typeof persistSpaceTabOrder === 'function') {
+            await persistSpaceTabOrder(targetSpaceId, { source: 'arcify', movedTabId: newTab.id });
         }
 
         // Replace bookmark-only element with active tab element if provided
@@ -348,16 +356,16 @@ export const BookmarkUtils = {
      * Match tabs with bookmarks in a folder and return tab IDs
      * Processes bookmark folder recursively and finds corresponding tabs
      * @param {Object} folder - Bookmark folder object
-     * @param {number} groupId - Tab group ID to match against
+     * @param {string} spaceId - Space ID to match against
      * @param {Function} setTabNameOverride - Function to set tab name overrides
      * @param {Function} setPinnedTabState - Function to persist tab->bookmark binding
      * @param {Set} claimedTabIds - Tab IDs already bound to a bookmark in this run (shared across recursion)
      * @returns {Promise<Array>} Array of tab IDs that match bookmarks
      */
-    async matchTabsWithBookmarks(folder, groupId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null, getUrlKey = null) {
+    async matchTabsWithBookmarks(folder, spaceId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null, getUrlKey = null) {
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folder.id);
-        const tabs = await chrome.tabs.query({ groupId: groupId });
+        const tabs = await getSpaceTabs(spaceId);
         const claimed = claimedTabIds || new Set();
 
         for (const item of items) {
@@ -392,7 +400,7 @@ export const BookmarkUtils = {
                 }
             } else {
                 // This is a folder, recursively process it
-                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, groupId, setTabNameOverride, setPinnedTabState, claimed, getUrlKey);
+                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, spaceId, setTabNameOverride, setPinnedTabState, claimed, getUrlKey);
                 bookmarks.push(...subFolderBookmarks);
             }
         }

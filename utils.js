@@ -1,3 +1,5 @@
+import { isPracticeUrl } from './tour-practice.js';
+import { getSpaceTabs, spaceRequest } from './space-client.js';
 /**
  * Utils - Shared utility functions and storage management
  * 
@@ -20,10 +22,16 @@ const ARCHIVED_TABS_KEY = 'archivedTabs';
 
 const Utils = {
 
-    processBookmarkFolder: async function (folder, groupId) {
+    async focusTab(tabId) {
+        const tab = await chrome.tabs.update(tabId, { active: true });
+        await chrome.windows.update(tab.windowId, { focused: true });
+        return tab;
+    },
+
+    processBookmarkFolder: async function (folder, spaceId) {
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folder.id);
-        const tabs = await chrome.tabs.query({ groupId: groupId });
+        const tabs = await getSpaceTabs(spaceId);
         for (const item of items) {
             if (item.url) {
                 // This is a bookmark
@@ -38,7 +46,7 @@ const Utils = {
                 }
             } else {
                 // This is a folder, recursively process it
-                const subFolderBookmarks = await this.processBookmarkFolder(item, groupId);
+                const subFolderBookmarks = await this.processBookmarkFolder(item, spaceId);
                 bookmarks.push(...subFolderBookmarks);
             }
         }
@@ -66,6 +74,8 @@ const Utils = {
     // intentionally ignore query params + hash to avoid treating benign changes (e.g. Google Docs) as "navigated away".
     getPinnedUrlKey: function (url) {
         if (!url) return '';
+        // Each local lesson/run is a distinct practice tab, even though it shares a page.
+        if (isPracticeUrl(url)) return url;
         try {
             const u = new URL(url);
             return `${u.origin}${u.pathname}`;
@@ -80,6 +90,7 @@ const Utils = {
             defaultSpaceName: 'Home',
             autoArchiveEnabled: false, // Default: disabled
             autoArchiveIdleMinutes: 360, // Default: 6 hours
+            syncTabGroups: false,
             invertTabOrder: true, // Default: enabled (New tabs/High index on top)
             colorOverrides: null, // Default: no color overrides
             debugLoggingEnabled: false, // Default: disabled (controls debug logging)
@@ -201,19 +212,9 @@ const Utils = {
         });
     },
 
-    getTabGroupColor: async function (groupName) {
-        let tabGroups = await chrome.tabGroups.query({});
-
-        const chromeTabGroupColors = [
-            'grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan'
-        ];
-        const existingGroup = tabGroups.find(group => group.title === groupName);
-        if (existingGroup) {
-            return existingGroup.color;
-        } else {
-            const randomIndex = Math.floor(Math.random() * chromeTabGroupColors.length);
-            return chromeTabGroupColors[randomIndex];
-        }
+    getSpaceColor: async function (groupName) {
+        const { spaces = [] } = await chrome.storage.local.get('spaces');
+        return spaces.find(s => s.name === groupName)?.color || 'grey';
     },
 
     updateBookmarkTitleIfNeeded: async function (tab, activeSpace, newTitle) {
@@ -309,12 +310,14 @@ const Utils = {
     archiveTab: async function (tabId) {
         try {
             const tab = await chrome.tabs.get(tabId);
-            if (!tab || !activeSpaceId) return;
+            const spaces = await spaceRequest('get');
+            const space = spaces.find(s => [...s.spaceBookmarks, ...s.temporaryTabs].includes(tabId));
+            if (!tab || !space) return;
 
             const tabData = {
                 url: tab.url,
                 name: tab.title,
-                spaceId: activeSpaceId // Archive within the current space
+                spaceId: space.id
             };
 
             await this.addArchivedTab(tabData);
@@ -338,25 +341,14 @@ const Utils = {
 
     restoreArchivedTab: async function (archivedTabData) {
         try {
-            // Create the tab in the original space's group
+            // Reopen the archived URL and restore its extension-owned membership.
             const newTab = await chrome.tabs.create({
                 url: archivedTabData.url,
                 active: true, // Make it active
                 // windowId: currentWindow.id // Ensure it's in the current window
             });
 
-            // Immediately group the new tab into the correct space (if spaceId is valid)
-            if (archivedTabData.spaceId && archivedTabData.spaceId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
-                try {
-                    // Check if the group still exists
-                    await chrome.tabGroups.get(archivedTabData.spaceId);
-                    // Group exists, add tab to it
-                    await chrome.tabs.group({ tabIds: [newTab.id], groupId: archivedTabData.spaceId });
-                } catch (e) {
-                    // Group doesn't exist, create a new one or leave ungrouped
-                    Logger.warn(`Space ${archivedTabData.spaceId} no longer exists, tab restored without grouping`);
-                }
-            }
+            await spaceRequest('assign', { tabId: newTab.id, spaceId: archivedTabData.spaceId });
 
             // Remove from archive storage
             await this.removeArchivedTab(archivedTabData.url, archivedTabData.spaceId);

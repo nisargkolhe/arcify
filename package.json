@@ -19,7 +19,8 @@
     "test:spaces": "npm run build && NODE_OPTIONS='--experimental-vm-modules' jest tests/e2e/spaces.test.js",
     "test:tabs": "npm run build && NODE_OPTIONS='--experimental-vm-modules' jest tests/e2e/tabs.test.js",
     "test:bookmarks": "npm run build && NODE_OPTIONS='--experimental-vm-modules' jest tests/e2e/bookmarks.test.js",
-    "test:drag": "npm run build && NODE_OPTIONS='--experimental-vm-modules' jest tests/e2e/drag-drop.test.js"
+    "test:drag": "npm run build && NODE_OPTIONS='--experimental-vm-modules' jest tests/e2e/drag-drop.test.js",
+    "test:unit": "node --test tests/unit/*.test.js"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

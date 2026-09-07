@@ -1,233 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Arcify - Setup Guide</title>
-    <link rel="icon" href="assets/icon.png" type="image/png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
-    <style>
-        .varela-round-regular {
-            font-family: "Varela Round", sans-serif;
-            font-weight: 400;
-            font-style: normal;
-        }
-
-        h1,
-        h2,
-        h3,
-        h4,
-        h5,
-        h6 {
-            font-family: "Varela Round", sans-serif;
-            font-style: normal;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Welcome to Arcify</title>
+    <link rel="icon" href="assets/icon.png">
     <link rel="stylesheet" href="installation-onboarding.css">
 </head>
-
 <body>
-    <div class="onboarding-container">
-        <div class="header">
-            <h1>Welcome to <span style="color: var(--primary-color);">Arcify</span></h1>
-            <p>Let's get you set up in just a few steps</p>
-        </div>
-
-        <div class="content">
-            <!-- Step 1: Sidepanel Settings -->
-            <div class="step active" id="step1">
-                <div class="step-content">
-                    <h2 class="step-title">Move Sidepanel to Left</h2>
-                    <p class="step-description">
-                        Arcify works best when the sidepanel is positioned on the left side of your browser.
-                    </p>
-
-                    <div class="step-layout">
-                        <div class="gif-section">
-                            <div class="gif-placeholder shadow">
-                                <img src="assets/chrometutorial.gif" alt="Chrome sidepanel tutorial">
-                            </div>
-                        </div>
-
-                        <div class="instructions-section">
-                            <div class="instructions">
-                                <h3>How to change sidepanel position:</h3>
-                                <ol>
-                                    <li>Go to Chrome Settings (⋮ menu > Settings)</li>
-                                    <li>Click on "Appearance" in the sidebar</li>
-                                    <li>Scroll down to "Side panel position"</li>
-                                    <li>Select "Show on left"</li>
-                                </ol>
-                                <p style="margin-top: 1rem; font-style: italic; color: var(--warning-color);">
-                                    Note: This option might not be available in all Chromium-based browsers like Edge
-                                    and Comet.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Step 2: Keyboard Shortcuts -->
-            <div class="step" id="step2">
-                <div class="step-content">
-                    <h2 class="step-title">Set Up Keyboard Shortcuts</h2>
-                    <p class="step-description">
-                        Configure keyboard shortcuts to quickly access Arcify features from anywhere in your browser.
-                    </p>
-
-                    <div class="step-layout">
-                        <div class="gif-section">
-                            <div class="gif-placeholder shadow">
-                                <img src="assets/chrometutorial.gif" alt="Keyboard shortcuts tutorial">
-                            </div>
-                        </div>
-
-                        <div class="instructions-section">
-                            <div class="instructions">
-                                <h3>How to set up keyboard shortcuts:</h3>
-                                <ol>
-                                    <li>Open Chrome Extensions Keyboard Shortcuts page <a href="#" id="shortcuts-link"
-                                            class="shortcuts-link">chrome://extensions/shortcuts</a></li>
-                                    <li>Find Arcify and customize the shortcuts</li>
-                                </ol>
-
-                                <h3 style="margin-top: 2rem;">Recommended Shortcuts:</h3>
-                                <ul style="list-style: none; padding-left: 0;">
-                                    <li>🎯 <strong>Toggle Sidepanel</strong>: <kbd>Cmd/Ctrl + S</kbd></li>
-                                    <li>📌 <strong>Quick Pin/Unpin</strong>: <kbd>Cmd/Ctrl + D</kbd></li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Step 3: Enable Archiving -->
-            <!-- <div class="step" id="step3">
-                <div class="step-content">
-                    <h2 class="step-title">Enable Tab Archiving</h2>
-                    <p class="step-description">
-                        Tab archiving helps you keep your workspace clean by automatically moving inactive tabs to an
-                        archive.
-                    </p>
-
-                    <div class="step-layout">
-                        <div class="gif-section">
-                            <div class="gif-placeholder">
-                                <img src="assets/chrometutorial.gif" alt="Tab archiving tutorial">
-                            </div>
-                        </div>
-
-                        <div class="instructions-section">
-                            <div class="instructions">
-                                <h3>How tab archiving works:</h3>
-                                <ul style="list-style: none; padding-left: 0;">
-                                    <li>✅ Inactive tabs are automatically moved to archive after a period of inactivity
-                                    </li>
-                                    <li>✅ Archived tabs can be restored anytime from the archive section</li>
-                                    <li>✅ Keeps your workspace organized and focused</li>
-                                    <li>✅ You can manually archive tabs using the archive button</li>
-                                </ul>
-                                <button class="toggle-button off" id="archiveToggle">
-                                    Enable Tab Archiving
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div> -->
-
-            <!-- Step 4: Spotlight -->
-            <div class="step" id="step4">
-                <div class="step-content">
-                    <h2 class="step-title">Meet Arcify Spotlight</h2>
-                    <p class="step-description">Spotlight is now its separate extension. Install it to supercharge your
-                        browsing.</p>
-
-                    <div class="step-layout">
-                        <div class="gif-section">
-                            <div class="gif-placeholder">
-                                <img src="assets/spotlight.gif" alt="Arcify Spotlight preview">
-                            </div>
-                        </div>
-                        <div class="instructions-section">
-                            <div class="instructions">
-                                <h3>Arcify Spotlight</h3>
-                                <ul style="list-style: none; padding-left: 0;">
-                                    <li style="margin-bottom: 0.5rem;">Search across all your open tabs instantly</li>
-                                    <li style="margin-bottom: 0.5rem;">Find bookmarks and browsing history in one place
-                                    </li>
-                                    <li style="margin-bottom: 0.5rem;">Smart suggestions with keyboard-first navigation
-                                    </li>
-                                </ul>
-                                <a href="https://chromewebstore.google.com/detail/arcify-spotlight/pegemlhekkccgoidiphojbpnabahjmff" target="_blank" rel="noopener noreferrer"
-                                    class="cws-button" style="display: inline-block; margin-top: 1rem;">Get Arcify
-                                    Spotlight</a>
-                                <p class="promo-note" style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">Free
-                                    companion extension from the Chrome Web Store</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Step 5: Start Using -->
-            <div class="step" id="step5">
-                <div class="step-content">
-                    <h2 class="step-title">You're All Set!</h2>
-                    <p class="step-description">
-                        Here are the key shortcuts to help you get started with Arcify.
-                    </p>
-
-                    <div class="shortcuts-grid">
-                        <div class="shortcut-card">
-                            <div class="shortcut-key" data-shortcut="toggle-sidepanel">Alt+S</div>
-                            <div class="shortcut-title">Toggle Sidepanel</div>
-                            <div class="shortcut-description">Open or close the Arcify sidepanel</div>
-                        </div>
-
-                        <div class="shortcut-card">
-                            <div class="shortcut-key" data-shortcut="switch-spaces">Alt+D</div>
-                            <div class="shortcut-title">Quick Pin/Unpin Tab</div>
-                            <div class="shortcut-description">Quickly pin or unpin the current tab</div>
-                        </div>
-                    </div>
-
-                    <div class="instructions">
-                        <h3>Ready to get started?</h3>
-                        <p>You can now use Arcify to organize your tabs into spaces, archive inactive tabs, and quickly
-                            search through your workspace. The sidepanel will remember your preferences and help you
-                            stay organized!</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="footer">
-        <div class="progress-bar">
-            <div class="progress-dots">
-                <div class="progress-dot active" data-step="1"></div>
-                <div class="progress-dot" data-step="2"></div>
-                <div class="progress-dot" data-step="3"></div>
-                <div class="progress-dot" data-step="4"></div>
-            </div>
-            <div class="step-counter">
-                Step <span id="currentStep">1</span> of 4
-            </div>
-        </div>
-
-        <div class="navigation">
-            <button class="nav-button secondary" id="prevBtn" disabled>Previous</button>
-            <button class="nav-button" id="nextBtn">Next</button>
-        </div>
-    </div>
-
+    <header><a class="brand" href="https://www.arcify.io" target="_blank" rel="noopener"><img src="assets/icon.png" width="32" height="32" alt="">Arcify</a><button id="skip" class="text-button">I'll explore on my own</button></header>
+    <main>
+        <section id="setup">
+            <div class="welcome"><p class="eyebrow">MAKE YOURSELF AT HOME</p><h1>Your sidebar. Your way.</h1><p>A couple of optional tweaks, then a little hands-on exploring.</p></div>
+            <section class="placement" aria-labelledby="placement-title">
+                <div class="placement-copy"><p class="eyebrow">SIDEBAR LOCATION</p><h2 id="placement-title">Feel at home on the left.</h2><p>In Chrome's Appearance settings, find <strong>Side panel position</strong> and choose <strong>Show on left</strong>. Prefer the right? Keep it there.</p><button id="appearance" class="secondary">Open Appearance settings ↗</button><p class="small">Return to this tab when you're ready.</p></div>
+                <div class="gif-container"><img id="setup-gif" src="assets/chrometutorial.gif" alt="Demonstration of changing Chrome's side panel position and extension shortcuts"><div id="motion-still" hidden>Chrome Settings → Appearance<br><strong>Side panel position → Show on left</strong></div><button id="pause" class="text-button" aria-pressed="false">Pause animation</button></div>
+            </section>
+            <section class="shortcuts" aria-labelledby="shortcuts-title"><div><p class="eyebrow">KEYBOARD SHORTCUTS</p><h2 id="shortcuts-title">A familiar key, a little faster.</h2><p>Set these in Chrome's extension shortcuts. Your current assignments are shown alongside our suggestions.</p></div><table><thead><tr><th scope="col">Action</th><th scope="col">Recommended</th><th scope="col">Currently set</th></tr></thead><tbody id="shortcuts"></tbody></table><p class="small">Chrome may reserve some combinations. Choose an available alternative if a suggestion isn't accepted.</p><button id="customize" class="secondary">Customize shortcuts ↗</button></section>
+            <div class="launch"><button id="start" class="primary" disabled>Open sidebar & start tutorial ↗</button><p class="small">We'll add practice tabs for you. Skip any tip, anytime.</p></div>
+        </section>
+        <section id="handoff" class="welcome handoff" hidden><img src="assets/icon.png" width="64" height="64" alt=""><h1 id="handoff-title">Continue the tutorial<br>in your sidebar.</h1><p id="handoff-copy">Follow the highlights in Arcify. Everything you need, including practice tabs, is waiting there.</p><button id="reopen" class="secondary">Reopen sidebar ↗</button></section>
+        <p id="error" role="alert" hidden></p>
+    </main>
     <script type="module" src="installation-onboarding.js"></script>
 </body>
-
 </html>

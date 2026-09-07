@@ -1,18 +1,23 @@
+import { initSidebarTour } from './sidebar-tour.js';
 /**
  * Sidebar - Main extension UI and tab/space management
  * 
- * Purpose: Implements Arc-like vertical tab organization with spaces (Chrome tab groups)
+ * Purpose: Implements Arc-like vertical tab organization with spaces
  * Key Functions: Space creation/management, tab organization, drag-and-drop, archived tabs
- * Architecture: Side panel UI that syncs with Chrome's native tab groups API
+ * Architecture: Side panel UI backed by extension-owned space data
  * 
  * Critical Notes:
  * - Primary user interface for tab and space management
- * - Real-time sync with Chrome tab groups and active tab changes
+ * - Real-time sync with extension data and active tab changes
  * - Handles drag-and-drop for tab/space reorganization
  * - Manages archived tabs and auto-archive settings
  */
 
 import { ChromeHelper } from './chromeHelper.js';
+import { spaceRequest } from './space-client.js';
+import { ownerOf } from './space-store.js';
+import { canCreateFolder, createFolder } from './folder-policy.js';
+import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
 import { FOLDER_CLOSED_ICON, FOLDER_CLOSED_DOTS_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
@@ -450,17 +455,17 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
 
     try {
         // Try to find existing tab with this URL
-        const tabs = await chrome.tabs.query({});
+        const tabs = await getOwnedTabs(targetSpaceId);
         const existingTab = BookmarkUtils.findTabByUrl(tabs, bookmarkUrl);
 
         if (existingTab) {
             Logger.log('[PinnedTabActivator] Found existing tab, switching to it:', existingTab.id);
             // Tab already exists, just switch to it and highlight
-            chrome.tabs.update(existingTab.id, { active: true });
+            await Utils.focusTab(existingTab.id);
             activateTabInDOM(existingTab.id);
 
             // Store last active tab for the space
-            const space = spaces.find(s => s.id === existingTab.groupId);
+            const space = ownerOf(spaces, existingTab.id);
             if (space) {
                 space.lastTab = existingTab.id;
                 saveSpaces();
@@ -502,7 +507,7 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
                 createTabElement,
                 activateTabInDOM,
                 Utils,
-                reconcileSpaceTabOrdering
+                persistSpaceTabOrder
             };
 
             // Use shared bookmark opening logic
@@ -547,8 +552,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    initSidebar();
-    updatePinnedFavicons(); // Initial load of pinned favicons
+    await initSidebar();
+    await updatePinnedFavicons(); // Initial load before taking the tour baseline
+    initSidebarTour().catch(error => Logger.error("Tour initialization failed:", error));
 
     // Add Chrome tab event listeners
     chrome.tabs.onCreated.addListener(handleTabCreated);
@@ -557,29 +563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tab.pinned) updatePinnedFavicons(); // Update favicons when a tab is pinned/unpinned
     });
     chrome.tabs.onRemoved.addListener(handleTabRemove);
-    chrome.tabs.onMoved.addListener(handleTabMove);
     chrome.tabs.onActivated.addListener(handleTabActivated);
-    chrome.tabGroups.onRemoved.addListener(handleTabGroupRemoved);
-    chrome.tabGroups.onCreated.addListener(async (group) => {
-        // Adopt a late-restored tab group into a same-named space whose persisted id went
-        // stale, rather than leaving it orphaned (which snowballs into duplicate ghost
-        // groups). Guarded so it never fights Arcify's own group creation, and it is a safe
-        // no-op for arbitrary user-made groups — we don't auto-create spaces here (B20).
-        if (isCreatingSpace) return;
-        if (currentWindow && group.windowId !== currentWindow.id) return;
-        if (spaces.some(s => s.id === group.id)) return;
-        try {
-            const liveGroupIds = new Set((await chrome.tabGroups.query({})).map(g => g.id));
-            const staleSpace = spaces.find(s => s.name === group.title && !liveGroupIds.has(s.id));
-            if (staleSpace) {
-                Logger.log('onCreated: adopting restored group', group.id, 'into space', staleSpace.id);
-                adoptGroupIntoSpace(staleSpace.id, group.id);
-            }
-        } catch (error) {
-            Logger.warn('Error adopting created tab group:', error);
-        }
-    });
-
     // Setup Quick Pin listener
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, setActiveSpace, activatePinnedTabByURL);
 
@@ -650,206 +634,113 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { passive: false }); // 'passive: false' is required to use preventDefault()
 });
 
+let savedSpaces = [];
+let pendingSpaceSaves = Promise.resolve();
+let pendingSaveCount = 0;
+let sidebarReady = false;
+
+async function adoptStoredSpaces(next) {
+    const old = spaces;
+    const oldMetadata = new Map(old.map(s => [s.id, { name: s.name, color: s.color }]));
+    spaces = next.map(space => {
+        const existing = old.find(s => s.id === space.id);
+        return existing ? Object.assign(existing, structuredClone(space)) : structuredClone(space);
+    });
+    savedSpaces = structuredClone(next);
+    for (const space of old) {
+        if (!spaces.some(s => s.id === space.id)) getSpaceElement(space.id)?.remove();
+    }
+    for (const space of spaces) {
+        // Remove old projections immediately when another panel moves or closes a tab.
+        // Newly added rows are rendered when the destination space is shown.
+        const owned = new Set([...space.spaceBookmarks, ...space.temporaryTabs]);
+        getSpaceElement(space.id)?.querySelectorAll('.tab[data-tab-id]').forEach(element => {
+            if (!owned.has(Number(element.dataset.tabId))) element.remove();
+        });
+        const previous = oldMetadata.get(space.id);
+        if (!previous || previous.name !== space.name || previous.color !== space.color) {
+            getSpaceElement(space.id)?.remove();
+            createSpaceElement(space);
+        }
+    }
+    if (!spaces.some(s => s.id === activeSpaceId)) activeSpaceId = spaces[0]?.id;
+    await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
+    await refreshActiveSpaceUI();
+}
+
 async function initSidebar() {
-    Logger.log('Initializing sidebar...');
-    let settings = await Utils.getSettings();
-    if (settings.defaultSpaceName) {
-        defaultSpaceName = settings.defaultSpaceName;
-    }
+    const settings = await Utils.getSettings();
+    defaultSpaceName = settings.defaultSpaceName || 'Home';
     showAllOpenTabsInCollapsedFolders = Boolean(settings.showAllOpenTabsInCollapsedFolders);
-    try {
-        currentWindow = await chrome.windows.getCurrent({ populate: false });
-        // Seed current active tab for Arc-like collapsed folder behavior
-        try {
-            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (activeTabs?.length) activeChromeTabId = activeTabs[0].id;
-        } catch (e) {
-            // ignore
-        }
-
-        let tabGroups = await chrome.tabGroups.query({});
-        let allTabs = await chrome.tabs.query({ currentWindow: true });
-        Logger.log("tabGroups", tabGroups);
-        Logger.log("allTabs", allTabs);
-
-        // Check for duplicates
-        await LocalStorage.mergeDuplicateSpaceFolders();
-
-        // Create bookmarks folder for spaces if it doesn't exist
-        const spacesFolder = await LocalStorage.getOrCreateArcifyFolder();
-        Logger.log("spacesFolder", spacesFolder);
-        const subFolders = await chrome.bookmarks.getChildren(spacesFolder.id);
-        Logger.log("subFolders", subFolders);
-
-        // Restore-race guard (B18): if the user has space folders but FEWER live groups than
-        // folders (including zero), Chrome session restore is very likely still in progress.
-        // Snapshotting now would mint duplicate groups for the not-yet-restored spaces. Wait
-        // for restore to actually settle first (stable tab/group counts), then re-read.
-        const existingSpaceFolders = subFolders.filter(f => !f.url);
-        if (existingSpaceFolders.length > 0 && tabGroups.length < existingSpaceFolders.length) {
-            Logger.log('Live groups fewer than known spaces; waiting for session restore to settle...',
-                tabGroups.length, existingSpaceFolders.length);
-            tabGroups = await waitForChromeStateToSettle();
-            allTabs = await chrome.tabs.query({ currentWindow: true });
-            Logger.log('After restore settle, tabGroups:', tabGroups.length);
-        }
-
-        // Prune stale pinned-tab bindings left over from previous sessions (B11) before we
-        // rebuild this session's bindings below. Uses ALL live tabs so other windows aren't
-        // affected.
-        try {
-            const allWindowTabs = await chrome.tabs.query({});
-            await Utils.prunePinnedTabStates(allWindowTabs.map(t => t.id));
-        } catch (e) {
-            Logger.warn('Could not prune stale pinned tab states:', e);
-        }
-
-        if (tabGroups.length === 0) {
-            let currentTabs = allTabs.filter(tab => tab.id && !tab.pinned) ?? [];
-
-            if (currentTabs.length == 0) {
-                await chrome.tabs.create({ active: true });
-                allTabs = await chrome.tabs.query({});
-                currentTabs = allTabs.filter(tab => tab.id && !tab.pinned) ?? [];
-            }
-
-            // Create default tab group and move all tabs to it
-            Logger.log('currentTabs', currentTabs);
-            const groupId = await chrome.tabs.group({ tabIds: currentTabs.map(tab => tab.id) });
-            const groupColor = await Utils.getTabGroupColor(defaultSpaceName);
-            await chrome.tabGroups.update(groupId, { title: defaultSpaceName, color: groupColor });
-
-            // Ensure the bookmark folder exists first so we can anchor durable identity to it.
-            let bookmarkFolder = subFolders.find(f => !f.url && f.title == defaultSpaceName);
-            if (!bookmarkFolder) {
-                bookmarkFolder = await chrome.bookmarks.create({
-                    parentId: spacesFolder.id,
-                    title: defaultSpaceName
-                });
-            }
-            const defaultRegistryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(bookmarkFolder.id, {
-                name: defaultSpaceName,
-                color: groupColor,
-            });
-
-            // Create default space with durable identity
-            const defaultSpace = {
-                id: groupId,
-                spaceUuid: defaultRegistryEntry?.spaceUuid ?? Utils.generateUUID(),
-                bookmarkFolderId: bookmarkFolder.id,
-                uuid: defaultRegistryEntry?.spaceUuid ?? Utils.generateUUID(),
-                name: defaultSpaceName,
-                color: groupColor,
-                spaceBookmarks: [],
-                temporaryTabs: currentTabs.map(tab => tab.id),
-            };
-
-            spaces = [defaultSpace];
-            saveSpaces();
-            createSpaceElement(defaultSpace);
-            await setActiveSpace(defaultSpace.id);
-        } else {
-            // Find tabs that aren't in any group
-            const ungroupedTabs = allTabs.filter(tab => tab.groupId === -1 && !tab.pinned);
-            let defaultGroupId = null;
-
-            // If there are ungrouped tabs (genuinely ungrouped now that restore has settled),
-            // move them into this window's Default group, creating it if needed. Single-window
-            // model: match the Default group within the current window and never mint a
-            // "<name><windowId>"-suffixed group (that suffix broke the folder<->group name join
-            // and fragmented favorites — B17).
-            if (ungroupedTabs.length > 0) {
-                Logger.log("found ungrouped tabs", ungroupedTabs);
-                const defaultGroup = tabGroups.find(group =>
-                    group.title === defaultSpaceName && group.windowId === currentWindow.id
-                );
-                if (defaultGroup) {
-                    Logger.log("found existing default group", defaultGroup);
-                    await chrome.tabs.group({ tabIds: ungroupedTabs.map(tab => tab.id), groupId: defaultGroup.id });
-                } else {
-                    defaultGroupId = await chrome.tabs.group({ tabIds: ungroupedTabs.map(tab => tab.id) });
-                    await chrome.tabGroups.update(defaultGroupId, { title: defaultSpaceName, color: 'grey' });
-                }
-            }
-
-            tabGroups = await chrome.tabGroups.query({});
-
-            // Load existing tab groups as spaces
-            spaces = await Promise.all(tabGroups.map(async group => {
-                const tabs = await chrome.tabs.query({ groupId: group.id });
-                Logger.log("processing group", group);
-
-                const mainFolder = await chrome.bookmarks.getSubTree(spacesFolder.id);
-                let bookmarkFolder = mainFolder[0].children?.find(f => f.title == group.title);
-                Logger.log("looking for existing folder", group.title, mainFolder, bookmarkFolder);
-                let spaceBookmarks = [];
-                if (!bookmarkFolder) {
-                    Logger.log("creating new folder", group.title)
-                    // Capture the created folder so we can anchor this space's durable identity to it.
-                    bookmarkFolder = await chrome.bookmarks.create({
-                        parentId: spacesFolder.id,
-                        title: group.title
-                    });
-                } else {
-                    Logger.log("found folder", group.title)
-                    // Loop over bookmarks in the folder and add them to spaceBookmarks if there's an open tab
-
-                    spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(bookmarkFolder, group.id, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
-                    // Remove null values from spaceBookmarks
-                    spaceBookmarks = spaceBookmarks.filter(id => id !== null);
-
-                    Logger.log("space bookmarks in", group.title, spaceBookmarks);
-                }
-                // Durable identity: a stable spaceUuid anchored to the bookmark folder id, so a
-                // space keeps its identity across restarts even as its Chrome group id changes.
-                const registryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(bookmarkFolder.id, {
-                    name: group.title,
-                    color: group.color,
-                });
-                const space = {
-                    id: group.id,
-                    spaceUuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
-                    bookmarkFolderId: bookmarkFolder.id,
-                    uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
-                    name: group.title,
-                    color: group.color,
-                    spaceBookmarks: spaceBookmarks,
-                    temporaryTabs: tabs.filter(tab => !spaceBookmarks.includes(tab.id)).map(tab => tab.id)
-                };
-
-                return space;
-            }));
-            spaces.forEach(space => createSpaceElement(space));
-            Logger.log("initial save", spaces);
-            saveSpaces();
-
-            // Re-apply colors to all spaces after they're created
-            reapplySpaceColors();
-
-            let activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (activeTabs.length > 0) {
-                const activeTab = activeTabs[0];
-                if (activeTab.pinned) {
-                    await setActiveSpace(spaces[0].id, false);
-                    updatePinnedFavicons();
-                } else {
-                    await setActiveSpace(activeTab.groupId, false);
-                }
-            } else {
-                await setActiveSpace(defaultGroupId ?? spaces[0].id);
-            }
-
-            // Initialize previousSpaceId to the default space (first space)
-            if (spaces.length > 0) {
-                previousSpaceId = spaces[0].id;
-                Logger.log('Initialized previousSpaceId to default space:', previousSpaceId);
-            }
-        }
-    } catch (error) {
-        Logger.error('Error initializing sidebar:', error);
+    currentWindow = await chrome.windows.getCurrent({ populate: false });
+    spaces = await spaceRequest('get');
+    savedSpaces = structuredClone(spaces);
+    const allTabs = await chrome.tabs.query({});
+    await Utils.prunePinnedTabStates(allTabs.map(t => t.id));
+    // Restore bookmark bindings using only this space's owned tabs.
+    for (const space of spaces) {
+        const [folder] = await chrome.bookmarks.getSubTree(space.bookmarkFolderId);
+        const bound = await BookmarkUtils.matchTabsWithBookmarks(folder, space.id,
+            Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
+        space.spaceBookmarks = [...new Set([...space.spaceBookmarks, ...bound])];
+        space.temporaryTabs = space.temporaryTabs.filter(id => !space.spaceBookmarks.includes(id));
+        createSpaceElement(space);
     }
+    await saveSpaces();
+    const activeTab = allTabs.find(t => t.active && t.windowId === currentWindow.id);
+    activeChromeTabId = activeTab?.id;
+    const { activeSpaces = {} } = await chrome.storage.session.get('activeSpaces');
+    await setActiveSpace(activeSpaces[currentWindow.id] || ownerOf(spaces, activeTab?.id)?.id || spaces[0]?.id, false);
+    previousSpaceId = activeSpaceId;
+    setupDOMElements(createNewSpace, () => spaces);
+    sidebarReady = true;
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local' || !changes.spaces || !sidebarReady) return;
+        clearTimeout(storedSpacesRefresh);
+        storedSpacesRefresh = setTimeout(async () => {
+            await pendingSpaceSaves;
+            if (isDraggingTab || pendingSaveCount) return;
+            const next = await spaceRequest('get');
+            if (JSON.stringify(next) !== JSON.stringify(spaces)) await adoptStoredSpaces(next);
+        }, 100);
+    });
+    await offerTabGroupImport();
+}
+let storedSpacesRefresh;
 
-    setupDOMElements(createNewSpace);
+async function offerTabGroupImport() {
+    const { tabGroupImportDismissed } = await chrome.storage.local.get('tabGroupImportDismissed');
+    if (tabGroupImportDismissed) return;
+    const groups = await chrome.tabGroups.query({ windowId: currentWindow.id });
+    if (!groups.length) return;
+    const notice = document.createElement('div');
+    notice.className = 'tab-group-import';
+    const text = document.createElement('p');
+    text.textContent = 'Create spaces from your existing Chrome tab groups? Your groups will stay unchanged.';
+    const accept = document.createElement('button');
+    accept.textContent = 'Create spaces';
+    const dismiss = document.createElement('button');
+    dismiss.textContent = 'No thanks';
+    accept.onclick = async () => {
+        accept.disabled = true;
+        try {
+            await pendingSpaceSaves;
+            await adoptStoredSpaces(await spaceRequest('import', { windowId: currentWindow.id }));
+            notice.remove();
+        } catch (error) { accept.disabled = false; Logger.error('Import failed', error); }
+    };
+    dismiss.onclick = async () => {
+        await chrome.storage.local.set({ tabGroupImportDismissed: true });
+        notice.remove();
+    };
+    notice.append(text, accept, dismiss);
+    document.getElementById('sidebar-container').prepend(notice);
+}
+
+async function getOwnedTabs(spaceId) {
+    const space = spaces.find(s => s.id === spaceId);
+    const tabs = new Map((await chrome.tabs.query({})).map(t => [t.id, t]));
+    return [...(space?.spaceBookmarks || []), ...(space?.temporaryTabs || [])].map(id => tabs.get(id)).filter(tab => tab && !tab.pinned);
 }
 
 function createSpaceElement(space) {
@@ -861,7 +752,7 @@ function createSpaceElement(space) {
     spaceContainer.style.display = space.id === activeSpaceId ? 'flex' : 'none';
     spaceContainer.dataset.spaceUuid = space.id;
 
-    // Set space background color based on the tab group color
+    // Set space background color from extension settings
     // Get the computed value from :root to ensure overrides are applied
     const root = document.documentElement;
     const colorVar = `--chrome-${space.color}-color`;
@@ -890,8 +781,7 @@ function createSpaceElement(space) {
         const newColor = colorSelect.value;
         space.color = newColor;
 
-        // Update tab group color
-        await chrome.tabGroups.update(space.id, { color: newColor });
+
 
         // Update space background color
         sidebarContainer.style.setProperty('--space-bg-color', `var(--chrome-${newColor}-color, rgba(255, 255, 255, 0.1))`);
@@ -931,13 +821,6 @@ function createSpaceElement(space) {
         const oldName = space.name;
         const oldFolder = await LocalStorage.getOrCreateSpaceFolder(oldName);
         await chrome.bookmarks.update(oldFolder.id, { title: nameInput.value });
-
-        const tabGroups = await chrome.tabGroups.query({});
-        const tabGroupForSpace = tabGroups.find(group => group.id === space.id);
-        Logger.log("updating tabGroupForSpace", tabGroupForSpace);
-        if (tabGroupForSpace) {
-            await chrome.tabGroups.update(tabGroupForSpace.id, { title: nameInput.value, color: 'grey' });
-        }
 
         space.name = nameInput.value;
         saveSpaces();
@@ -1122,8 +1005,8 @@ async function updateSpaceSwitcher() {
 
         if (draggedButton) {
             const targetElement = e.target.closest('button'); // Find the button dropped onto or near
-            const draggedSpaceId = parseInt(draggedButton.dataset.spaceId);
-            let targetSpaceId = targetElement ? parseInt(targetElement.dataset.spaceId) : null;
+            const draggedSpaceId = draggedButton.dataset.spaceId;
+            let targetSpaceId = targetElement ? targetElement.dataset.spaceId : null;
 
             // Find original index
             const originalIndex = spaces.findIndex(s => s.id === draggedSpaceId);
@@ -1245,8 +1128,8 @@ function getDragAfterElementSwitcher(container, x) {
 function getDragAfterElementTabs(container, y) {
     return getDragAfterElement(container, y, {
         axis: 'y',
-        selector: '.tab:not(.dragging), .folder:not(.dragging)',
-        placeholderSelector: '.tab-placeholder'
+        selector: ':scope > .tab:not(.dragging), :scope > .folder:not(.dragging)',
+        placeholderSelector: ':scope > .tab-placeholder'
     });
 }
 
@@ -1281,7 +1164,9 @@ function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
 
 // Helper function to set up drag event listeners for tab elements
 function setupTabDragHandlers(tabElement) {
-    tabElement.addEventListener('dragstart', () => {
+    tabElement.addEventListener('dragstart', event => {
+        event.dataTransfer.setData('text/plain', tabElement.dataset.tabId || tabElement.dataset.url || '');
+        event.dataTransfer.effectAllowed = 'move';
         tabElement.classList.add('dragging');
         // Track the source folder (if any) so we can resync collapsed-folder projections after drop.
         dragSourceFolderElement = tabElement.closest('.folder');
@@ -1298,25 +1183,20 @@ let folderOpenTimer = null;
 let currentHoveredFolder = null;
 let dragSourceFolderElement = null;
 
-// Helper function to programmatically open a folder
-function openFolder(folderElement) {
-    if (!folderElement.classList.contains('collapsed')) return; // Already open
-
-    const folderContent = folderElement.querySelector('.folder-content');
-    const folderToggle = folderElement.querySelector('.folder-toggle');
-    const folderIcon = folderElement.querySelector('.folder-icon');
-
-    folderElement.classList.remove('collapsed');
-    folderContent.classList.remove('collapsed');
-    folderToggle.classList.remove('collapsed');
-
-    // Update icon to show folder is open
-    if (folderIcon) {
-    updateFolderIcon(folderElement);
-    }
-
-    // If this folder had "collapsed open tabs" projected, move them back into content now that it's open.
+function setFolderCollapsed(folderElement, collapsed, persist = true) {
+    folderElement.classList.toggle('collapsed', collapsed);
+    folderElement.querySelector(':scope > .folder-content').classList.toggle('collapsed', collapsed);
+    folderElement.querySelector('.folder-toggle').classList.toggle('collapsed', collapsed);
     syncCollapsedFolderTabs(folderElement);
+    if (persist) {
+        saveFolderCollapsed(folderElement.dataset.bookmarkId, collapsed)
+            .catch(error => Logger.error('Could not save folder state', error));
+    }
+}
+
+// Drag auto-open and child creation use the same durable state as manual toggles.
+function openFolder(folderElement) {
+    if (folderElement.classList.contains('collapsed')) setFolderCollapsed(folderElement, false);
 }
 
 // Helper function to start auto-open timer for a folder
@@ -1342,127 +1222,21 @@ function clearFolderOpenTimer() {
     currentHoveredFolder = null;
 }
 
-/**
- * Rebind a space (and its DOM element / active-space pointers) from a stale group id to
- * a live one, WITHOUT creating a new group. This is the core of "adopt, don't recreate":
- * on restart Chrome restores a space's tab group with a NEW id, so the persisted id goes
- * stale — adopting the live group instead of minting a fresh one is what stops ghost /
- * duplicate tab groups from accumulating (B16/B19/B20).
- */
-function adoptGroupIntoSpace(oldSpaceId, newGroupId) {
-    if (oldSpaceId === newGroupId) return;
-    spaces = spaces.map(s => (s.id === oldSpaceId ? { ...s, id: newGroupId } : s));
-
-    const spaceEl = document.querySelector(`[data-space-id="${oldSpaceId}"]`);
-    if (spaceEl) {
-        spaceEl.dataset.spaceId = newGroupId;
-        spaceEl.dataset.spaceUuid = newGroupId;
-    }
-    if (activeSpaceId === oldSpaceId) activeSpaceId = newGroupId;
-    if (previousSpaceId === oldSpaceId) previousSpaceId = newGroupId;
-    saveSpaces();
-}
-
-/**
- * Chrome session restore populates tabs and tab groups ASYNCHRONOUSLY after the side
- * panel's DOMContentLoaded fires — and it does so incrementally, one group at a time. If
- * initSidebar snapshots that partial state, it (a) may mint a default group when it sees
- * zero groups, and (b) will run the "regroup ungrouped tabs" path over tabs that are still
- * mid-restore, yanking them into a new group before Chrome restores their real one. Either
- * way we get duplicate/ghost groups with fresh colors, repeating every restart (B18).
- *
- * Waiting only for the FIRST group to appear (the old behavior) was not enough — it exits
- * mid-restore. Instead, poll until the (groupCount, tabCount) signature is unchanged across
- * two consecutive polls, i.e. restore has actually settled. Returns the settled groups.
- */
-async function waitForChromeStateToSettle(maxWaitMs = 5000, intervalMs = 250) {
-    const start = Date.now();
-    let prevSignature = null;
-    let groups = await chrome.tabGroups.query({});
-    while (Date.now() - start < maxWaitMs) {
-        const tabs = await chrome.tabs.query({});
-        const signature = `${groups.length}:${tabs.length}`;
-        if (signature === prevSignature) break; // stable across two consecutive polls
-        prevSignature = signature;
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
-        groups = await chrome.tabGroups.query({});
-    }
-    return groups;
-}
-
 async function setActiveSpace(spaceId, updateTab = true) {
-    Logger.log('Setting active space:', spaceId);
-
-    // Track the previous space before updating
-    if (activeSpaceId && activeSpaceId !== spaceId) {
-        previousSpaceId = activeSpaceId;
-        Logger.log('Previous space recorded:', previousSpaceId);
-    }
-
-    let tabGroups = await chrome.tabGroups.query({});
-
-    // Adopt-before-create: if this space's persisted group id is no longer live (e.g. the
-    // group was restored with a new id after restart), rebind the space to the live group
-    // with the same name instead of minting a duplicate group further down (B19).
-    if (!tabGroups.some(group => group.id === spaceId)) {
-        const space = spaces.find(s => s.id === spaceId);
-        const candidate = space ? tabGroups.find(g => g.title === space.name) : null;
-        if (candidate) {
-            Logger.log('Adopting live group', candidate.id, 'for space', spaceId, '(stale id)');
-            adoptGroupIntoSpace(spaceId, candidate.id);
-            spaceId = candidate.id;
-        }
-    }
-
-    // Update global state
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space) return;
+    if (activeSpaceId && activeSpaceId !== spaceId) previousSpaceId = activeSpaceId;
     activeSpaceId = spaceId;
-
-    // Centralize logic in our new helper function
+    await pendingSpaceSaves;
+    await spaceRequest('activate', { windowId: currentWindow.id, spaceId });
     await activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher);
-
-    let tabGroupsToClose = tabGroups.filter(group => group.id !== spaceId);
-
-    // Use a proper async loop instead of forEach
-    for (const group of tabGroupsToClose) {
-        try {
-            await chrome.tabGroups.update(group.id, { collapsed: true });
-        } catch (error) {
-            Logger.warn(`Failed to collapse tab group ${group.id}:`, error);
-            // Continue with other groups even if one fails
-        }
-    }
-
-    const tabGroupForSpace = tabGroups.find(group => group.id === spaceId);
-    if (!tabGroupForSpace) {
-        isCreatingSpace = true;
-        const space = spaces.find(s => s.id === spaceId);
-        const newTab = await ChromeHelper.createNewTab();
-        const groupId = await ChromeHelper.createNewTabGroup(newTab, space.name, space.color);
-
-        // update spaceId with new groupId
-        spaces = spaces.map(s => {
-            if (s.id === spaceId) {
-                return { ...s, id: groupId };
-            }
-            return s;
-        });
-        saveSpaces();
-        isCreatingSpace = false;
-    } else {
-        // Uncollpase space's tab group
-        await chrome.tabGroups.update(spaceId, { collapsed: false })
-
-        // Get all tabs in the space and activate the last one
-        if (updateTab) {
-            const space = spaces.find(s => s.id === parseInt(spaceId));
-            Logger.log("updateTab space", space);
-            chrome.tabs.query({ groupId: spaceId }, tabs => {
-                if (tabs.length > 0) {
-                    const lastTab = space.lastTab ?? tabs[tabs.length - 1].id;
-                    chrome.tabs.update(lastTab, { active: true });
-                    activateTabInDOM(lastTab);
-                }
-            });
+    await refreshActiveSpaceUI();
+    if (updateTab) {
+        const tabs = (await getOwnedTabs(spaceId)).filter(t => t.windowId === currentWindow.id);
+        const tab = tabs.find(t => t.id === space.lastTab) || tabs[tabs.length - 1];
+        if (tab) {
+            await chrome.tabs.update(tab.id, { active: true });
+            activateTabInDOM(tab.id);
         }
     }
 }
@@ -1480,21 +1254,21 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
             return;
         }
 
-        const groupColor = await Utils.getTabGroupColor(spaceName);
-        const groupId = await ChromeHelper.createNewTabGroup(tabToMove, spaceName, groupColor);
-        const spaceBookmarks = await BookmarkUtils.matchTabsWithBookmarks(spaceFolder, groupId, Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
+        const spaceColor = await Utils.getSpaceColor(spaceName);
+
+        const spaceBookmarks = [];
         const registryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(spaceFolder.id, {
             name: spaceName,
-            color: groupColor,
+            color: spaceColor,
         });
 
         const space = {
-            id: groupId,
+            id: registryEntry.spaceUuid,
             spaceUuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             bookmarkFolderId: spaceFolder.id,
             uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             name: spaceName,
-            color: groupColor,
+            color: spaceColor,
             spaceBookmarks: spaceBookmarks,
             temporaryTabs: [tabToMove.id],
             lastTab: tabToMove.id,
@@ -1528,10 +1302,13 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
 }
 
 function saveSpaces() {
-    Logger.log('Saving spaces to storage...', spaces);
-    chrome.storage.local.set({ spaces }, () => {
-        Logger.log('Spaces saved successfully');
-    });
+    const before = structuredClone(savedSpaces);
+    const after = structuredClone(spaces);
+    savedSpaces = structuredClone(after);
+    pendingSaveCount++;
+    const run = pendingSpaceSaves.then(() => spaceRequest('patch', { before, after }));
+    pendingSpaceSaves = run.catch(error => Logger.error('Saving spaces failed', error)).finally(() => pendingSaveCount--);
+    return run;
 }
 
 async function moveTabToPinned(space, tab) {
@@ -1568,8 +1345,8 @@ async function moveTabToPinned(space, tab) {
     // Update placeholders after moving tab to pinned
     updatePinnedSectionPlaceholders();
 
-    // Enforce Chrome group ordering ([space bookmarks][temp]) after membership change.
-    await reconcileSpaceTabOrdering(space.id, { source: 'arcify', movedTabId: tab.id });
+    // Persist extension ordering after membership changes.
+    await persistSpaceTabOrder(space.id, { source: 'arcify', movedTabId: tab.id });
 }
 
 async function moveTabToTemp(space, tab) {
@@ -1599,8 +1376,8 @@ async function moveTabToTemp(space, tab) {
         updateChevronState(spaceElement, pinnedContainer);
     }
 
-    // Enforce Chrome group ordering ([space bookmarks][temp]) after membership change.
-    await reconcileSpaceTabOrdering(space.id, { source: 'arcify', movedTabId: tab.id });
+    // Persist extension ordering after membership changes.
+    await persistSpaceTabOrder(space.id, { source: 'arcify', movedTabId: tab.id });
 }
 
 // Helper function to manage folder placeholder state
@@ -1613,7 +1390,7 @@ function updateFolderPlaceholder(folderElement) {
     if (!folderContent || !placeholder) return;
 
     // Count actual tab elements (not placeholders)
-    const tabElements = folderContent.querySelectorAll('.tab:not(.tab-placeholder)');
+    const tabElements = folderContent.querySelectorAll(':scope > .tab:not(.tab-placeholder), :scope > .folder');
     const isEmpty = tabElements.length === 0;
 
     if (isEmpty) {
@@ -1661,7 +1438,7 @@ function syncCollapsedFolderTabs(folderElement) {
 
         if (showAllOpenTabsInCollapsedFolders) {
             // Arcify mode: show all open (non-bookmark-only) tabs even when folder is collapsed.
-            const openTabs = Array.from(folderContent.querySelectorAll('.tab'))
+            const openTabs = Array.from(folderContent.querySelectorAll(':scope > .tab'))
                 .filter(t => !t.classList.contains('bookmark-only') && t.dataset.tabId);
             openTabs.forEach(t => collapsedContainer.appendChild(t));
         } else {
@@ -1671,7 +1448,7 @@ function syncCollapsedFolderTabs(folderElement) {
             
             // Also seed the currently active tab if it's in this folder (handles initialization case).
             if (activeChromeTabId) {
-                const activeTabEl = folderContent.querySelector(`.tab[data-tab-id="${activeChromeTabId}"]:not(.bookmark-only)`);
+                const activeTabEl = folderContent.querySelector(`:scope > .tab[data-tab-id="${activeChromeTabId}"]:not(.bookmark-only)`);
                 if (activeTabEl) {
                     if (!shownTabIds) {
                         shownTabIds = new Set();
@@ -1683,7 +1460,7 @@ function syncCollapsedFolderTabs(folderElement) {
             
             if (shownTabIds && shownTabIds.size > 0) {
                 shownTabIds.forEach(tabId => {
-                    const tabEl = folderContent.querySelector(`.tab[data-tab-id="${tabId}"]:not(.bookmark-only)`);
+                    const tabEl = folderContent.querySelector(`:scope > .tab[data-tab-id="${tabId}"]:not(.bookmark-only)`);
                     if (tabEl) {
                         collapsedContainer.appendChild(tabEl);
                     }
@@ -1692,7 +1469,7 @@ function syncCollapsedFolderTabs(folderElement) {
         }
     } else {
         // Expanded: move everything back into the folder content.
-        Array.from(collapsedContainer.querySelectorAll('.tab')).forEach(t => folderContent.appendChild(t));
+        Array.from(collapsedContainer.querySelectorAll(':scope > .tab')).forEach(t => folderContent.appendChild(t));
     }
 
     // Arc-like: indicate collapsed folder contains an open tab (in Arc mode this only happens for active tab).
@@ -1810,7 +1587,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             }
 
             const spaceId = spaceElement.dataset.spaceId;
-            const space = spaces.find(s => s.id === parseInt(spaceId));
+            const space = spaces.find(s => s.id === spaceId);
 
             if (!space) {
                 Logger.error(`Space not found for ID: ${spaceId}`);
@@ -1843,15 +1620,8 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 if (targetFolderElement) {
                     Logger.log("moving into a folder");
                     const folderName = targetFolderElement.querySelector('.folder-name').value;
-                    const existingFolders = await chrome.bookmarks.getChildren(spaceFolder.id);
-                    let folder = existingFolders.find(f => f.title === folderName);
-                    if (!folder) {
-                        folder = await chrome.bookmarks.create({
-                            parentId: spaceFolder.id,
-                            title: folderName
-                        });
-                    }
-                    parentId = folder.id;
+                    parentId = targetFolderElement.dataset.bookmarkId;
+                    if (!parentId) throw new Error('Save the folder name before adding tabs.');
 
                     // Check if bookmark already exists in the target folder
                     const existingBookmarks = await chrome.bookmarks.getChildren(parentId);
@@ -1904,7 +1674,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
         // Handle favorite tab conversion
         if (draggingElement.classList.contains('pinned-favicon')) {
             const { tab } = await convertFavoriteToTab(draggingElement, false);
-            const space = spaces.find(s => s.id === parseInt(activeSpaceId));
+            const space = spaces.find(s => s.id === activeSpaceId);
             if (space) moveTabToTemp(space, tab);
             return; // Exit early, conversion complete
         }
@@ -1914,7 +1684,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
 
         try {
             const tab = await chrome.tabs.get(tabId);
-            const space = spaces.find(s => s.id === parseInt(activeSpaceId));
+            const space = spaces.find(s => s.id === activeSpaceId);
 
             if (space && tab) {
                 // Remove tab from bookmarks if it exists
@@ -1942,18 +1712,6 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             updatePinnedSectionPlaceholders();
         }
     }
-}
-
-/**
- * Sync tab order from DOM to Chrome after drag and drop reordering
- * @param {HTMLElement} draggingElement - The tab element that was dragged
- * @param {HTMLElement} container - The container the tab was dropped into
- */
-async function syncTabOrderToChrome(draggingElement, container) {
-    // Legacy implementation (index-math) intentionally disabled.
-    // The new, safer approach is `reconcileSpaceTabOrdering(...)` which enforces a single source of truth
-    // and uses batched moves rather than fragile index calculations.
-    return;
 }
 
 function uniqPreserveOrder(ids) {
@@ -2005,173 +1763,38 @@ function getTempSectionTabIds(spaceElement) {
     );
 }
 
-function markTabsSyncingToChrome(tabIds, ttlMs = 600) {
-    const ids = uniqPreserveOrder(tabIds);
-    ids.forEach(id => syncingToChrome.add(id));
-    setTimeout(() => {
-        ids.forEach(id => syncingToChrome.delete(id));
-    }, ttlMs);
-}
-
-function unmarkTabsSyncingToChrome(tabIds) {
-    uniqPreserveOrder(tabIds).forEach(id => syncingToChrome.delete(id));
-}
-
-// Retry state for reconcile when Chrome is mid-drag and temporarily blocks tab edits.
-const reconcileRetryBySpace = new Map(); // spaceId -> { timeoutId, attempt, opts }
-
-function scheduleReconcileRetry(spaceId, opts, attempt, delayMs, reason) {
-    const existing = reconcileRetryBySpace.get(spaceId);
-    if (existing?.timeoutId) {
-        clearTimeout(existing.timeoutId);
-    }
-    const timeoutId = setTimeout(async () => {
-        reconcileRetryBySpace.delete(spaceId);
-        try {
-            await reconcileSpaceTabOrdering(spaceId, { ...opts, _retryAttempt: attempt });
-        } catch (e) {
-            Logger.warn('[ReconcileOrder] Retry failed:', e);
-        }
-    }, delayMs);
-    reconcileRetryBySpace.set(spaceId, { timeoutId, attempt, opts });
-    Logger.log('[ReconcileOrder] ⏳ Scheduled retry', { spaceId, attempt, delayMs, reason });
-}
-
-/**
- * Reconcile ordering for a space/group by enforcing:
- * Chrome window: [global pinned...][Group: (spaceBookmarks...) (temporaryTabs...)][other groups...]
- *
- * We intentionally avoid any manual index math:
- * - We find the group's current start index
- * - We move the entire group's tabs as a single batch into desired order
- *
- * @param {number} spaceId
- * @param {{source?: 'arcify'|'chrome', movedTabId?: number}} opts
- */
-async function reconcileSpaceTabOrdering(spaceId, opts = {}) {
-    const { source = 'arcify', movedTabId = null, _retryAttempt = 0 } = opts;
+// Order belongs to extension data; Chrome's tab-strip order is irrelevant.
+async function persistSpaceTabOrder(spaceId) {
     const space = spaces.find(s => s.id === spaceId);
-    if (!spaceId || !space) return;
-
-    const groupTabs = await chrome.tabs.query({ groupId: spaceId });
-    groupTabs.sort((a, b) => a.index - b.index);
-    const groupTabsUnpinned = groupTabs.filter(t => !t.pinned);
-    if (groupTabsUnpinned.length === 0) return;
-
-    const tabsInGroupSet = new Set(groupTabsUnpinned.map(t => t.id));
-
-    // If Chrome initiated the reorder, update temporary order from Chrome's current order.
-    // We keep bookmark ordering stable (Arcify/bookmark-folder is the canonical ordering),
-    // but enforce the boundary by moving any moved bookmark tab to the end of the bookmark block.
-    if (source === 'chrome') {
-        const bookmarkSet = new Set(space.spaceBookmarks ?? []);
-        const chromeOrder = groupTabsUnpinned.map(t => t.id);
-        const chromeTemps = chromeOrder.filter(id => !bookmarkSet.has(id));
-        space.temporaryTabs = uniqPreserveOrder(chromeTemps);
-
-        if (movedTabId && bookmarkSet.has(movedTabId)) {
-            const movedIndex = chromeOrder.indexOf(movedTabId);
-            const firstTempIndex = chromeOrder.findIndex(id => !bookmarkSet.has(id));
-            if (firstTempIndex !== -1 && movedIndex !== -1 && movedIndex > firstTempIndex) {
-                // Edge case: bookmark tab dragged into temporary region in Chrome.
-                // Force it back to the end of the bookmark block.
-                space.spaceBookmarks = (space.spaceBookmarks ?? []).filter(id => id !== movedTabId);
-                space.spaceBookmarks.push(movedTabId);
-            }
-        }
-    }
-
-    const desiredBookmarks = uniqPreserveOrder((space.spaceBookmarks ?? []).filter(id => tabsInGroupSet.has(id)));
-    const desiredTemps = uniqPreserveOrder((space.temporaryTabs ?? []).filter(id => tabsInGroupSet.has(id) && !desiredBookmarks.includes(id)));
-    const desiredGroupOrder = uniqPreserveOrder([...desiredBookmarks, ...desiredTemps]);
-
-    const currentGroupOrder = groupTabsUnpinned.map(t => t.id);
-    const isSameOrder = currentGroupOrder.length === desiredGroupOrder.length &&
-        currentGroupOrder.every((id, idx) => id === desiredGroupOrder[idx]);
-
-    if (!isSameOrder) {
-        const groupStartIndex = groupTabsUnpinned[0].index;
-        try {
-            // Mark as syncing to prevent Chrome->Arcify loops, but unmark immediately on failure.
-            markTabsSyncingToChrome(desiredGroupOrder);
-            await chrome.tabs.move(desiredGroupOrder, { index: groupStartIndex });
-            Logger.log('[ReconcileOrder] ✓ Reordered group', spaceId, {
-                source,
-                movedTabId,
-                from: currentGroupOrder,
-                to: desiredGroupOrder
-            });
-        } catch (error) {
-            unmarkTabsSyncingToChrome(desiredGroupOrder);
-
-            const message = (error && (error.message || error.toString())) ? (error.message || error.toString()) : '';
-            const isChromeMidDrag = typeof message === 'string' && message.includes('Tabs cannot be edited right now');
-
-            // Chrome blocks tab edits while the user is actively dragging a tab. In that case, retry shortly.
-            if (isChromeMidDrag) {
-                const nextAttempt = _retryAttempt + 1;
-                if (nextAttempt <= 12) {
-                    // Gentle exponential backoff, capped.
-                    const delayMs = Math.min(1200, 200 + nextAttempt * 100);
-                    scheduleReconcileRetry(spaceId, { source, movedTabId }, nextAttempt, delayMs, message);
-                    // Still save state + update DOM; Chrome will be fixed on retry.
-                } else {
-                    Logger.warn('[ReconcileOrder] Gave up retrying reorder (Chrome remained locked):', {
-                        spaceId,
-                        source,
-                        movedTabId,
-                        message
-                    });
-                }
-            } else {
-                // Unexpected errors should surface for debugging.
-                Logger.error('[ReconcileOrder] Error moving tabs:', error);
-                throw error;
-            }
-        }
-    }
-
-    saveSpaces();
-
-    // Update DOM: keep this conservative (temporary list only).
-    // Pinned section can include folders; we do not reshuffle folder structure based on Chrome.
-    const spaceElement = getSpaceElement(spaceId);
-    if (spaceElement) {
-        const tempContainer = getTempContainer(spaceElement);
-        if (tempContainer) {
-            const invertTabOrder = await Utils.getInvertTabOrder();
-            const domTempOrder = invertTabOrder ? [...desiredTemps].reverse() : desiredTemps;
-            domTempOrder.forEach(id => {
-                const el = tempContainer.querySelector(`[data-tab-id="${id}"]`);
-                if (el) tempContainer.appendChild(el);
-            });
-        }
-    }
+    if (!space) return;
+    space.spaceBookmarks = uniqPreserveOrder(space.spaceBookmarks);
+    space.temporaryTabs = uniqPreserveOrder(space.temporaryTabs.filter(id => !space.spaceBookmarks.includes(id)));
+    await saveSpaces();
 }
 
 /**
  * Called after an Arcify drag+drop to update the space model (spaceBookmarks/temporaryTabs)
- * from the DOM, then reconcile Chrome ordering accordingly.
+ * from the DOM and persist the extension order.
  */
 async function handleArcifyOrderChangeAfterDropByTabId(tabId, container) {
     if (!tabId || !container) return;
     const spaceElement = container.closest('.space');
     if (!spaceElement) return;
-    const spaceId = parseInt(spaceElement.dataset.spaceId);
+    const spaceId = spaceElement.dataset.spaceId;
     const space = spaces.find(s => s.id === spaceId);
     if (!space) return;
 
     const tabType = container.dataset.tabType;
     const invertTabOrder = await Utils.getInvertTabOrder();
     if (tabType === 'temporary') {
-        // DOM order is display order (top->bottom). Canonical storage is Chrome order (left->right).
+        // DOM order is display order (top->bottom). Canonical storage is extension order (left->right).
         const tempIdsDisplayOrder = getTempSectionTabIds(spaceElement);
         const tempIdsChromeOrder = invertTabOrder ? [...tempIdsDisplayOrder].reverse() : tempIdsDisplayOrder;
         // Preserve any non-rendered temp ids (should be rare), append to end.
         const existing = (space.temporaryTabs ?? []).filter(id => !tempIdsChromeOrder.includes(id));
         space.temporaryTabs = uniqPreserveOrder([...tempIdsChromeOrder, ...existing]);
     } else if (tabType === 'pinned') {
-        // DOM order is display order. Canonical storage is Chrome order.
+        // DOM order is display order. Canonical storage is extension order.
         const pinnedIdsDisplayOrder = getFlattenedPinnedSectionTabIds(spaceElement);
         const pinnedIdsChromeOrder = invertTabOrder ? [...pinnedIdsDisplayOrder].reverse() : pinnedIdsDisplayOrder;
         const existing = (space.spaceBookmarks ?? []).filter(id => !pinnedIdsChromeOrder.includes(id));
@@ -2180,7 +1803,7 @@ async function handleArcifyOrderChangeAfterDropByTabId(tabId, container) {
         return;
     }
 
-    await reconcileSpaceTabOrdering(spaceId, { source: 'arcify', movedTabId: tabId });
+    await persistSpaceTabOrder(spaceId, { source: 'arcify', movedTabId: tabId });
 }
 
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
@@ -2190,7 +1813,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
             e.preventDefault();
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
-                const targetFolder = e.target.closest('.folder-content');
+                const targetFolder = e.target.closest('.folder')?.querySelector(':scope > .folder-content');
                 const targetContainer = targetFolder || container;
 
                 // Check for collapsed folder auto-open functionality
@@ -2260,17 +1883,9 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
             if (draggingElement) {
                 const droppedTabId = draggingElement.dataset.tabId ? parseInt(draggingElement.dataset.tabId) : null;
                 // If dropping on a folder header / collapsed folder area, treat it as dropping into that folder.
-                let targetFolder = e.target.closest('.folder-content');
-                let targetFolderElement = targetFolder ? targetFolder.closest('.folder') : null;
-
-                if (!targetFolder) {
-                    const folderUnderPointer = e.target.closest('.folder');
-                    if (folderUnderPointer) {
-                        openFolder(folderUnderPointer); // ensures folder is expanded and projections are synced
-                        targetFolderElement = folderUnderPointer;
-                        targetFolder = folderUnderPointer.querySelector('.folder-content');
-                    }
-                }
+                const targetFolderElement = e.target.closest('.folder');
+                const targetFolder = targetFolderElement?.querySelector(':scope > .folder-content');
+                if (targetFolderElement) openFolder(targetFolderElement);
 
                 const targetContainer = targetFolder || container;
 
@@ -2391,8 +2006,16 @@ function setupPlaceholderDragAndDrop(placeholderContainer, pinnedContainer) {
     });
 }
 
-async function createNewFolder(spaceElement) {
-    const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
+async function createNewFolder(spaceElement, parentFolderElement = null) {
+    const spaceName = spaceElement.querySelector('.space-name').value;
+    const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
+    const parentId = parentFolderElement?.dataset.bookmarkId || spaceFolder.id;
+    if (parentFolderElement && !parentFolderElement.dataset.bookmarkId) return;
+    if (!await canCreateFolder(spaceFolder.id, parentId)) return;
+    const pinnedContainer = parentFolderElement
+        ? parentFolderElement.querySelector(':scope > .folder-content')
+        : spaceElement.querySelector('[data-tab-type="pinned"]');
+    if (parentFolderElement) openFolder(parentFolderElement);
     const folderTemplate = document.getElementById('folderTemplate');
     const newFolder = folderTemplate.content.cloneNode(true);
     const folderElement = newFolder.querySelector('.folder');
@@ -2403,10 +2026,8 @@ async function createNewFolder(spaceElement) {
     const folderToggle = folderElement.querySelector('.folder-toggle');
     const folderContent = folderElement.querySelector('.folder-content');
 
-    // Open new folder by default
-    folderElement.classList.toggle('collapsed');
-    folderContent.classList.toggle('collapsed');
-    folderToggle.classList.toggle('collapsed');
+    // Save the initial expanded state once the bookmark ID is assigned.
+    setFolderCollapsed(folderElement, false, false);
 
     // Set up initial display for new folder
     folderNameInput.style.display = 'inline-block';
@@ -2415,29 +2036,15 @@ async function createNewFolder(spaceElement) {
     folderHeader.addEventListener('click', () => {
         // Clear the tracked shown tabs when user manually toggles the folder (Arc behavior).
         collapsedFolderShownTabs.delete(folderElement);
-        folderElement.classList.toggle('collapsed');
-        folderContent.classList.toggle('collapsed');
-        folderToggle.classList.toggle('collapsed');
-        folderIcon.innerHTML = folderElement.classList.contains('collapsed') ? FOLDER_CLOSED_ICON : FOLDER_OPEN_ICON;
-        syncCollapsedFolderTabs(folderElement);
+        setFolderCollapsed(folderElement, !folderElement.classList.contains('collapsed'));
     });
 
-    // Set up folder name input
-    folderNameInput.addEventListener('change', async () => {
-        const spaceName = spaceElement.querySelector('.space-name').value;
-        const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
-        const existingFolders = await chrome.bookmarks.getChildren(spaceFolder.id);
-        const folder = existingFolders.find(f => f.title === folderNameInput.value);
-        if (!folder) {
-            await chrome.bookmarks.create({
-                parentId: spaceFolder.id,
-                title: folderNameInput.value
-            });
-            folderNameInput.style.display = 'none';
-            folderTitle.innerHTML = folderNameInput.value;
-            folderTitle.style.display = 'inline';
-        }
-    });
+    // Keep the created folder's identity when this editor is used again.
+    // Serialize Enter and blur so they cannot create two bookmark folders.
+    let createdFolderId;
+    let savedFolderName = 'Untitled';
+    let folderSave = Promise.resolve();
+    let cancelFolderBlur = false;
 
     // Add double-click functionality for folder name editing (for new folders)
     folderHeader.addEventListener('dblclick', (e) => {
@@ -2453,34 +2060,51 @@ async function createNewFolder(spaceElement) {
     });
 
     const saveOrCancelNewFolderEdit = async (save) => {
+        const newName = folderNameInput.value.trim();
         if (save) {
-            const newName = folderNameInput.value.trim();
             if (newName) {
-                const spaceName = spaceElement.querySelector('.space-name').value;
-                const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
-                const existingFolders = await chrome.bookmarks.getChildren(spaceFolder.id);
-                const folder = existingFolders.find(f => f.title === newName);
-                if (!folder) {
-                    await chrome.bookmarks.create({
-                        parentId: spaceFolder.id,
-                        title: newName
-                    });
+                folderSave = folderSave.then(async () => {
+                    if (createdFolderId) {
+                        if (newName !== savedFolderName) await chrome.bookmarks.update(createdFolderId, { title: newName });
+                    } else {
+                        const folder = await createFolder(spaceFolder.id, parentId, newName);
+                        createdFolderId = folder.id;
+                        folderElement.dataset.bookmarkId = folder.id;
+                        await saveFolderCollapsed(folder.id, folderElement.classList.contains('collapsed'));
+                    }
+                    savedFolderName = newName;
+                });
+                try {
+                    await folderSave;
+                } catch (error) {
+                    folderSave = Promise.resolve();
+                    alert(error.message);
+                    if (!createdFolderId) {
+                        folderElement.remove();
+                        if (parentFolderElement) updateFolderPlaceholder(parentFolderElement);
+                    }
+                    return;
                 }
             }
         }
         // Update display regardless of save/cancel
+        folderNameInput.value = savedFolderName;
         folderNameInput.style.display = 'none';
-        folderTitle.innerHTML = folderNameInput.value || 'Untitled';
+        folderTitle.textContent = savedFolderName;
         folderTitle.style.display = 'inline';
     };
 
-    folderNameInput.addEventListener('blur', () => saveOrCancelNewFolderEdit(true));
+    folderNameInput.addEventListener('blur', () => {
+        if (cancelFolderBlur) { cancelFolderBlur = false; return; }
+        saveOrCancelNewFolderEdit(true);
+    });
     folderNameInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             await saveOrCancelNewFolderEdit(true);
             folderNameInput.blur();
         } else if (e.key === 'Escape') {
+            cancelFolderBlur = true;
             await saveOrCancelNewFolderEdit(false);
             folderNameInput.blur();
         }
@@ -2488,6 +2112,7 @@ async function createNewFolder(spaceElement) {
 
     // Add the new folder to the pinned container
     pinnedContainer.appendChild(folderElement);
+    if (parentFolderElement) updateFolderPlaceholder(parentFolderElement);
 
     // Set up context menu for the new folder
     setupFolderContextMenu(folderElement, { name: spaceElement.querySelector('.space-name').value });
@@ -2498,7 +2123,21 @@ async function createNewFolder(spaceElement) {
     folderNameInput.focus();
 }
 
+const spaceRenderTasks = new Map();
 async function loadTabs(space, pinnedContainer, tempContainer) {
+    const previous = spaceRenderTasks.get(space.id) || Promise.resolve();
+    const run = previous.catch(error => Logger.warn('Previous space render failed', error)).then(async () => {
+        if (!pinnedContainer.isConnected) return;
+        pinnedContainer.querySelectorAll('.tab, .folder').forEach(el => el.remove());
+        tempContainer.querySelectorAll('.tab').forEach(el => el.remove());
+        await renderSpaceTabs(space, pinnedContainer, tempContainer);
+    });
+    spaceRenderTasks.set(space.id, run);
+    try { await run; }
+    finally { if (spaceRenderTasks.get(space.id) === run) spaceRenderTasks.delete(space.id); }
+}
+
+async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     Logger.log('Loading tabs for space:', space.id);
     Logger.log('Space bookmarks in space:', space.spaceBookmarks);
 
@@ -2508,7 +2147,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
     const representedPinnedTabIds = new Set();
     try {
         const invertTabOrder = await Utils.getInvertTabOrder();
-        const tabs = await chrome.tabs.query({});
+        const tabs = (await getOwnedTabs(space.id)).filter(t => !t.pinned);
         const pinnedStatesById = await Utils.getPinnedTabStates();
         const pinnedTabs = await chrome.tabs.query({ pinned: true });
         const pinnedUrls = new Set(pinnedTabs.map(tab => tab.url));
@@ -2531,6 +2170,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         const folderTemplate = document.getElementById('folderTemplate');
                         const newFolder = folderTemplate.content.cloneNode(true);
                         const folderElement = newFolder.querySelector('.folder');
+                        folderElement.dataset.bookmarkId = item.id;
                         const folderHeader = folderElement.querySelector('.folder-header');
                         const folderIcon = folderElement.querySelector('.folder-icon');
                         const folderTitle = folderElement.querySelector('.folder-title');
@@ -2545,12 +2185,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         folderHeader.addEventListener('click', () => {
                             // Clear the tracked shown tabs when user manually toggles the folder (Arc behavior).
                             collapsedFolderShownTabs.delete(folderElement);
-                            folderElement.classList.toggle('collapsed');
-                            folderContent.classList.toggle('collapsed');
-                            folderToggle.classList.toggle('collapsed');
-                            updateFolderIcon(folderElement);
-                            updateFolderIcon(folderElement);
-                            syncCollapsedFolderTabs(folderElement);
+                            setFolderCollapsed(folderElement, !folderElement.classList.contains('collapsed'));
                         });
 
                         // Add double-click functionality for folder name editing
@@ -2583,7 +2218,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                             folderNameInput.readOnly = true;
                             folderNameInput.disabled = true;
                             folderNameInput.style.display = 'none';
-                            folderTitle.innerHTML = item.title;
+                            folderTitle.textContent = item.title;
                             folderTitle.style.display = 'inline';
                         };
 
@@ -2603,7 +2238,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                         folderNameInput.readOnly = true;
                         folderNameInput.disabled = true;
                         folderNameInput.style.display = 'none';
-                        folderTitle.innerHTML = item.title;
+                        folderTitle.textContent = item.title;
                         folderTitle.style.display = 'inline';
 
                         container.appendChild(folderElement);
@@ -2613,8 +2248,8 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 
                         // Update folder placeholder state after loading contents
                         updateFolderPlaceholder(folderElement);
-                        // Initial sync for collapsed folders (template starts collapsed).
-                        syncCollapsedFolderTabs(folderElement);
+                        // Restore parent and child states independently after their contents render.
+                        setFolderCollapsed(folderElement, await loadFolderCollapsed(item.id), false);
                     } else {
                         // This is a bookmark
                         if (!processedUrls.has(item.url) && !pinnedUrls.has(item.url)) {
@@ -2707,7 +2342,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
             tabsToLoad.reverse();
         }
 
-        tabsToLoad.forEach(async tabId => {
+        for (const tabId of tabsToLoad) {
             Logger.log("checking", tabId, spaces);
             const tab = tabs.find(t => t.id === tabId);
             const representedAsPinned = representedPinnedTabIds.has(tabId);
@@ -2717,7 +2352,7 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
                 const tabElement = await createTabElement(tab);
                 tempContainer.appendChild(tabElement);
             }
-        });
+        }
     } catch (error) {
         Logger.error('Error loading tabs:', error);
     }
@@ -2795,16 +2430,6 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         return;
     }
 
-    // If last tab is closed, create a new empty tab to prevent tab group from closing
-    const tabsInGroup = await chrome.tabs.query({ groupId: activeSpaceId });
-    Logger.log("tabsInGroup", tabsInGroup);
-    if (tabsInGroup.length < 2) {
-        Logger.log("creating new tab");
-        await createNewTab(async () => {
-            closeTab(tabElement, tab, isPinned, isBookmarkOnly);
-        });
-        return;
-    }
     const activeSpace = spaces.find(s => s.id === activeSpaceId);
     Logger.log("activeSpace", activeSpace);
     const isCurrentlyPinned = activeSpace?.spaceBookmarks.includes(tab.id);
@@ -2912,6 +2537,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     // Set up favicon
     favicon.src = Utils.getFaviconUrl(tab.url);
     favicon.classList.add('tab-favicon');
+    favicon.draggable = false; // Drag the tab, never the favicon image URL.
     favicon.onerror = () => {
         favicon.src = tab.favIconUrl;
         favicon.onerror = () => { favicon.src = 'assets/default_icon.png'; }; // Fallback favicon
@@ -3099,7 +2725,14 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
 
     // Handle mousedown events (left-click to open, middle-click to close)
-    tabElement.addEventListener('mousedown', async (event) => {
+    tabElement.addEventListener('auxclick', event => {
+        if (event.button === MOUSE_BUTTON.MIDDLE) {
+            event.preventDefault();
+            closeTab(tabElement, tab, isPinned, isBookmarkOnly);
+        }
+    });
+    // Activate after mouse-up so dragging an inactive tab does not rebuild its source.
+    tabElement.addEventListener('click', async (event) => {
         if (event.button === MOUSE_BUTTON.MIDDLE) {
             event.preventDefault(); // Prevent default middle-click actions (like autoscroll)
             closeTab(tabElement, tab, isPinned, isBookmarkOnly);
@@ -3131,7 +2764,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
                     // Check if tab exists by URL (might be open but in different window/state)
                     const allTabs = await chrome.tabs.query({});
-                    const existingTab = BookmarkUtils.findTabByUrl(allTabs, tabUrl);
+                    const existingTab = BookmarkUtils.findTabByUrl(allTabs.filter(t => ownerOf(spaces, t.id)?.id === activeSpaceId), tabUrl);
 
                     if (existingTab) {
                         const clickedBookmarkId = tabElement.dataset.bookmarkId || null;
@@ -3143,7 +2776,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                         // This prevents URL twins from being silently auto-pinned alongside
                         // the original pinned tab.
                         const pinnedStatesById = await Utils.getPinnedTabStates();
-                        const targetSpace = spaces.find(s => s.id === existingTab.groupId) || spaces.find(s => s.id === activeSpaceId);
+                        const targetSpace = ownerOf(spaces, existingTab.id) || spaces.find(s => s.id === activeSpaceId);
                         let boundTab = null;
                         if (isPinned && targetSpace) {
                             for (const boundId of targetSpace.spaceBookmarks) {
@@ -3162,7 +2795,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
                         const tabToFocus = boundTab || existingTab;
                         Logger.log('Found existing tab with same URL, activating:', tabToFocus.id, boundTab ? '(preferred already-bound pinned tab)' : '');
-                        chrome.tabs.update(tabToFocus.id, { active: true });
+                        await Utils.focusTab(tabToFocus.id);
                         activateTabInDOM(tabToFocus.id);
 
                         if (isPinned && !boundTab) {
@@ -3172,7 +2805,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                         }
 
                         // Update space data if needed
-                        const space = spaces.find(s => s.id === tabToFocus.groupId);
+                        const space = ownerOf(spaces, tabToFocus.id);
                         if (space) {
                             space.lastTab = tabToFocus.id;
                             // Only auto-add to spaceBookmarks when no other tab already represents this bookmark.
@@ -3257,7 +2890,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                             }
 
                             // Ensure restored tab lands in correct Chrome position for this space.
-                            await reconcileSpaceTabOrdering(targetSpaceId, { source: 'arcify', movedTabId: restoredTab.id });
+                            await persistSpaceTabOrder(targetSpaceId, { source: 'arcify', movedTabId: restoredTab.id });
 
                             // Replace the element with the active tab element
                             if (isPinned) {
@@ -3309,7 +2942,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                         createTabElement,
                         activateTabInDOM,
                         Utils,
-                        reconcileSpaceTabOrdering
+                        persistSpaceTabOrder
                     };
 
                     // Use shared bookmark opening logic
@@ -3323,9 +2956,9 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             } else {
                 // It's a regular tab, just activate it
                 tabElement.classList.add('active');
-                chrome.tabs.update(tab.id, { active: true });
+                await Utils.focusTab(tab.id);
                 // Store last active tab for the space
-                const space = spaces.find(s => s.id === tab.groupId);
+                const space = ownerOf(spaces, tab.id);
                 if (space) {
                     space.lastTab = tab.id;
                     saveSpaces();
@@ -3362,23 +2995,13 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     return tabElement;
 }
 
-function createNewTab(callback = () => { }) {
-    Logger.log('Creating new tab...');
-    chrome.tabs.create({ active: true }, async (tab) => {
-        Logger.log('activeSpaceId', activeSpaceId);
-        if (activeSpaceId) {
-            await chrome.tabs.group({ tabIds: tab.id, groupId: activeSpaceId });
-            const space = spaces.find(s => s.id === activeSpaceId);
-            if (space) {
-                space.temporaryTabs.push(tab.id);
-                saveSpaces();
-                // Callback call fails sometimes with "callback is not a function" error.
-                if (typeof callback === 'function') {
-                    callback();
-                }
-            }
-        }
-    });
+async function createNewTab(callback = () => {}) {
+    const spaceId = activeSpaceId;
+    const tab = await chrome.tabs.create({ active: true, windowId: currentWindow.id });
+    await spaceRequest('assign', { tabId: tab.id, spaceId });
+    await adoptStoredSpaces(await spaceRequest('get'));
+    if (typeof callback === 'function') callback();
+    return tab;
 }
 
 async function createNewSpace() {
@@ -3403,8 +3026,7 @@ async function createNewSpace() {
             }, 3000);
             return;
         }
-        const newTab = await ChromeHelper.createNewTab();
-        const groupId = await ChromeHelper.createNewTabGroup(newTab, spaceName, spaceColor);
+
 
         // Create bookmark folder for new space, then anchor durable identity to it.
         const newSpaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
@@ -3414,14 +3036,14 @@ async function createNewSpace() {
         });
 
         const space = {
-            id: groupId,
+            id: registryEntry.spaceUuid,
             spaceUuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             bookmarkFolderId: newSpaceFolder.id,
             uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             name: spaceName,
             color: spaceColor,
             spaceBookmarks: [],
-            temporaryTabs: [newTab.id]
+            temporaryTabs: []
         };
 
         spaces.push(space);
@@ -3429,8 +3051,8 @@ async function createNewSpace() {
 
         createSpaceElement(space);
         await updateSpaceSwitcher();
+        await saveSpaces();
         await setActiveSpace(space.id);
-        saveSpaces();
 
         isCreatingSpace = false;
         // Reset the space creation UI and show space switcher
@@ -3476,65 +3098,28 @@ async function cleanTemporaryTabs(spaceId) {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) return;
 
-    // Derive the closable set from LIVE group tabs minus favorites, rather than trusting
-    // space.temporaryTabs (which can contain stale ids, or a leaked favorite id — B2).
-    const groupTabs = await chrome.tabs.query({ groupId: spaceId });
+    // Only close live tabs owned by this space, protecting favorite bindings.
+    const ownedTabs = await getOwnedTabs(spaceId);
     const protectedIds = new Set(space.spaceBookmarks);
     const favoriteUrlKeys = await getSpaceFavoriteUrlKeys(space.name);
-    const closable = groupTabs.filter(t =>
+    const closable = ownedTabs.filter(t =>
         !protectedIds.has(t.id) && !favoriteUrlKeys.has(Utils.getPinnedUrlKey(t.url))
     );
 
-    // If nothing would survive in the group, open a fresh tab so the group (space) doesn't
-    // collapse out of existence when all its tabs close.
-    if (closable.length > 0 && closable.length === groupTabs.length) {
-        await createNewTab();
-    }
-
     closable.forEach(t => chrome.tabs.remove(t.id));
 
-    // temporaryTabs is a derived view of non-favorite group tabs; keep only surviving favorites.
+    // Keep only surviving favorites.
     space.temporaryTabs = space.temporaryTabs.filter(id => protectedIds.has(id));
     saveSpaces();
 }
 
-function handleTabCreated(tab) {
-    if (isCreatingSpace || isOpeningBookmark) {
-        Logger.log('Skipping tab creation handler - space is being created');
-        return;
-    }
-    chrome.windows.getCurrent({ populate: false }, async (currentWindow) => {
-        if (tab.windowId !== currentWindow.id) {
-            Logger.log('New tab is in a different window, ignoring...');
-            return;
-        }
-
-        Logger.log('Tab created:', tab);
-        // Always ensure we have the current activeSpaceId
-        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-            try {
-                // Get the current active tab's group ID
-                // const currentGroupId = await chrome.tabs.group({ tabIds: tab.id });
-                const space = spaces.find(s => s.id === activeSpaceId);
-
-                if (space) {
-                    // Re-fetch to get the resolved URL (onCreated may fire before navigation settles).
-                    let liveTab = tab;
-                    try { liveTab = await chrome.tabs.get(tab.id); } catch (e) { /* tab may already be gone */ }
-
-                    // Fast-path: if the new tab's URL matches an unrealized pinned bookmark
-                    // in the active space (a bookmark with no currently-bound open tab),
-                    // bind this tab to that bookmark instead of placing it in temp.
-                    const bound = await tryBindNewTabToPinnedBookmark(liveTab, space);
-                    if (!bound) {
-                        await moveTabToSpace(tab.id, space.id, false /* pinned? */, tab.openerTabId);
-                    }
-                }
-            } catch (error) {
-                Logger.error('Error handling new tab:', error);
-            }
-        });
-    });
+async function handleTabCreated(tab) {
+    if (!sidebarReady || isCreatingSpace || isOpeningBookmark || tab.pinned || tab.windowId !== currentWindow?.id) return;
+    await pendingSpaceSaves;
+    const next = await spaceRequest('get');
+    await adoptStoredSpaces(next);
+    const space = ownerOf(spaces, tab.id);
+    if (space) await tryBindNewTabToPinnedBookmark(tab, space);
 }
 
 // Returns true if the new tab was successfully bound to an unrealized pinned
@@ -3671,10 +3256,7 @@ function handleTabUpdate(tabId, changeInfo, tab) {
         return;
     }
     chrome.windows.getCurrent({ populate: false }, async (currentWindow) => {
-        if (tab.windowId !== currentWindow.id) {
-            Logger.log('New tab is in a different window, ignoring...');
-            return;
-        }
+        // Spaces can show tabs from every window; keep all visible rows current.
         Logger.log('Tab updated:', tabId, changeInfo, spaces);
 
         // Check if a temporary tab's new URL matches a pinned bookmark in the space
@@ -3993,111 +3575,8 @@ async function handleTabRemove(tabId) {
     updatePinnedFavicons();
 }
 
-// Track pending tab moves to debounce rapid successive moves
-const pendingTabMoves = new Map();
+// Prevent overlapping membership changes for the same tab.
 const processingTabMoves = new Set();
-// Track tabs being synced from DOM to Chrome to prevent infinite loops
-const syncingToChrome = new Set();
-
-function handleTabMove(tabId, moveInfo) {
-    if (isOpeningBookmark) {
-        return;
-    }
-
-    // If we're syncing this tab from DOM to Chrome, ignore the Chrome -> DOM sync to prevent loop
-    if (syncingToChrome.has(tabId)) {
-        Logger.log('[TabMove] ⚠️ Ignoring move event - tab is being synced to Chrome', tabId);
-        return;
-    }
-
-    // If we're already processing a move for this tab, ignore new events
-    if (processingTabMoves.has(tabId)) {
-        Logger.log('[TabMove] ⚠️ Ignoring move event - already processing tab', tabId, 'toIndex:', moveInfo.toIndex);
-        return;
-    }
-
-    // Store the latest move info for this tab
-    const existingData = pendingTabMoves.get(tabId);
-    if (existingData) {
-        clearTimeout(existingData.timeoutId);
-        Logger.log('[TabMove] 🔄 Updating pending move for tab', tabId, '- Old toIndex:', existingData.moveInfo.toIndex, 'New toIndex:', moveInfo.toIndex);
-    } else {
-        Logger.log('[TabMove] 📝 New move event for tab', tabId, 'toIndex:', moveInfo.toIndex);
-    }
-
-    // Debounce: wait 250ms before processing the move
-    // This ensures we only process after all rapid events have finished
-    const timeoutId = setTimeout(async () => {
-        const data = pendingTabMoves.get(tabId);
-        if (data) {
-            Logger.log('[TabMove] ✅ Processing final move for tab', tabId, 'toIndex:', data.moveInfo.toIndex);
-            pendingTabMoves.delete(tabId);
-            processingTabMoves.add(tabId);
-            await processTabMove(tabId, data.moveInfo);
-            processingTabMoves.delete(tabId);
-            Logger.log('[TabMove] ✅ Finished processing tab', tabId);
-        }
-    }, 250);
-
-    pendingTabMoves.set(tabId, { moveInfo, timeoutId });
-}
-
-async function processTabMove(tabId, moveInfo) {
-    chrome.windows.getCurrent({ populate: false }, async (currentWindow) => {
-        // Get the tab's current information first
-        chrome.tabs.get(tabId, async (tab) => {
-            if (tab.windowId !== currentWindow.id) {
-                Logger.log('[TabMove] New tab is in a different window, ignoring...');
-                return;
-            }
-            Logger.log('[TabMove] Tab moved:', tabId, moveInfo);
-
-            const newGroupId = tab.groupId;
-            const sourceSpace = spaces.find(s =>
-                s.temporaryTabs.includes(tabId) || s.spaceBookmarks.includes(tabId)
-            );
-            Logger.log('[TabMove] Tab moved to group:', newGroupId, sourceSpace?.id);
-
-            const destSpace = spaces.find(s => s.id === newGroupId);
-
-            // If the move affects a tab we don't track (rare), bail early.
-            if (!destSpace && !sourceSpace) return;
-
-            // If tab moved between groups/spaces, update membership first.
-            if (sourceSpace && destSpace && sourceSpace.id !== destSpace.id) {
-                Logger.log('[TabMove] Moving tab between spaces:', sourceSpace.name, '->', destSpace.name);
-
-                sourceSpace.temporaryTabs = sourceSpace.temporaryTabs.filter(id => id !== tabId);
-                sourceSpace.spaceBookmarks = sourceSpace.spaceBookmarks.filter(id => id !== tabId);
-                sourceSpace.lastTab = null;
-
-                // A moved tab into another group should be treated as a temporary tab in destination by default.
-                destSpace.spaceBookmarks = destSpace.spaceBookmarks.filter(id => id !== tabId);
-                if (!destSpace.temporaryTabs.includes(tabId)) {
-                    destSpace.temporaryTabs.push(tabId);
-                }
-
-                // Move DOM element if it exists (visual update), then reconcile ordering.
-                const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
-                const destSpaceElement = document.querySelector(`[data-space-id="${destSpace.id}"]`);
-                const destTempContainer = destSpaceElement?.querySelector('[data-tab-type="temporary"]');
-                if (tabElement && destTempContainer) {
-                    destTempContainer.appendChild(tabElement);
-                }
-
-                await reconcileSpaceTabOrdering(sourceSpace.id, { source: 'chrome', movedTabId: tabId });
-                await reconcileSpaceTabOrdering(destSpace.id, { source: 'chrome', movedTabId: tabId });
-                return;
-            }
-
-            // Same-space reorder: Chrome is the source of truth for temporary ordering, but we enforce
-            // bookmark-vs-temp boundaries via reconcile (edge case: bookmark dragged into temps).
-            const effectiveSpaceId = destSpace?.id ?? sourceSpace?.id;
-            if (!effectiveSpaceId) return;
-            await reconcileSpaceTabOrdering(effectiveSpaceId, { source: 'chrome', movedTabId: tabId });
-        });
-    });
-}
 
 function handleTabActivated(activeInfo) {
     if (isCreatingSpace) {
@@ -4129,6 +3608,7 @@ function handleTabActivated(activeInfo) {
             // Switch to the space containing the tab
             activeSpaceId = spaceWithTab.id;
             await activateSpaceInDOM(spaceWithTab.id, spaces, updateSpaceSwitcher);
+            await refreshActiveSpaceUI();
             activateTabInDOM(activeInfo.tabId);
         } else {
             // Activate only the tab in the current space
@@ -4164,14 +3644,13 @@ async function deleteSpace(spaceId) {
     Logger.log('Deleting space:', spaceId);
     const space = spaces.find(s => s.id === spaceId);
     if (space) {
-        // Close the tabs that are ACTUALLY in this group right now. Trusting the in-memory
-        // id arrays risks closing an unrelated tab whose id was reused after a stale entry
-        // lingered (B3); querying the live group closes exactly the right tabs.
-        const groupTabs = await chrome.tabs.query({ groupId: spaceId });
-        groupTabs.forEach(t => chrome.tabs.remove(t.id));
+        // Close live tabs owned by the deleted space.
+        const ownedTabs = await getOwnedTabs(spaceId);
 
         // Remove space from array
         spaces = spaces.filter(s => s.id !== spaceId);
+        await saveSpaces();
+        if (ownedTabs.length) await chrome.tabs.remove(ownedTabs.map(t => t.id));
 
         // Remove space element from DOM
         const spaceElement = document.querySelector(`[data-space-id="${spaceId}"]`);
@@ -4242,63 +3721,8 @@ function scrollToTab(tabId, timeout = 0) {
     }, timeout);
 }
 
-/**
- * Handles when a tab group is removed (space is closed)
- * @param {number} groupId - The ID of the removed tab group
- */
-async function handleTabGroupRemoved(groupId) {
-    Logger.log('Tab group removed:', groupId);
-
-    // Check if this was the currently active space
-    if (groupId === activeSpaceId) {
-        Logger.log('Active space was closed, switching to last tab from previously used space');
-
-        // Find the previously used space (excluding the closed one)
-        const previousSpace = spaces.find(s => s.id === previousSpaceId && s.id !== groupId);
-        if (previousSpace && previousSpace.lastTab) {
-            try {
-                // Try to activate the last tab from the previously used space
-                await chrome.tabs.update(previousSpace.lastTab, { active: true });
-                Logger.log('Switched to last tab from previously used space:', previousSpace.lastTab);
-            } catch (error) {
-                Logger.warn('Could not activate last tab from previously used space, it may have been closed:', error);
-
-                // Fallback: find any remaining tab and activate it
-                const remainingTabs = await chrome.tabs.query({ currentWindow: true });
-                if (remainingTabs.length > 0) {
-                    await chrome.tabs.update(remainingTabs[0].id, { active: true });
-                    Logger.log('Switched to fallback tab:', remainingTabs[0].id);
-                }
-            }
-        } else {
-            // No previously used space or no last tab recorded, find any remaining tab
-            const remainingTabs = await chrome.tabs.query({ currentWindow: true });
-            if (remainingTabs.length > 0) {
-                await chrome.tabs.update(remainingTabs[0].id, { active: true });
-                Logger.log('Switched to fallback tab:', remainingTabs[0].id);
-            }
-        }
-    }
-
-    // Clean up the ghost space: without this, a removed group leaves its space in the
-    // `spaces` array and a dead element in the DOM until the sidebar is reopened (B5).
-    // NOTE: we deliberately do NOT delete the space's bookmark folder here — a group can
-    // vanish (e.g. its last tab moved away) without the user intending to lose favorites.
-    const removedSpace = spaces.find(s => s.id === groupId);
-    if (removedSpace) {
-        spaces = spaces.filter(s => s.id !== groupId);
-
-        const spaceElement = document.querySelector(`[data-space-id="${groupId}"]`);
-        if (spaceElement) {
-            spaceElement.remove();
-        }
-
-        saveSpaces();
-        await updateSpaceSwitcher();
-    }
-}
-
 async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null) {
+    if (!spaces.some(s => s.id === spaceId)) return;
     processingTabMoves.add(tabId);
     try {
     // Remove tab from its original space data first
@@ -4318,13 +3742,6 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
         return;
     }
 
-    // 2. Move tab to Chrome tab group
-    try {
-        await chrome.tabs.group({ tabIds: tabId, groupId: spaceId });
-    } catch (err) {
-        Logger.warn(`Error grouping tab ${tabId} to space ${spaceId}:`, err);
-    }
-
     // 3. Update local space data
     // Remove tab from both arrays just in case
     space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
@@ -4334,7 +3751,9 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
     if (pinned) {
         space.spaceBookmarks.push(tabId);
     } else {
-        space.temporaryTabs.push(tabId);
+        const openerIndex = space.temporaryTabs.indexOf(openerTabId);
+        if (openerIndex >= 0) space.temporaryTabs.splice(openerIndex + 1, 0, tabId);
+        else space.temporaryTabs.push(tabId);
     }
 
     // 4. Update the UI (remove tab element from old section, create it in new section)
@@ -4365,16 +3784,16 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
                     // Add to the bottom after all existing elements
                     container.appendChild(tabElement);
                 } else {
-                    // For temporary tabs, sync with Chrome's tab order
-                    const groupTabs = await chrome.tabs.query({ groupId: spaceId });
-                    const currentTabIndex = groupTabs.findIndex(t => t.id === tabId);
+                    // Render temporary tabs in extension order
+                    const ownedTabs = await getOwnedTabs(spaceId);
+                    const currentTabIndex = ownedTabs.findIndex(t => t.id === tabId);
 
-                    if (currentTabIndex !== -1 && groupTabs.length > 1) {
+                    if (currentTabIndex !== -1 && ownedTabs.length > 1) {
                         // First, add the new tab element to the container so it can be found in the filter
                         container.appendChild(tabElement);
 
                         // Filter to only include tabs in the temporary container (including the new one)
-                        const tabsInContainer = groupTabs.filter(t => {
+                        const tabsInContainer = ownedTabs.filter(t => {
                             return container.querySelector(`[data-tab-id="${t.id}"]`);
                         });
 
@@ -4435,24 +3854,30 @@ function setupFolderContextMenu(folderElement, space, item = null) {
         contextMenu.style.left = `${e.clientX}px`;
         contextMenu.style.top = `${e.clientY}px`;
 
+        const spaceElement = folderElement.closest('.space');
+        const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(space.name);
+        const folderId = folderElement.dataset.bookmarkId;
+        if (folderId && await canCreateFolder(spaceFolder.id, folderId)) {
+            const newFolderOption = document.createElement('div');
+            newFolderOption.classList.add('context-menu-item');
+            newFolderOption.textContent = 'New Folder';
+            newFolderOption.addEventListener('click', async () => {
+                contextMenu.remove();
+                await createNewFolder(spaceElement, folderElement);
+            });
+            contextMenu.appendChild(newFolderOption);
+        }
+
         const deleteOption = document.createElement('div');
         deleteOption.classList.add('context-menu-item');
         deleteOption.textContent = 'Delete Folder';
         deleteOption.addEventListener('click', async () => {
             if (confirm('Are you sure you want to delete this folder and all its contents?')) {
-                const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-                const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-                const spaceFolder = spaceFolders.find(f => f.title === space.name);
-                if (spaceFolder) {
-                    const folders = await chrome.bookmarks.getChildren(spaceFolder.id);
-                    // For existing folders, use item.title; for new folders, use the folder name
-                    const folderTitle = item ? item.title : folderElement.querySelector('.folder-title').textContent;
-                    const folder = folders.find(f => f.title === folderTitle);
-                    if (folder) {
-                        await chrome.bookmarks.removeTree(folder.id);
-                        folderElement.remove();
-                    }
-                }
+                if (folderId) await chrome.bookmarks.removeTree(folderId);
+                const parentFolder = folderElement.parentElement.closest('.folder');
+                folderElement.remove();
+                if (parentFolder) updateFolderPlaceholder(parentFolder);
+                updatePinnedSectionPlaceholders();
             }
             contextMenu.remove();
         });

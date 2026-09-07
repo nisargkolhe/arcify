@@ -69,11 +69,9 @@ function updateAutoArchiveIdleMinutesVisibility(forceEnabled) {
 
 // Function to apply color overrides to CSS variables
 function applyColorOverrides(colorOverrides) {
-  if (!colorOverrides) return;
-
   const root = document.documentElement;
-  Object.keys(colorOverrides).forEach(colorName => {
-    const colorValue = colorOverrides[colorName];
+  COLOR_NAMES.forEach(colorName => {
+    const colorValue = colorOverrides?.[colorName];
     if (colorValue) {
       root.style.setProperty(`--user-chrome-${colorName}-color`, colorValue);
     } else {
@@ -86,6 +84,7 @@ function applyColorOverrides(colorOverrides) {
 async function saveOptions() {
   const defaultSpaceNameSelect = document.getElementById('defaultSpaceName');
   const autoArchiveIdleMinutesInput = document.getElementById('autoArchiveIdleMinutes');
+  if (autoArchiveIdleMinutesInput && !autoArchiveIdleMinutesInput.disabled && !autoArchiveIdleMinutesInput.reportValidity()) return;
 
   // Collect color overrides (only non-default values)
   const colorOverrides = {};
@@ -100,6 +99,7 @@ async function saveOptions() {
     defaultSpaceName: defaultSpaceNameSelect?.value || 'Home',
     autoArchiveEnabled: getCheckboxValue(document.getElementById('autoArchiveEnabled'), false),
     autoArchiveIdleMinutes: parseInt(autoArchiveIdleMinutesInput?.value, 10) || 360,
+    syncTabGroups: getCheckboxValue(document.getElementById('syncTabGroups'), false),
     invertTabOrder: getCheckboxValue(document.getElementById('invertTabOrder'), true),
     showAllOpenTabsInCollapsedFolders: getCheckboxValue(document.getElementById('showAllOpenTabsInCollapsedFolders'), false),
     colorOverrides: Object.keys(colorOverrides).length > 0 ? colorOverrides : null,
@@ -115,19 +115,22 @@ async function saveOptions() {
     showToast();
   } catch (error) {
     Logger.error('Error saving settings:', error);
+    showToast('Could not save settings. Please try again.');
   }
 }
 
 // Function to show toast notification
-function showToast() {
+let toastTimeout;
+function showToast(message = 'Settings saved') {
   const toast = document.getElementById('saveToast');
   if (!toast) return;
 
-  // Add show class to trigger animation
+  toast.querySelector('.toast-message').textContent = message;
+  clearTimeout(toastTimeout);
   toast.classList.add('show');
 
   // Remove show class after 2 seconds
-  setTimeout(() => {
+  toastTimeout = setTimeout(() => {
     toast.classList.remove('show');
   }, 2000);
 }
@@ -140,6 +143,7 @@ async function restoreOptions() {
 
   // Restore checkbox values
   setCheckboxValue(document.getElementById('autoArchiveEnabled'), settings.autoArchiveEnabled, false);
+  setCheckboxValue(document.getElementById('syncTabGroups'), settings.syncTabGroups, false);
   setCheckboxValue(document.getElementById('invertTabOrder'), settings.invertTabOrder, true);
   setCheckboxValue(document.getElementById('showAllOpenTabsInCollapsedFolders'), settings.showAllOpenTabsInCollapsedFolders, false);
   setCheckboxValue(document.getElementById('debugLoggingEnabled'), settings.debugLoggingEnabled, false);
@@ -191,13 +195,13 @@ async function populateSpacesDropdown(selectedSpaceName) {
     }
 
     // Set the selected value
-    defaultSpaceNameSelect.value = selectedSpaceName || 'Home';
+    defaultSpaceNameSelect.value = spaceNames.includes(selectedSpaceName) ? selectedSpaceName : (spaceNames[0] || 'Home');
 
   } catch (error) {
     Logger.error('Error loading spaces:', error);
     // Fallback to default option if there's an error
     defaultSpaceNameSelect.innerHTML = '<option value="Home">Home</option>';
-    defaultSpaceNameSelect.value = selectedSpaceName || 'Home';
+    defaultSpaceNameSelect.value = 'Home';
   }
 }
 
@@ -211,6 +215,7 @@ function setupAdvancedOptions() {
       const isExpanded = content.style.display !== 'none';
       content.style.display = isExpanded ? 'none' : 'block';
       toggle.classList.toggle('expanded', !isExpanded);
+      toggle.setAttribute('aria-expanded', String(!isExpanded));
     });
   }
 
@@ -242,7 +247,7 @@ function setupAutoSave() {
   addListenerIfExists('defaultSpaceName', 'change', saveOptions);
 
   // Auto-save for checkboxes (most just save immediately)
-  const checkboxIds = ['invertTabOrder', 'showAllOpenTabsInCollapsedFolders', 'debugLoggingEnabled'];
+  const checkboxIds = ['syncTabGroups', 'invertTabOrder', 'showAllOpenTabsInCollapsedFolders', 'debugLoggingEnabled'];
   checkboxIds.forEach(id => addListenerIfExists(id, 'change', saveOptions));
 
   // Auto-archive checkbox needs special handling to update visibility

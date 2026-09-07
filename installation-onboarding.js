@@ -1,278 +1,85 @@
-// Installation Onboarding Flow
-import { Logger } from './logger.js';
-
-class InstallationOnboarding {
-    constructor() {
-        this.currentStep = 1;
-        this.totalSteps = 4;
-        this.settings = {
-            archiving: false
-        };
-        this.shortcuts = {
-            '_execute_action': 'Alt+S',
-            'quickPinToggle': 'Alt+D'
-        };
-
-        this.init();
-    }
-
-    init() {
-        this.bindEvents();
-        this.updateUI();
-        this.loadSettings();
-        this.loadKeyboardShortcuts();
-    }
-
-    bindEvents() {
-        // Navigation buttons
-        document.getElementById('prevBtn').addEventListener('click', () => this.previousStep());
-        document.getElementById('nextBtn').addEventListener('click', () => this.nextStep());
-
-        // Toggle buttons
-        const archiveToggle = document.getElementById('archiveToggle');
-        if (archiveToggle) {
-            archiveToggle.addEventListener('click', () => this.toggleArchiving());
-        }
-
-        // Progress dots
-        document.querySelectorAll('.progress-dot').forEach((dot, index) => {
-            dot.addEventListener('click', () => this.goToStep(index + 1));
-        });
-
-        // Keyboard navigation
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                this.previousStep();
-            } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'Enter') {
-                e.preventDefault();
-                this.nextStep();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                this.closeOnboarding();
-            }
-        });
-    }
-
-    async nextStep() {
-        if (this.currentStep === 3) {
-            await this.loadKeyboardShortcuts();
-
-            // Redirect to arcify.io when next is clicked on step 3 (Spotlight)
-            // Pass keyboard shortcuts as URL parameters
-            const urlParams = new URLSearchParams();
-
-            // Map extension command names to URL parameter names
-            if (this.shortcuts['_execute_action']) {
-                urlParams.set('toggle-sidepanel', this.shortcuts['_execute_action']);
-            }
-            if (this.shortcuts['quickPinToggle']) {
-                urlParams.set('switch-spaces', this.shortcuts['quickPinToggle']);
-            }
-
-            const queryString = urlParams.toString();
-            const redirectUrl = queryString
-                ? `https://arcify.io?${queryString}`
-                : 'https://arcify.io';
-
-            window.location.href = redirectUrl;
-            return;
-        }
-
-        if (this.currentStep < this.totalSteps) {
-            this.goToStep(this.currentStep + 1);
-        } else {
-            this.completeOnboarding();
-        }
-    }
-
-    previousStep() {
-        if (this.currentStep > 1) {
-            this.goToStep(this.currentStep - 1);
-        }
-    }
-
-    goToStep(step) {
-        if (step < 1 || step > this.totalSteps) return;
-
-        // Map logical step numbers to actual step IDs (step3 is commented out)
-        const stepIdMap = {
-            1: 'step1',
-            2: 'step2',
-            3: 'step4',  // Spotlight (was step 4)
-            4: 'step5'   // Start Using (was step 5)
-        };
-
-        // Hide current step
-        const currentStepId = stepIdMap[this.currentStep];
-        const currentStepElement = document.getElementById(currentStepId);
-        if (currentStepElement) {
-            currentStepElement.classList.remove('active');
-        }
-
-        // Show new step
-        const newStepId = stepIdMap[step];
-        const newStepElement = document.getElementById(newStepId);
-        if (newStepElement) {
-            newStepElement.classList.add('active');
-        }
-
-        // Update current step
-        this.currentStep = step;
-
-        // Update UI
-        this.updateUI();
-    }
-
-    updateUI() {
-        // Update step counter
-        document.getElementById('currentStep').textContent = this.currentStep;
-
-        // Update navigation buttons
-        const prevBtn = document.getElementById('prevBtn');
-        const nextBtn = document.getElementById('nextBtn');
-
-        prevBtn.disabled = this.currentStep === 1;
-        nextBtn.textContent = this.currentStep === this.totalSteps ? 'Get Started' : 'Next';
-
-        // Update progress dots
-        document.querySelectorAll('.progress-dot').forEach((dot, index) => {
-            const stepNumber = index + 1;
-            dot.classList.remove('active', 'completed');
-
-            if (stepNumber === this.currentStep) {
-                dot.classList.add('active');
-            } else if (stepNumber < this.currentStep) {
-                dot.classList.add('completed');
-            }
-        });
-
-        // Update toggle buttons
-        this.updateToggleButtons();
-    }
-
-    updateToggleButtons() {
-        const archiveToggle = document.getElementById('archiveToggle');
-
-        if (archiveToggle) {
-            archiveToggle.textContent = this.settings.archiving ? 'Archiving is Enabled' : 'Enable Tab Archiving';
-            archiveToggle.className = `toggle-button ${this.settings.archiving ? 'on' : 'off'}`;
-        }
-    }
-
-    toggleArchiving() {
-        this.settings.archiving = !this.settings.archiving;
-        this.updateToggleButtons();
-        this.saveSettings();
-    }
-
-    loadSettings() {
-        // Load settings from chrome.storage if available
-        if (chrome.storage && chrome.storage.sync) {
-            chrome.storage.sync.get(['autoArchiveEnabled'], (result) => {
-                this.settings.archiving = result.autoArchiveEnabled !== undefined ? result.autoArchiveEnabled : false;
-                this.updateToggleButtons();
-            });
-        }
-    }
-
-    saveSettings() {
-        // Save settings to chrome.storage if available
-        if (chrome.storage && chrome.storage.sync) {
-            chrome.storage.sync.set({
-                autoArchiveEnabled: this.settings.archiving
-            });
-        }
-    }
-
-    async loadKeyboardShortcuts() {
-        try {
-            const commands = await chrome.commands.getAll();
-            const shortcuts = {};
-
-            commands.forEach(command => {
-                if (command.shortcut) {
-                    shortcuts[command.name] = command.shortcut;
-                }
-            });
-
-            // Store shortcuts in instance for URL parameter passing
-            this.shortcuts = {
-                '_execute_action': shortcuts['_execute_action'] || 'Alt+S',
-                'quickPinToggle': shortcuts['quickPinToggle'] || 'Alt+D'
-            };
-            Logger.log('Keyboard shortcuts loaded:', this.shortcuts);
-            // Update the shortcut display in step 5
-            this.updateShortcutDisplay(shortcuts);
-        } catch (error) {
-            Logger.error('Error loading keyboard shortcuts:', error);
-            // Fallback to default shortcuts
-            this.shortcuts = {
-                '_execute_action': 'Alt+S',
-                'quickPinToggle': 'Alt+D'
-            };
-            this.updateShortcutDisplay(this.shortcuts);
-        }
-    }
-
-    updateShortcutDisplay(shortcuts) {
-        // Update shortcut keys in step 5
-        const shortcutElements = {
-            'toggle-sidepanel': shortcuts['_execute_action'] || 'Alt+S',
-            'switch-spaces': shortcuts['quickPinToggle'] || 'Alt+D'
-        };
-
-        // Update each shortcut card
-        Object.keys(shortcutElements).forEach(key => {
-            const element = document.querySelector(`[data-shortcut="${key}"]`);
-            if (element) {
-                element.textContent = shortcutElements[key];
-            }
-        });
-    }
-
-    completeOnboarding() {
-        // Save final settings
-        this.saveSettings();
-
-        // Mark onboarding as completed
-        if (chrome.storage && chrome.storage.sync) {
-            chrome.storage.sync.set({ onboardingCompleted: true });
-        }
-
-        // Close the onboarding window
-        this.closeOnboarding();
-    }
-
-    closeOnboarding() {
-        // Close the onboarding window
-        if (window.close) {
-            window.close();
-        } else {
-            // Fallback: redirect to a blank page or show completion message
-            document.body.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: center; height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <div style="background: white; padding: 3rem; border-radius: 16px; text-align: center; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);">
-                        <h1 style="color: #007AFF; margin-bottom: 1rem;">Setup Complete!</h1>
-                        <p style="color: #666; margin-bottom: 2rem;">You can now close this window and start using Arcify.</p>
-                        <button onclick="window.close()" style="background: #007AFF; color: white; border: none; padding: 1rem 2rem; border-radius: 8px; cursor: pointer;">Close Window</button>
-                    </div>
-                </div>
-            `;
-        }
-    }
+import { TOUR_KEY, tourAction } from './tour-state.js';
+const $ = id => document.getElementById(id);
+let state, windowId, handedOff = false, paused = false;
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+function updateMotion() {
+    const stopped = paused || motion.matches || document.hidden || handedOff;
+    $('setup-gif').hidden = stopped;
+    // Remove the animated source while stopped, so the GIF does not keep decoding.
+    if (stopped) $('setup-gif').removeAttribute('src');
+    else if (!$('setup-gif').hasAttribute('src')) $('setup-gif').src = 'assets/chrometutorial.gif';
+    $('motion-still').hidden = !stopped;
+    $('pause').textContent = motion.matches ? 'Motion reduced' : paused ? 'Play animation' : 'Pause animation';
+    $('pause').disabled = motion.matches;
+    $('pause').setAttribute('aria-pressed', String(paused || motion.matches));
 }
-
-// Initialize onboarding when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new InstallationOnboarding();
+function render(next) {
+    state = next;
+    if (state?.status === 'active' && state.windowId === windowId) handedOff = true;
+    $('setup').hidden = handedOff;
+    $('handoff').hidden = !handedOff;
+    $('skip').hidden = handedOff;
+    if (handedOff) {
+        const finished = state?.status === 'completed';
+        const skipped = state?.status === 'skipped';
+        $('handoff-title').textContent = finished || skipped ? 'Make yourself at home.' : 'Continue the tutorial in your sidebar.';
+        $('handoff-copy').textContent = finished || skipped ? 'Your sidebar is ready. Replay the tutorial anytime from Arcify Settings.' : 'Follow the highlights in Arcify. Everything you need, including practice tabs, is waiting there.';
+    }
+    updateMotion();
+}
+function showError(error) { $('error').hidden = false; $('error').textContent = `${error.message}. Try again, or open Arcify from its toolbar icon.`; }
+$('start').addEventListener('click', async () => {
+    $('error').hidden = true;
+    try {
+        // Chrome requires sidePanel.open to run directly within the click gesture.
+        const opening = chrome.sidePanel.open({ windowId });
+        await opening;
+        render(await tourAction({ action: 'start', windowId, runId: crypto.randomUUID(), step: 0 }));
+    } catch (error) { showError(error); }
 });
-
-// Handle messages from the extension
-if (chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'getSettings') {
-            sendResponse({ settings: window.onboarding?.settings || {} });
-        }
-    });
+$('reopen').addEventListener('click', () => chrome.sidePanel.open({ windowId }).catch(showError));
+$('skip').addEventListener('click', async () => {
+    try {
+        await chrome.storage.sync.set({ onboardingCompleted: true });
+        handedOff = true;
+        render({ status: 'skipped' });
+    } catch (error) { showError(error); }
+});
+$('pause').addEventListener('click', () => { paused = !paused; updateMotion(); });
+document.addEventListener('visibilitychange', updateMotion);
+motion.addEventListener('change', updateMotion);
+$('appearance').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/appearance' }).catch(showError));
+$('customize').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }).catch(showError));
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[TOUR_KEY]) render(changes[TOUR_KEY].newValue); });
+async function loadShortcuts() {
+    const [commands, platform] = await Promise.all([chrome.commands.getAll(), chrome.runtime.getPlatformInfo()]);
+    const mod = platform.os === 'mac' ? '⌘' : 'Ctrl';
+    const recommendations = [
+        ['_execute_action', 'Show / hide sidebar', `${mod}+S`],
+        ['quickPinToggle', 'Pin / unpin a tab', platform.os === 'mac' ? '⌥+D' : 'Alt+D'],
+        ['NextTabInSpace', 'Next tab in space', platform.os === 'mac' ? '⌥+J' : 'Alt+J'],
+        ['PrevTabInSpace', 'Previous tab in space', platform.os === 'mac' ? '⌥+K' : 'Alt+K'],
+        ['copyCurrentUrl', 'Copy current URL', `${mod}+Shift+C`]
+    ];
+    $('shortcuts').replaceChildren();
+    for (const [name, label, suggestion] of recommendations) {
+        const row = document.createElement('tr');
+        [label, suggestion, commands.find(command => command.name === name)?.shortcut || 'Not assigned'].forEach((value, index) => {
+            const cell = document.createElement(index ? 'td' : 'th');
+            if (!index) cell.scope = 'row';
+            const content = document.createElement(index === 1 ? 'kbd' : 'span');
+            content.textContent = value; cell.append(content); row.append(cell);
+        });
+        $('shortcuts').append(row);
+    }
 }
+async function initialize() {
+    try {
+        windowId = (await chrome.windows.getCurrent()).id;
+        render((await chrome.storage.local.get(TOUR_KEY))[TOUR_KEY]);
+        $('start').disabled = false;
+        await loadShortcuts();
+    } catch (error) { showError(error); }
+}
+window.addEventListener('focus', () => loadShortcuts().catch(showError));
+initialize();

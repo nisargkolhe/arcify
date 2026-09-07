@@ -1,0 +1,72 @@
+@font-face { font-family: 'Arcify Round'; src: url('assets/varela-round.ttf') format('truetype'); font-display: swap; }
+#arcify-tour[hidden], #arcify-tour-ring[hidden], #coach-retry[hidden] { display: none !important; }
+/* Inherit the active space token, including custom palette changes. */
+#sidebar-container {
+    --tour-accent: var(--space-bg-color, #cccccc);
+    --tour-border: color-mix(in srgb, var(--tour-accent) 55%, #172334);
+    --tour-surface: color-mix(in srgb, var(--tour-accent) 18%, white);
+    --tour-text: #202a36;
+    --tour-muted: #485365;
+    --tour-button: color-mix(in srgb, var(--tour-accent) 60%, #172334);
+    --tour-button-text: white;
+}
+#arcify-tour-ring { position: fixed; pointer-events: none; border: 3px solid var(--tour-border); border-radius: 10px; z-index: 99998; }
+#arcify-tour { position: relative; flex: 0 0 auto; z-index: 1; padding: 14px; border: 1px solid var(--tour-border); border-radius: 14px; background: var(--tour-surface); color: var(--tour-text); font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-height: 40vh; overflow-y: auto; }
+#arcify-tour h2 { font: 18px/1.3 'Arcify Round', sans-serif; margin: 8px 0; color: inherit; }
+#arcify-tour p { margin: 0; }
+#arcify-tour .coach-heading, #arcify-tour .coach-navigation { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#arcify-tour .coach-heading { color: var(--tour-muted); font-size: 12px; }
+#arcify-tour .coach-navigation { margin-top: 12px; }
+#arcify-tour button { cursor: pointer; font: inherit; border: 0; border-radius: 8px; padding: 7px 10px; min-height: 32px; color: var(--tour-text); background: color-mix(in srgb, var(--tour-accent) 25%, var(--tour-surface)); }
+#arcify-tour #coach-next { background: var(--tour-button); color: var(--tour-button-text); }
+#arcify-tour #coach-skip { padding: 2px 4px; background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+#arcify-tour button:hover { filter: brightness(.94); }
+#arcify-tour button:disabled { opacity: .45; cursor: default; }
+#arcify-tour button:focus-visible { outline: 2px solid var(--tour-border); outline-offset: 2px; }
+#arcify-tour #coach-feedback { color: var(--tour-muted); margin-top: 8px; }
+#arcify-tour #coach-feedback:empty { display: none; }
+#arcify-tour #coach-retry { margin-top: 8px; }
+@media (prefers-color-scheme: dark) {
+    #sidebar-container {
+        --tour-border: color-mix(in srgb, var(--tour-accent) 85%, white);
+        --tour-surface: color-mix(in srgb, var(--tour-accent) 16%, #19212b);
+        --tour-text: #f4f7fb;
+        --tour-muted: #c9d2de;
+        --tour-button: var(--tour-accent);
+        --tour-button-text: #172334;
+    }
+}
+#sidebar-container[data-tour-step="favorites"] #pinnedFavicons { min-height: 52px; }
+/* Keep highlight contrast independent of the unchanged coach palette. */
+#arcify-tour-ring {
+    border: 0;
+    box-shadow: 0 0 0 1px white, 0 0 0 3px #12253d;
+}
+#arcify-tour-ring::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 3px;
+    border-radius: inherit;
+    background: linear-gradient(110deg, #fff 0%, var(--tour-accent) 24%, #152d50 48%, var(--tour-accent) 72%, #fff 100%);
+    background-size: 300% 100%;
+    mask: linear-gradient(#fff 0 0) content-box exclude, linear-gradient(#fff 0 0);
+    animation: tour-highlight-flow 4s ease-in-out infinite alternate;
+    animation-play-state: var(--tour-motion-state, running);
+}
+#arcify-tour-ring::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border: 1px solid white;
+    border-radius: 7px;
+    pointer-events: none;
+}
+#coach-content { overflow-wrap: anywhere; }
+@keyframes tour-highlight-flow {
+    from { background-position: 0% 50%; }
+    to { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #arcify-tour-ring::before { animation: none; }
+}

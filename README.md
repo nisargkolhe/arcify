@@ -225,3 +225,32 @@ If you have any questions or suggestions, please open an issue on GitHub.
 
 - Inspired by the Arc Browser's innovative tab management system. Huge thanks to the Arc team for coming up with the system we've all grown to love!
 - Thanks to all contributors who help improve this project 
+
+### Independent spaces
+
+Spaces and their tab order are stored by the extension, independently of Chrome tab
+groups. Closing the last tab keeps the space and its bookmarks. Moving, renaming,
+recoloring, or removing a native group does not change a space. The background
+service worker tracks new and closed tabs even when the sidebar is closed; new
+tabs inherit their opener's space, or the active space for their window.
+
+Existing Arcify spaces migrate automatically to stable IDs. On a fresh setup with
+native groups, the sidebar offers an optional **Create spaces** import; declining
+leaves those groups alone. Import copies group names, colors, and current members.
+
+**Settings → Sync Spaces to Chrome Tab Groups** is off by default. Enabling it
+mirrors extension membership, names, colors, and order into per-window groups.
+Extension data remains authoritative, so native group edits are overwritten while
+sync is enabled. Disabling it leaves the current native groups unchanged.
+
+Chrome tab IDs change across browser sessions. Live IDs are kept in extension
+storage during a session; after a browser restart, saved URL records reconnect
+restored tabs and recover space order. Identical URLs in different spaces are
+matched in saved occurrence order because Chrome does not expose a durable tab ID.
+Space definitions and bookmarks remain available even when tabs are not restored.
+
+Run `npm run test:unit` for storage, migration, and sync regression tests. Browser
+coverage lives in `tests/e2e/independent-spaces.test.js` alongside the space, tab,
+bookmark, and drag-and-drop suites.
+
+With **Sync spaces to Chrome tab groups** off, right-click a top-level folder and choose **New Folder** to create a child folder. Spaces support two folder levels (parent → child). Turning sync on disables new nested-folder creation and preserves existing folders.

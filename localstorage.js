@@ -15,12 +15,8 @@
 import { Logger } from './logger.js';
 
 const LocalStorage = {
-    // --- Durable space registry (Phase 4 foundation) ---
-    // Maps a space's DURABLE anchor — its Arcify bookmark folder id (survives restart) — to
-    // a stable spaceUuid plus remembered name/color/order. This gives each space an identity
-    // independent of the ephemeral Chrome tab-group id, so later work can key off spaceUuid
-    // instead of the group id (RC-1). Additive: it does not replace the existing model yet.
-    // Writes are serialized because initSidebar builds spaces concurrently (Promise.all).
+    // Durable space IDs anchored to bookmark folders. SpaceStore owns live membership;
+    // this registry keeps the folder association stable through migration and restart.
     _registryChain: Promise.resolve(),
     _serializeRegistryOp: function (op) {
         const run = this._registryChain.then(op, op);
@@ -227,19 +223,6 @@ const LocalStorage = {
             }
         } catch (bookmarkError) {
             Logger.log('Could not get spaces from bookmark folders:', bookmarkError);
-        }
-
-        // If no spaces found in bookmarks, try fallback to tab groups
-        if (spaceNames.size === 0) {
-            try {
-                const tabGroups = await chrome.tabGroups.query({});
-                tabGroups.forEach(group => {
-                    spaceNames.add(group.title);
-                });
-                Logger.log('Found spaces from tab groups (fallback):', spaceNames.size);
-            } catch (tabGroupError) {
-                Logger.log('Could not query tab groups:', tabGroupError);
-            }
         }
 
         // Return sorted array of unique space names
