@@ -27,7 +27,7 @@ test('only observed achievements mark a feature tried; revisiting does not dupli
 });
 test('background serializes competing sidebar and page events without stealing unrelated messages', async () => {
     let listener; const local = {}; const sync = {};
-    globalThis.chrome = { runtime: { onMessage: { addListener(fn) { listener = fn; } } }, storage: {
+    globalThis.chrome = { runtime: { onMessage: { addListener(fn) { listener = fn; } }, getManifest: () => ({ version: '5.1.0' }) }, storage: {
         local: { async get() { return { ...local }; }, async set(data) { Object.assign(local, data); } },
         sync: { async set(data) { Object.assign(sync, data); } }
     } };
@@ -41,6 +41,7 @@ test('background serializes competing sidebar and page events without stealing u
     assert.equal(local[TOUR_KEY].step, 1);
     await send({ action: 'stop', runId: 'a' });
     assert.equal(sync.onboardingCompleted, true);
+    assert.equal(sync.onboardingVersion, '5.1.0');
     delete globalThis.chrome;
 });
 test('adding the color lesson preserves the meaning of saved legacy progress', async () => {

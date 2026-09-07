@@ -70,7 +70,10 @@ export function registerTourMessages() {
                 ? await preparePractice(previous, message, TOUR_STEPS) : reduceTour(previous, message);
             if (state) {
                 await chrome.storage.local.set({ [TOUR_KEY]: state });
-                if (state.status !== 'active') await chrome.storage.sync.set({ onboardingCompleted: true });
+                if (state.status !== 'active') await chrome.storage.sync.set({
+                    onboardingCompleted: true,
+                    onboardingVersion: chrome.runtime.getManifest().version
+                });
             }
             return state;
         });

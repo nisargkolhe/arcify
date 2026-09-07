@@ -28,6 +28,7 @@ import { Logger } from './logger.js';
 
 const AUTO_ARCHIVE_ALARM_NAME = 'autoArchiveTabsAlarm';
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
+const ONBOARDING_VERSION_KEY = 'onboardingVersion';
 
 // Helper to handle async message responses with consistent error handling
 function handleAsyncMessage(handler, sendResponse, errorContext, defaultErrorData = {}) {
@@ -50,12 +51,12 @@ chrome.sidePanel.setPanelBehavior({
 
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(async (details) => {
-    if (details.reason === 'install') {
-        // Check if onboarding has been completed before
-        const result = await chrome.storage.sync.get(['onboardingCompleted']);
-        if (!result.onboardingCompleted) {
-            chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
-        }
+    const version = chrome.runtime.getManifest().version;
+    const result = await chrome.storage.sync.get(['onboardingCompleted', ONBOARDING_VERSION_KEY]);
+    const firstInstall = details.reason === 'install' && !result.onboardingCompleted;
+    const newVersion = details.reason === 'update' && result[ONBOARDING_VERSION_KEY] !== version;
+    if (firstInstall || newVersion) {
+        chrome.tabs.create({ url: 'installation-onboarding.html', active: true });
     }
 
     if (chrome.contextMenus) {

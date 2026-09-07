@@ -5,19 +5,20 @@ import { runInNewContext } from 'node:vm';
 
 const source = readFileSync(new URL('../../background.js', import.meta.url), 'utf8')
     .replace(/^import .*;\s*$/gm, '');
-function background(completed = false) {
+function background(completed = false, onboardingVersion = undefined, version = '5.1.0') {
     const installed = [], messages = [], opened = [];
     const event = { addListener() {} };
     const chrome = {
         runtime: {
             onInstalled: { addListener: listener => installed.push(listener) },
             onMessage: { addListener: listener => messages.push(listener) },
-            onStartup: event
+            onStartup: event,
+            getManifest: () => ({ version })
         },
         sidePanel: { setPanelBehavior: async () => {} },
         commands: { onCommand: event },
         alarms: { onAlarm: event, clear: async () => {} },
-        storage: { onChanged: event, sync: { get: async () => ({ onboardingCompleted: completed }) } },
+        storage: { onChanged: event, sync: { get: async () => ({ onboardingCompleted: completed, onboardingVersion }) } },
         tabs: { create: async tab => opened.push(tab), onActivated: event, onUpdated: event, onRemoved: event }
     };
     runInNewContext(source, {
@@ -37,12 +38,22 @@ test('a fresh install opens the onboarding guide once', async () => {
     assert.equal(app.opened[0].active, true);
 });
 
-test('updates and previously completed or skipped setup do not reopen onboarding', async () => {
-    for (const [reason, completed] of [['update', false], ['update', true], ['install', true]]) {
+test('uncompleted updates and completed installs do not use the same version gate', async () => {
+    for (const [reason, completed, expected] of [['update', false, 1], ['install', true, 0]]) {
         const app = background(completed);
         await Promise.all(app.installed.map(listener => listener({ reason })));
-        assert.equal(app.opened.length, 0);
+        assert.equal(app.opened.length, expected);
     }
+});
+
+test('a completed install sees the onboarding once when this extension version changes', async () => {
+    const updated = background(true, '5.0.0');
+    await Promise.all(updated.installed.map(listener => listener({ reason: 'update', previousVersion: '5.0.0' })));
+    assert.equal(updated.opened.length, 1);
+
+    const current = background(true, '5.1.0');
+    await Promise.all(current.installed.map(listener => listener({ reason: 'update', previousVersion: '5.0.0' })));
+    assert.equal(current.opened.length, 0);
 });
 
 test('space-store replies are not intercepted by unrelated Promise listeners', async () => {

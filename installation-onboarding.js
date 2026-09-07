@@ -65,7 +65,7 @@ $('start').addEventListener('click', async () => {
 $('reopen').addEventListener('click', () => chrome.sidePanel.open({ windowId }).catch(showError));
 $('skip').addEventListener('click', async () => {
     try {
-        await chrome.storage.sync.set({ onboardingCompleted: true });
+        await chrome.storage.sync.set({ onboardingCompleted: true, onboardingVersion: chrome.runtime.getManifest().version });
         handedOff = true;
         render({ status: 'skipped' });
     } catch (error) { showError(error); }
