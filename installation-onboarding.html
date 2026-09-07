@@ -12,12 +12,24 @@
     <main>
         <section id="setup">
             <div class="welcome"><p class="eyebrow">MAKE YOURSELF AT HOME</p><h1>Your sidebar. Your way.</h1><p>A couple of optional tweaks, then a little hands-on exploring.</p></div>
-            <section class="placement" aria-labelledby="placement-title">
-                <div class="placement-copy"><p class="eyebrow">SIDEBAR LOCATION</p><h2 id="placement-title">Feel at home on the left.</h2><p>In Chrome's Appearance settings, find <strong>Side panel position</strong> and choose <strong>Show on left</strong>. Prefer the right? Keep it there.</p><button id="appearance" class="secondary">Open Appearance settings ↗</button><p class="small">Return to this tab when you're ready.</p></div>
+            <nav aria-label="Installation steps" class="setup-steps"><ol>
+                <li><button type="button" data-setup-step="0" aria-current="step" aria-controls="step-bookmarks"><span class="step-number">1</span>Bookmarks</button></li>
+                <li><button type="button" data-setup-step="1" aria-controls="step-placement"><span class="step-number">2</span>Sidebar location</button></li>
+                <li><button type="button" data-setup-step="2" aria-controls="step-shortcuts"><span class="step-number">3</span>Shortcuts</button></li>
+            </ol></nav>
+            <div class="setup-content">
+            <section id="step-bookmarks" class="bookmark-import" aria-labelledby="bookmark-title">
+                <div aria-live="polite"><h2 id="bookmark-title" tabindex="-1">Bring your bookmarks along.</h2><p id="bookmark-copy">In Chrome's bookmark manager, copy folders into the <strong>Arcify</strong> folder. Each folder becomes a space, and the bookmarks inside become pinned tabs.</p><p id="bookmark-detected" class="small" hidden></p></div>
+                <button id="bookmarks" class="secondary">Open bookmark manager ↗</button>
+            </section>
+            <section id="step-placement" hidden class="placement" aria-labelledby="placement-title">
+                <div class="placement-copy"><p class="eyebrow">SIDEBAR LOCATION</p><h2 id="placement-title" tabindex="-1">Feel at home on the left.</h2><p>In Chrome's Appearance settings, find <strong>Side panel position</strong> and choose <strong>Show on left</strong>. Prefer the right? Keep it there.</p><button id="appearance" class="secondary">Open Appearance settings ↗</button><p class="small">Return to this tab when you're ready.</p></div>
                 <div class="gif-container"><img id="setup-gif" src="assets/chrometutorial.gif" alt="Demonstration of changing Chrome's side panel position and extension shortcuts"><div id="motion-still" hidden>Chrome Settings → Appearance<br><strong>Side panel position → Show on left</strong></div><button id="pause" class="text-button" aria-pressed="false">Pause animation</button></div>
             </section>
-            <section class="shortcuts" aria-labelledby="shortcuts-title"><div><p class="eyebrow">KEYBOARD SHORTCUTS</p><h2 id="shortcuts-title">A familiar key, a little faster.</h2><p>Set these in Chrome's extension shortcuts. Your current assignments are shown alongside our suggestions.</p></div><table><thead><tr><th scope="col">Action</th><th scope="col">Recommended</th><th scope="col">Currently set</th></tr></thead><tbody id="shortcuts"></tbody></table><p class="small">Chrome may reserve some combinations. Choose an available alternative if a suggestion isn't accepted.</p><button id="customize" class="secondary">Customize shortcuts ↗</button></section>
-            <div class="launch"><button id="start" class="primary" disabled>Open sidebar & start tutorial ↗</button><p class="small">We'll add practice tabs for you. Skip any tip, anytime.</p></div>
+            <section id="step-shortcuts" hidden class="shortcuts" aria-labelledby="shortcuts-title"><div><p class="eyebrow">KEYBOARD SHORTCUTS</p><h2 id="shortcuts-title" tabindex="-1">A familiar key, a little faster.</h2><p>Set these in Chrome's extension shortcuts. Your current assignments are shown alongside our suggestions.</p></div><ul id="shortcuts" class="shortcuts-grid" aria-label="Recommended keyboard shortcuts"></ul><p class="small">Chrome may reserve some combinations. Choose an available alternative if a suggestion isn't accepted.</p><button id="customize" class="secondary">Customize shortcuts ↗</button></section>
+            </div>
+            <div class="setup-navigation"><button id="setup-back" class="text-button" hidden>Back</button><p id="setup-progress" class="small">Step 1 of 3</p><button id="setup-next" class="primary">Next →</button><button id="start" class="primary" disabled hidden>Open sidebar & start tutorial ↗</button></div>
+            <p id="practice-note" class="small practice-note" hidden>We'll add practice tabs for you. Skip any tip, anytime.</p>
         </section>
         <section id="handoff" class="welcome handoff" hidden><img src="assets/icon.png" width="64" height="64" alt=""><h1 id="handoff-title">Continue the tutorial<br>in your sidebar.</h1><p id="handoff-copy">Follow the highlights in Arcify. Everything you need, including practice tabs, is waiting there.</p><button id="reopen" class="secondary">Reopen sidebar ↗</button></section>
         <p id="error" role="alert" hidden></p>

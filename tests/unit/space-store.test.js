@@ -189,3 +189,31 @@ test('explicit tab focus raises the window returned by Chrome', async () => {
     await Utils.focusTab(2);
     assert.deepEqual(actions, [['tab', 2, { active: true }], ['window', 22, { focused: true }]]);
 });
+test('version-2 startup discovers Arcify bookmark spaces with group sync off', async () => {
+    local.spaces = [];
+    local.spaceRegistry = { project: { spaceUuid: 'saved-project', color: 'purple', bookmarkFolderId: 'project' } };
+    const tree = { root: [{ id: 'project', title: 'Project' }, { id: 'loose', title: 'Not a space', url: 'https://loose.test/' }], project: [{ id: 'saved-link', title: 'Saved', url: 'https://saved.test/' }, { id: 'nested', title: 'Reading' }], nested: [] };
+    chrome.bookmarks.getChildren = async id => structuredClone(tree[id] || []);
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'get' });
+    assert.equal(store.spaces.length, 1);
+    assert.equal(store.spaces[0].id, 'saved-project');
+    assert.equal(store.spaces[0].bookmarkFolderId, 'project');
+    assert.equal(store.spaces[0].color, 'purple');
+    await store.dispatch({ action: 'get' });
+    assert.equal(store.spaces.length, 1);
+    assert.deepEqual(mutations, []);
+    assert.equal(tree.project[0].id, 'saved-link');
+});
+test('sidebar reads discover later bookmark folders and follow folder renames by ID', async () => {
+    let folders = [{ id: 'a', title: 'Renamed' }, { id: 'b', title: 'b' }];
+    chrome.bookmarks.getChildren = async id => id === 'root' ? structuredClone(folders) : [];
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'get' });
+    assert.equal(store.spaces.find(s => s.id === 'a').name, 'Renamed');
+    folders.push({ id: 'later', title: 'Synced later' });
+    await store.dispatch({ action: 'get' });
+    assert.equal(store.spaces.length, 3);
+    assert.equal(store.spaces[2].bookmarkFolderId, 'later');
+    assert.deepEqual(mutations, []);
+});

@@ -80,7 +80,7 @@ const LocalStorage = {
     },
 
     getOrCreateArcifyFolder: async function () {
-        let [folder] = await chrome.bookmarks.search({ title: 'Arcify' });
+        let folder = (await chrome.bookmarks.search({ title: 'Arcify' })).find(node => !node.url);
         if (!folder) {
             folder = await chrome.bookmarks.create({ title: 'Arcify' });
         }
@@ -89,7 +89,7 @@ const LocalStorage = {
     getOrCreateSpaceFolder: async function (spaceName) {
         const arcifyFolder = await this.getOrCreateArcifyFolder();
         const children = await chrome.bookmarks.getChildren(arcifyFolder.id);
-        let spaceFolder = children.find((f) => f.title === spaceName);
+        let spaceFolder = children.find((f) => !f.url && f.title === spaceName);
 
         if (!spaceFolder) {
             spaceFolder = await chrome.bookmarks.create({

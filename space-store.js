@@ -56,7 +56,7 @@ export class SpaceStore {
         folder ||= await LocalStorage.getOrCreateSpaceFolder(name);
         const entry = await LocalStorage.getOrCreateSpaceRegistryEntry(folder.id, { name, color });
         return { id: entry.spaceUuid, spaceUuid: entry.spaceUuid, uuid: entry.spaceUuid,
-            bookmarkFolderId: folder.id, name, color, spaceBookmarks: [], temporaryTabs: [] };
+            bookmarkFolderId: folder.id, name, color: entry.color || color, spaceBookmarks: [], temporaryTabs: [] };
     }
     async initialize() {
         if (this.initialized) return;
@@ -91,12 +91,6 @@ export class SpaceStore {
             }
             this.spaces = migrated;
             if (migrated.length) await chrome.storage.local.set({ tabGroupImportDismissed: true });
-            const root = await LocalStorage.getOrCreateArcifyFolder();
-            for (const folder of await chrome.bookmarks.getChildren(root.id)) {
-                if (!folder.url && !this.spaces.some(s => s.bookmarkFolderId === folder.id)) {
-                    this.spaces.push(await this.makeSpace(folder.title, 'grey', folder));
-                }
-            }
             if (data.archivedTabs) await chrome.storage.local.set({ archivedTabs: data.archivedTabs.map(t => ({ ...t, spaceId: idMap.get(t.spaceId) || t.spaceId })) });
             this.restoreQueue = [];
         } else if (!session.spaceSession) {
@@ -109,6 +103,7 @@ export class SpaceStore {
         } else {
             this.restoreQueue = session.spaceRestoreQueue || [];
         }
+        await this.discoverBookmarkSpaces();
         if (!this.spaces.length) {
             this.spaces.push(await this.makeSpace(this.defaultSpaceName));
         }
@@ -117,6 +112,22 @@ export class SpaceStore {
         for (const tab of live) this.track(tab);
         this.initialized = true;
         await this.persist();
+    }
+    // Bookmark folders are durable space definitions regardless of Chrome group sync.
+    // Run on every worker startup and sidebar read, including version-2 installations.
+    async discoverBookmarkSpaces() {
+        const root = await LocalStorage.getOrCreateArcifyFolder();
+        const folders = (await chrome.bookmarks.getChildren(root.id)).filter(node => !node.url);
+        for (const folder of folders) {
+            let space = this.spaces.find(space => space.bookmarkFolderId === folder.id);
+            if (!space) {
+                // Recover a missing/stale folder association without duplicating the space.
+                space = this.spaces.find(space => space.name === folder.title && !folders.some(node => node.id === space.bookmarkFolderId));
+                if (space) space.bookmarkFolderId = folder.id;
+                else { this.spaces.push(await this.makeSpace(folder.title, 'grey', folder)); continue; }
+            }
+            space.name = folder.title;
+        }
     }
     track(tab) {
         const url = tab.url || tab.pendingUrl;
@@ -194,7 +205,7 @@ export class SpaceStore {
     async dispatch(message) {
         return this.run(async () => {
             switch (message.action) {
-                case 'get': break;
+                case 'get': await this.discoverBookmarkSpaces(); break;
                 case 'patch':
                     for (const next of message.after) {
                         const prev = message.before.find(s => s.id === next.id);

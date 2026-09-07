@@ -367,13 +367,16 @@ export const BookmarkUtils = {
         const items = await chrome.bookmarks.getChildren(folder.id);
         const tabs = await getSpaceTabs(spaceId);
         const claimed = claimedTabIds || new Set();
+        const { pinnedTabStatesById = {} } = await chrome.storage.local.get('pinnedTabStatesById');
 
         for (const item of items) {
             if (item.url) {
                 // This is a bookmark. Pick the first matching tab that hasn't already
                 // been bound to another bookmark in this run, so URL twins don't both
                 // get claimed by a single bookmark.
-                let tab = tabs.find(t => t.url === item.url && !claimed.has(t.id));
+                const available = tabs.filter(t => !claimed.has(t.id));
+                let tab = available.find(t => pinnedTabStatesById[t.id]?.bookmarkId === item.id)
+                    || available.find(t => t.url === item.url && !pinnedTabStatesById[t.id]?.bookmarkId);
                 // Fallback: match by URL key (origin+pathname) — the SAME key the renderer
                 // uses. Without this, a favorite whose tab navigated away from the exact
                 // bookmarked URL before restart isn't matched here, so it lands in
@@ -381,7 +384,7 @@ export const BookmarkUtils = {
                 // placeholder (B12). The key fallback re-binds it to its tab.
                 if (!tab && getUrlKey) {
                     const targetKey = getUrlKey(item.url);
-                    tab = tabs.find(t => !claimed.has(t.id) && getUrlKey(t.url) === targetKey);
+                    tab = available.find(t => !pinnedTabStatesById[t.id]?.bookmarkId && getUrlKey(t.url) === targetKey);
                 }
                 if (tab) {
                     claimed.add(tab.id);

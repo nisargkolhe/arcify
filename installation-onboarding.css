@@ -25,19 +25,21 @@ p { font-size: 15px; line-height: 1.65; color: #635b63; margin: 0 0 18px; }
 .primary:hover { background: #814653; }
 .secondary { background: #fff8f8; color: #804650; font-size: 14px; }
 .secondary:hover { background: #f4e3e5; }
-.placement { display: grid; grid-template-columns: 1fr 1.15fr; border: 1px solid #e5e5e7; border-radius: 16px; background: white; overflow: hidden; }
-.placement-copy { padding: 28px; }
+.placement { display: grid; grid-template-columns: 1fr 1.15fr; align-items: start; gap: 32px; }
+.placement-copy { padding: 0; }
 .small { font-size: 12px; margin: 12px 0 0; }
-.gif-container { background: #f4e8eb; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.gif-container { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 #setup-gif { width: 100%; max-height: 260px; object-fit: contain; border-radius: 8px; }
 #motion-still { text-align: center; padding: 30px 12px; font-size: 14px; line-height: 2; color: #70434b; }
 .shortcuts { padding: 30px 0; border-bottom: 1px solid #dfdce3; }
 .shortcuts > div { max-width: 620px; }
-table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 20px 0 14px; text-align: left; }
-th { color: #695a63; font-size: 12px; font-weight: 600; }
-th, td { padding: 12px 10px; border-bottom: 1px solid #e2dee5; }
-th:first-child, td:first-child { padding-left: 0; }
-kbd { font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: white; border: 1px solid #d6cdd5; border-radius: 5px; padding: 4px 7px; white-space: nowrap; display: inline-block; }
+kbd { font-family: inherit; }
+.shortcuts-grid { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 16px; margin: 24px 0 20px; }
+.shortcut-card { flex: 1 1 240px; min-width: 0; background: #eaeef6; border-radius: 16px; padding: 22px 16px; text-align: center; }
+.shortcut-label { display: block; color: #635b63; font-size: 12px; margin-bottom: 8px; }
+.shortcut-key { background: #945661; color: white; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block; margin-bottom: 16px; }
+.shortcut-title { font-size: 16px; font-weight: 600; line-height: 1.4; margin: 0 0 8px; color: #30282c; }
+.shortcut-description { color: #635b63; font-size: 13px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
 .shortcuts .secondary { margin-top: 16px; }
 .launch { text-align: center; padding-top: 28px; }
 .handoff { max-width: 570px; margin: 15vh auto 0; }
@@ -47,9 +49,36 @@ kbd { font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; back
     header { padding: 20px; }
     main { padding: 8px 18px 32px; }
     .placement { grid-template-columns: 1fr; }
-    .placement-copy { padding: 24px; }
+    .placement-copy { padding: 0; }
     .brand { font-size: 21px; }
-    th, td { padding: 10px 5px; font-size: 12px; }
-    kbd { font-size: 12px; }
+    .shortcuts-grid { gap: 12px; }
+    .shortcut-card { flex-basis: 200px; }
     .handoff { margin-top: 10vh; }
+}
+
+.bookmark-import { padding: 0 0 28px; margin-bottom: 28px; border-bottom: 1px solid #dfdce3; }
+.bookmark-import p { max-width: 72ch; }
+.bookmark-import .small { margin: -6px 0 18px; overflow-wrap: anywhere; }
+
+.setup-steps ol { list-style: none; padding: 0; margin: 0 0 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.setup-steps button { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 12px 4px; border: 0; border-bottom: 2px solid #dfdce3; background: none; color: #635b63; text-align: left; font-size: 14px; }
+.setup-steps button:hover { color: #804650; border-color: #a46269; }
+.setup-steps button[aria-current="step"] { color: #804650; border-color: #874954; font-weight: 650; }
+.step-number { display: inline-grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border: 1px solid #d6cdd5; border-radius: 50%; font-size: 12px; }
+[aria-current="step"] .step-number { background: #945661; color: white; border-color: #945661; }
+.visited .step-number { background: #f4e3e5; color: #804650; }
+.setup-content { min-height: 440px; }
+.setup-content .bookmark-import { padding: 28px 0; margin: 0; border: 0; }
+.setup-content .shortcuts { padding: 0; border: 0; }
+.setup-navigation { display: flex; align-items: center; gap: 20px; border-top: 1px solid #dfdce3; padding-top: 24px; margin-top: 28px; }
+.setup-navigation .small { margin: 0; }
+.setup-navigation .primary { margin-left: auto; }
+.practice-note { text-align: right; }
+@media (max-width: 680px) {
+    .setup-steps ol { gap: 8px; margin-bottom: 24px; }
+    .setup-steps button { flex-direction: column; align-items: flex-start; gap: 8px; font-size: 12px; }
+    .setup-content { min-height: 0; }
+    .setup-navigation { flex-wrap: wrap; gap: 12px; }
+    .setup-navigation #start { width: 100%; }
+    .practice-note { text-align: center; }
 }

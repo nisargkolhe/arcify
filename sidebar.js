@@ -1,3 +1,4 @@
+import { getSpaceBookmarkFolder, removeSpacePin } from './space-bookmarks.js';
 import { initSidebarTour } from './sidebar-tour.js';
 /**
  * Sidebar - Main extension UI and tab/space management
@@ -679,11 +680,13 @@ async function initSidebar() {
     await Utils.prunePinnedTabStates(allTabs.map(t => t.id));
     // Restore bookmark bindings using only this space's owned tabs.
     for (const space of spaces) {
-        const [folder] = await chrome.bookmarks.getSubTree(space.bookmarkFolderId);
+        const folder = await getSpaceBookmarkFolder(space);
         const bound = await BookmarkUtils.matchTabsWithBookmarks(folder, space.id,
             Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils));
-        space.spaceBookmarks = [...new Set([...space.spaceBookmarks, ...bound])];
-        space.temporaryTabs = space.temporaryTabs.filter(id => !space.spaceBookmarks.includes(id));
+        const previousPins = space.spaceBookmarks;
+        space.spaceBookmarks = [...new Set(bound)];
+        space.temporaryTabs = [...new Set([...space.temporaryTabs, ...previousPins])].filter(id => !space.spaceBookmarks.includes(id));
+        for (const id of previousPins) if (!space.spaceBookmarks.includes(id)) await Utils.removePinnedTabState(id);
         createSpaceElement(space);
     }
     await saveSpaces();
@@ -1316,7 +1319,7 @@ async function moveTabToPinned(space, tab) {
     if (!space.spaceBookmarks.includes(tab.id)) {
         space.spaceBookmarks.push(tab.id);
     }
-    const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(space.name);
+    const spaceFolder = await getSpaceBookmarkFolder(space);
     const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
     const existingBookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, tab.url);
     let bookmarkIdToStore = existingBookmark?.id || null;
@@ -1350,13 +1353,7 @@ async function moveTabToPinned(space, tab) {
 }
 
 async function moveTabToTemp(space, tab) {
-    const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-    const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-    const spaceFolder = spaceFolders.find(f => f.title === space.name);
-
-    if (spaceFolder) {
-        await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
-    }
+    await removeSpacePin(space, tab);
 
     // Move tab from bookmarks to temporary tabs in space data
     space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tab.id);
@@ -2152,9 +2149,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         const pinnedTabs = await chrome.tabs.query({ pinned: true });
         const pinnedUrls = new Set(pinnedTabs.map(tab => tab.url));
 
-        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-        const spaceFolder = spaceFolders.find(f => f.title == space.name);
+        const spaceFolder = await getSpaceBookmarkFolder(space);
 
         if (spaceFolder) {
             // Recursive function to process bookmarks and folders
