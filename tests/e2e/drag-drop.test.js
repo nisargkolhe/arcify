@@ -827,7 +827,7 @@ describe('Drag and Drop', () => {
         const finalTitles = finalTabs.map(t => t.title);
         logTestStep(`Final titles: ${finalTitles.join(', ')}`);
 
-        expect(finalTabs.length).toBe(initialTabs.length);
+        expect(finalTitles).toEqual(initialTitles);
         logTestStep('Tab order preserved after multiple same-position drops');
 
         // Cleanup
@@ -838,7 +838,7 @@ describe('Drag and Drop', () => {
         await takeScreenshotOnFailure(sidebarPage, 'drag-same-position-order-failure');
         throw error;
       }
-    });
+    }, 120000);
   });
 
   describe('Visual Feedback Cleanup', () => {
