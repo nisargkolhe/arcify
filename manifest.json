@@ -13,7 +13,8 @@
     "commands",
     "favicon",
     "scripting",
-    "clipboardWrite"
+    "clipboardWrite",
+    "offscreen"
   ],
   "side_panel": {
     "default_path": "sidebar.html"

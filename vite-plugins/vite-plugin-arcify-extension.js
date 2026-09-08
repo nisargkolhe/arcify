@@ -16,6 +16,7 @@ function getExtensionInputs() {
     'options-script': resolve(process.cwd(), 'options.js'),
     'onboarding-script': resolve(process.cwd(), 'onboarding.js'),
     'installation-onboarding-script': resolve(process.cwd(), 'installation-onboarding.js'),
+    offscreen: resolve(process.cwd(), 'offscreen.html'),
   };
 }
 

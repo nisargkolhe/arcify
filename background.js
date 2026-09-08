@@ -25,6 +25,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 import { Utils } from './utils.js';
 import { Logger } from './logger.js';
+import { copyCurrentTabUrlWithFallback } from './url-copy.js';
 
 const AUTO_ARCHIVE_ALARM_NAME = 'autoArchiveTabsAlarm';
 const TAB_ACTIVITY_STORAGE_KEY = 'tabLastActivity'; // Key to store timestamps
@@ -111,87 +112,6 @@ chrome.commands.onCommand.addListener(async function (command) {
         await copyCurrentTabUrlWithFallback();
     }
 });
-
-// Helper function for URL copying via script injection
-async function copyCurrentTabUrlWithFallback() {
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (!tab) {
-            Logger.error("[URLCopy] No active tab found");
-            return;
-        }
-
-        Logger.log(`[URLCopy] Copying URL via script injection: ${tab.url}`);
-
-        // PRIMARY: Script injection approach (universal, no permission popups)
-        try {
-            await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: (url) => {
-                    // This function runs in webpage context but avoids permission issues
-                    // by being injected from extension context
-                    navigator.clipboard.writeText(url).then(() => {
-                        console.log(`[URLCopy] Script injection succeeded: ${url}`);
-                    }).catch(err => {
-                        console.error("[URLCopy] Script injection clipboard failed:", err);
-                        // Fallback to older method if clipboard API fails
-                        const textarea = document.createElement('textarea');
-                        textarea.value = url;
-                        document.body.appendChild(textarea);
-                        textarea.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(textarea);
-                        console.log(`[URLCopy] Fallback copy succeeded: ${url}`);
-                    });
-                },
-                args: [tab.url]
-            });
-
-            Logger.log(`[URLCopy] Script injection completed for: ${tab.url}`);
-
-            // Notify sidebar of successful URL copy
-            try {
-                chrome.runtime.sendMessage({ action: "urlCopySuccess" });
-                Logger.log("[URLCopy] Success message sent to sidebar");
-            } catch (notifyError) {
-                Logger.log("[URLCopy] Could not notify sidebar:", notifyError);
-            }
-
-            return;
-
-        } catch (injectionError) {
-            Logger.log("[URLCopy] Script injection failed, trying sidebar fallback:", injectionError);
-        }
-
-        // FALLBACK: Sidebar approach (works when sidebar is focused)
-        try {
-            const sidebarResponse = await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error("Sidebar timeout"));
-                }, 1000);
-
-                chrome.runtime.sendMessage({
-                    command: "copyCurrentUrl",
-                    url: tab.url
-                }, (response) => {
-                    clearTimeout(timeout);
-                    if (chrome.runtime.lastError) {
-                        reject(chrome.runtime.lastError);
-                    } else {
-                        resolve(response);
-                    }
-                });
-            });
-
-            Logger.log(`[URLCopy] Sidebar fallback succeeded: ${tab.url}`);
-        } catch (sidebarError) {
-            Logger.error("[URLCopy] Both script injection and sidebar failed:", sidebarError);
-        }
-
-    } catch (error) {
-        Logger.error("[URLCopy] Failed to copy URL:", error);
-    }
-}
 
 // --- Helper: Update Last Activity Timestamp ---
 async function updateTabLastActivity(tabId) {
