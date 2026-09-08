@@ -11,11 +11,16 @@ test('tour ignores stale and repeated next events, preserving the current step',
 });
 test('skipped and finished tours cannot be revived by delayed achievements', () => {
     for (const state of [reduceTour(start(), { action: 'stop', runId: 'first' }),
-        reduceTour(start(TOUR_STEPS.length - 1), { action: 'next', runId: 'first', step: TOUR_STEPS.length - 1 })]) {
+        reduceTour(start(TOUR_STEPS.length - 1), { action: 'finish', runId: 'first', step: TOUR_STEPS.length - 1 })]) {
         assert.notEqual(state.status, 'active');
         assert.equal(reduceTour(state, { action: 'achieved', runId: 'first', step: state.step }), state);
     }
     assert.equal(start(0, 'replay').status, 'active');
+});
+test('the graduation CTA only finishes from the final step', () => {
+    const finalStep = TOUR_STEPS.length - 1;
+    assert.equal(reduceTour(start(finalStep), { action: 'finish', runId: 'first', step: finalStep }).status, 'completed');
+    assert.equal(reduceTour(start(finalStep - 1), { action: 'finish', runId: 'first', step: finalStep - 1 }).status, 'active');
 });
 test('only observed achievements mark a feature tried; revisiting does not duplicate it', () => {
     let state = reduceTour(start(), { action: 'achieved', runId: 'first', step: 0 });

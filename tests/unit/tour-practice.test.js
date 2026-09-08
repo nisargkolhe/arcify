@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { preparePractice, isPracticeUrl, practiceUrl } from '../../tour-practice.js';
+import { cleanupPracticeTabs, preparePractice, isPracticeUrl, practiceUrl } from '../../tour-practice.js';
 import { TOUR_STEPS } from '../../tour-state.js';
 const base = 'chrome-extension://arcify/';
 function mockTabs() {
@@ -53,4 +53,14 @@ test('bookmark matching keeps practice lessons and runs distinct', async () => {
     const urls = [practiceUrl('first', 'pins'), practiceUrl('first', 'folders'), practiceUrl('second', 'pins')];
     assert.equal(new Set(urls.map(url => Utils.getPinnedUrlKey(url))).size, 3);
     assert.equal(Utils.getPinnedUrlKey('https://example.com/read?x=1#part'), 'https://example.com/read');
+});
+test('finishing cleanup closes only untouched practice tabs', async () => {
+    const { tabs } = mockTabs();
+    tabs.push({ id: 9, windowId: 7, url: practiceUrl('test', 'pins') });
+    tabs.push({ id: 10, windowId: 7, url: 'https://example.com/real-work' });
+    const removed = [];
+    chrome.tabs.remove = async id => removed.push(id);
+    const closed = await cleanupPracticeTabs({ windowId: 7, practiceTabs: { pins: 9, folders: 10, favorites: 11 } });
+    assert.deepEqual(closed, [9]);
+    assert.deepEqual(removed, [9]);
 });

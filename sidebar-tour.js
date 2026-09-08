@@ -25,6 +25,7 @@ export async function initSidebarTour() {
     function locate() {
         if (!active()) return null;
         const step = TOUR_STEPS[state.step];
+        if (!step.target) return null;
         if (step.id === 'spaces' && document.getElementById('addSpaceInputContainer').classList.contains('visible')) return document.getElementById('addSpaceInputContainer');
         if (step.id === 'pins') {
             const pins = activeSpace()?.querySelector('.pinned-tabs');
@@ -111,7 +112,7 @@ export async function initSidebarTour() {
         el('coach-copy').textContent = step.tip;
         el('coach-feedback').textContent = '';
         el('coach-retry').hidden = true;
-        el('coach-next').textContent = state.step === TOUR_STEPS.length - 1 ? 'Finish tour' : 'Next tip';
+        el('coach-next').textContent = state.step === TOUR_STEPS.length - 1 ? 'Start using Arcify' : 'Next tip';
         // Resolve contextual copy before fading in, then keep it stable during motion.
         locate();
         if (animate && !reducedMotion.matches && !document.hidden) {
@@ -159,7 +160,7 @@ export async function initSidebarTour() {
         }, 1400);
     }
     el('coach-back').onclick = () => send({ action: 'go', step: state.step - 1 });
-    el('coach-next').onclick = () => send({ action: 'next' });
+    el('coach-next').onclick = () => send({ action: state.step === TOUR_STEPS.length - 1 ? 'finish' : 'next' });
     el('coach-skip').onclick = () => send({ action: 'stop' });
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && active()) send({ action: 'stop' });

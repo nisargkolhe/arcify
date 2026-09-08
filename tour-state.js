@@ -1,4 +1,4 @@
-import { preparePractice } from './tour-practice.js';
+import { cleanupPracticeTabs, preparePractice } from './tour-practice.js';
 export const TOUR_KEY = 'sidebarTourV2';
 export const TOUR_STEPS = [
     { id: 'spaces', label: 'Spaces', title: 'Make room for a new space',
@@ -33,7 +33,12 @@ export const TOUR_STEPS = [
       tip: 'Open the highlighted Options menu → Settings for colors, tab order, automatic cleanup, and Chrome group sync.',
       caption: 'Your colors. Your shortcuts. Your way of keeping things organized.',
       detail: 'Settings includes default space, tab order, collapsed-folder behavior, auto-archiving, custom colors, and Advanced debug logging. Optional Chrome group sync mirrors Arcify’s spaces; Arcify stays authoritative. Turning sync off leaves Chrome groups unchanged.',
-      target: '.space .space-options' }
+      target: '.space .space-options' },
+    { id: 'done', label: 'All done', title: 'You’re all set.',
+      tip: 'You’ve seen the essentials. Start organizing your tabs with Arcify.',
+      caption: 'Your practice tabs will close when you start.',
+      detail: 'Create spaces for different parts of your life, pin the tabs you return to, and let Arcify keep the rest within reach.',
+      target: null }
 ];
 
 export function normalizeTour(state) {
@@ -51,6 +56,10 @@ export function reduceTour(previous, action) {
     if (!previous || previous.runId !== action.runId || previous.status !== 'active') return previous;
     if (action.action === 'stop') return { ...previous, status: 'skipped' };
     if (action.action === 'go') return { ...previous, step: Math.max(0, Math.min(TOUR_STEPS.length - 1, Math.trunc(Number(action.step) || 0))) };
+    if (action.action === 'finish') {
+        if (action.step !== previous.step || TOUR_STEPS[previous.step]?.id !== 'done') return previous;
+        return { ...previous, status: 'completed' };
+    }
     if (action.action === 'next' || action.action === 'achieved') {
         if (action.step !== previous.step) return previous; // Ignore stale/double-clicked events.
         const completed = action.action === 'achieved' ? [...new Set([...previous.completed, TOUR_STEPS[previous.step].id])] : previous.completed;
@@ -66,8 +75,15 @@ export function registerTourMessages() {
         if (message.type !== 'sidebarTour') return;
         const operation = queue.catch(() => {}).then(async () => {
             const previous = normalizeTour((await chrome.storage.local.get(TOUR_KEY))[TOUR_KEY]);
-            const state = message.action === 'practice'
-                ? await preparePractice(previous, message, TOUR_STEPS) : reduceTour(previous, message);
+            let state;
+            if (message.action === 'practice') {
+                state = await preparePractice(previous, message, TOUR_STEPS);
+            } else if (message.action === 'finish') {
+                state = reduceTour(previous, message);
+                if (state !== previous && state.status === 'completed') await cleanupPracticeTabs(previous);
+            } else {
+                state = reduceTour(previous, message);
+            }
             if (state) {
                 await chrome.storage.local.set({ [TOUR_KEY]: state });
                 if (state.status !== 'active') await chrome.storage.sync.set({
