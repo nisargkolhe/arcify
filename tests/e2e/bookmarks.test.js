@@ -7,6 +7,7 @@ import {
   openSidebar,
   getSidebarTabs,
   createSpace,
+  waitForCondition,
 } from './helpers/extension-helper.js';
 import {
   delay,
@@ -14,6 +15,26 @@ import {
   logTestStep,
   getElementCount,
 } from './helpers/test-utils.js';
+
+async function getVisiblePinnedCount(sidebarPage) {
+  return sidebarPage.evaluate(() => {
+    for (const space of document.querySelectorAll('.space')) {
+      if (space.style.display !== 'none') {
+        const section = space.querySelector('[data-tab-type="pinned"]');
+        return section ? section.querySelectorAll('.tab').length : 0;
+      }
+    }
+    return 0;
+  });
+}
+
+async function waitForVisiblePinnedCount(sidebarPage, expected, timeout = 15000) {
+  await waitForCondition(
+    async () => (await getVisiblePinnedCount(sidebarPage)) === expected,
+    timeout,
+    `Pinned tab count did not reach ${expected}`
+  );
+}
 
 describe('Bookmarks and Pinned Tabs', () => {
   let browser;
@@ -65,6 +86,8 @@ describe('Bookmarks and Pinned Tabs', () => {
         await sidebarPage.close();
         sidebarPage = await openSidebar(browser, extensionId);
 
+        const initialPinned = await getVisiblePinnedCount(sidebarPage);
+
         // Use evaluate to trigger context menu and click "Pin Tab"
         const pinResult = await sidebarPage.evaluate(async () => {
           // Find a tab in the visible space's temporary section
@@ -109,12 +132,12 @@ describe('Bookmarks and Pinned Tabs', () => {
           return { success: false, reason: 'Pin Tab option not found in context menu' };
         });
 
-        await delay(2000);
-
         if (pinResult.success) {
+          await waitForVisiblePinnedCount(sidebarPage, initialPinned + 1);
           // Verify the tab moved to pinned section by reopening sidebar
           await sidebarPage.close();
           sidebarPage = await openSidebar(browser, extensionId);
+          await waitForVisiblePinnedCount(sidebarPage, initialPinned + 1);
 
           const pinnedInfo = await sidebarPage.evaluate(() => {
             const spaces = document.querySelectorAll('.space');
@@ -505,12 +528,12 @@ describe('Bookmarks and Pinned Tabs', () => {
           return { success: false, reason: 'Pin Tab option not found' };
         });
 
-        await delay(2000);
-
         if (pinResult.success) {
+          await waitForVisiblePinnedCount(sidebarPage, initialCounts.pinned + 1);
           // Reopen sidebar and verify tab moved to pinned section
           await sidebarPage.close();
           sidebarPage = await openSidebar(browser, extensionId);
+          await waitForVisiblePinnedCount(sidebarPage, initialCounts.pinned + 1);
 
           const afterPinCounts = await sidebarPage.evaluate(() => {
             const spaces = document.querySelectorAll('.space');
@@ -559,12 +582,12 @@ describe('Bookmarks and Pinned Tabs', () => {
             return { success: false, reason: 'no visible space' };
           });
 
-          await delay(2000);
-
           if (unpinResult.success) {
+            await waitForVisiblePinnedCount(sidebarPage, initialCounts.pinned);
             // Reopen sidebar and verify tab moved back to temporary section
             await sidebarPage.close();
             sidebarPage = await openSidebar(browser, extensionId);
+            await waitForVisiblePinnedCount(sidebarPage, initialCounts.pinned);
 
             const afterUnpinCounts = await sidebarPage.evaluate(() => {
               const spaces = document.querySelectorAll('.space');
@@ -601,11 +624,12 @@ describe('Bookmarks and Pinned Tabs', () => {
         logTestStep('Testing pinned tab count increments correctly...');
 
         // Open two test pages
+        const runId = Date.now();
         const testPage1 = await browser.newPage();
-        await testPage1.goto('https://www.example.com', { waitUntil: 'domcontentloaded' });
+        await testPage1.goto(`https://www.example.com/?arcify-count=${runId}-1`, { waitUntil: 'domcontentloaded' });
         await delay(500);
         const testPage2 = await browser.newPage();
-        await testPage2.goto('https://www.example.com?page=wiki', { waitUntil: 'domcontentloaded' });
+        await testPage2.goto(`https://www.example.com/?arcify-count=${runId}-2`, { waitUntil: 'domcontentloaded' });
         await delay(1000);
 
         // Close and reopen sidebar to pick up both tabs
@@ -655,12 +679,12 @@ describe('Bookmarks and Pinned Tabs', () => {
           return { success: false, reason: 'no visible space' };
         });
 
-        await delay(2000);
-
         if (pinFirst.success) {
+          await waitForVisiblePinnedCount(sidebarPage, initialPinnedCount + 1);
           // Reopen sidebar and check count after first pin
           await sidebarPage.close();
           sidebarPage = await openSidebar(browser, extensionId);
+          await waitForVisiblePinnedCount(sidebarPage, initialPinnedCount + 1);
 
           const afterFirstPin = await sidebarPage.evaluate(() => {
             const spaces = document.querySelectorAll('.space');
@@ -705,12 +729,12 @@ describe('Bookmarks and Pinned Tabs', () => {
             return { success: false, reason: 'no visible space' };
           });
 
-          await delay(2000);
-
           if (pinSecond.success) {
+            await waitForVisiblePinnedCount(sidebarPage, initialPinnedCount + 2);
             // Reopen sidebar and check count after second pin
             await sidebarPage.close();
             sidebarPage = await openSidebar(browser, extensionId);
+            await waitForVisiblePinnedCount(sidebarPage, initialPinnedCount + 2);
 
             const afterSecondPin = await sidebarPage.evaluate(() => {
               const spaces = document.querySelectorAll('.space');
@@ -1052,14 +1076,15 @@ describe('Bookmarks and Pinned Tabs', () => {
         logTestStep('Testing pinning multiple tabs...');
 
         // Open multiple test pages
+        const runId = Date.now();
         const testPage1 = await browser.newPage();
-        await testPage1.goto('https://www.example.com', { waitUntil: 'domcontentloaded' });
+        await testPage1.goto(`https://www.example.com/?arcify-multi=${runId}-1`, { waitUntil: 'domcontentloaded' });
         await delay(500);
         const testPage2 = await browser.newPage();
-        await testPage2.goto('https://www.example.com?page=wiki', { waitUntil: 'domcontentloaded' });
+        await testPage2.goto(`https://www.example.com/?arcify-multi=${runId}-2`, { waitUntil: 'domcontentloaded' });
         await delay(500);
         const testPage3 = await browser.newPage();
-        await testPage3.goto('https://www.example.com?page=search', { waitUntil: 'domcontentloaded' });
+        await testPage3.goto(`https://www.example.com/?arcify-multi=${runId}-3`, { waitUntil: 'domcontentloaded' });
         await delay(1000);
 
         // Close and reopen sidebar to pick up all tabs
@@ -1113,12 +1138,11 @@ describe('Bookmarks and Pinned Tabs', () => {
 
           if (result.success) {
             pinned++;
-            await delay(2000);
-            // Reopen sidebar to refresh state before next pin
-            if (i < 2) {
-              await sidebarPage.close();
-              sidebarPage = await openSidebar(browser, extensionId);
-            }
+            await waitForVisiblePinnedCount(sidebarPage, initialPinned + pinned);
+            // Reopen sidebar to refresh state before the next pin.
+            await sidebarPage.close();
+            sidebarPage = await openSidebar(browser, extensionId);
+            await waitForVisiblePinnedCount(sidebarPage, initialPinned + pinned);
           } else {
             logTestStep(`⚠ Pin attempt ${i + 1}: ${result.reason}`);
             break;
