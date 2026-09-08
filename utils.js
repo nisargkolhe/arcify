@@ -427,7 +427,9 @@ const Utils = {
     _navigateTabInSpace: async function (tabId, sourceSpace, direction) {
         const temporaryTabs = sourceSpace?.temporaryTabs ?? [];
         const spaceBookmarks = sourceSpace?.spaceBookmarks ?? [];
-        const allTabs = [...spaceBookmarks, ...temporaryTabs];
+        const currentTab = await chrome.tabs.get(tabId);
+        const windowTabs = new Set((await chrome.tabs.query({ windowId: currentTab.windowId })).map(t => t.id));
+        const allTabs = [...spaceBookmarks, ...temporaryTabs].filter(id => windowTabs.has(id));
 
         if (allTabs.length === 0) return;
 

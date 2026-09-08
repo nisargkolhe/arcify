@@ -515,7 +515,9 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                 const spaces = result.spaces || [];
                 Logger.log("[QuickPin] Loaded spaces from storage:", spaces);
 
-                const getTabAndToggle = (tabToToggle) => {
+                const getTabAndToggle = async (tabToToggle) => {
+                    const sidebarWindow = await chrome.windows.getCurrent();
+                    if (tabToToggle?.windowId !== sidebarWindow.id) return;
                     if (!tabToToggle) {
                         Logger.error("[QuickPin] No tab found to toggle.");
                         return;
@@ -528,8 +530,8 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                     if (spaceWithTempTab) {
                         Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
-                        moveTabToSpace(tabToToggle.id, spaceWithTempTab.id, true);
-                        moveTabToPinned(spaceWithTempTab, tabToToggle);
+                        await moveTabToSpace(tabToToggle.id, spaceWithTempTab.id, true);
+                        await moveTabToPinned(spaceWithTempTab, tabToToggle);
                     } else {
                         const spaceWithBookmark = spaces.find(space =>
                             space.spaceBookmarks.includes(tabToToggle.id)
@@ -537,8 +539,8 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                         if (spaceWithBookmark) {
                             Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a bookmarked tab in space "${spaceWithBookmark.name}". Unpinning it.`);
-                            moveTabToSpace(tabToToggle.id, spaceWithBookmark.id, false);
-                            moveTabToTemp(spaceWithBookmark, tabToToggle);
+                            await moveTabToSpace(tabToToggle.id, spaceWithBookmark.id, false);
+                            await moveTabToTemp(spaceWithBookmark, tabToToggle);
                         } else {
                             Logger.warn(`[QuickPin] Tab ${tabToToggle.id} not found in any space as temporary or bookmarked.`);
                         }
@@ -547,7 +549,7 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                 if (request.command === "quickPinToggle") {
                     Logger.log("[QuickPin] Handling quickPinToggle for active tab.");
-                    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+                    chrome.tabs.query({ active: true, lastFocusedWindow: true }, function (tabs) {
                         getTabAndToggle(tabs[0]);
                     });
                 } else if (request.command === "toggleSpacePin" && request.tabId) {

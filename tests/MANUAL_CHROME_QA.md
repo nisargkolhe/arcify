@@ -186,3 +186,26 @@ succeeded without user intervention.
 - Added durable local state keyed by bookmark folder ID, including nested folders and programmatic opening during drag/child creation. New folders save their initial expanded state; existing folders without saved state retain the collapsed default.
 - Automated verification: 23 unit tests pass. Regression coverage includes independent parent/child state, rapid toggles, read-after-write, and restoration through a fresh module instance. Production build and whitespace check pass.
 - Manual verification of this addition is pending: Chrome control returned only the stale Extensions navigation menu when opening the extension reload tab. Escape/focus recovery and quit shortcut did not restore the connection. The new build is on disk; it has not been confirmed reloaded in Chrome.
+
+### Window scope and pinned order correction (2026-09-08)
+
+- Sidebar live tabs, native Favorites, bookmark reuse, Clean All, pin toggles, and adjacent-tab navigation now use the sidebar/active tab's window. Cross-window attach/detach refreshes the affected panels. Bookmark binding restoration preserves other windows' pins.
+- Pinned folder collapse uses position anchors to restore projected tabs at their original positions. Bookmark drag order is persisted to bookmark indices, including closed pins. Reordering visible tab IDs preserves other windows' slots. Quick pin mutations run sequentially and render the saved bookmark order afterward.
+- Automated checks: 46 unit tests pass; production build and git diff whitespace check pass. New cases cover window isolation, duplicate URLs, moving tabs between windows, preserving other windows' order, and bookmark-order round trips with inversion on/off.
+- Browser verification is PENDING. Computer-use reported the Mac locked and automatic unlock unsuccessful. Asked the user to unlock it. No browser pass is claimed for these changes.
+- Next manual checks: reload build, use two windows with distinct temporary/native-pinned tabs and the same pinned bookmark URL, check each sidebar and Clean All isolation; verify pinned order after close/reopen, space switching, folder toggling, drag and reload in both sync modes.
+
+### Window scope and pinned order — browser verification completed after unlock (2026-09-08)
+
+Loaded the updated unpacked extension via Chrome's Reload button in Arcify Import QA, then used two native Chrome windows through computer-use UI controls.
+
+- Sync off: window A retained its Example Domain temporary tab, Extensions tab and native pinned Favorite. A new window B with IANA Example Domains displayed only its own live tab and no native Favorite from A.
+- Pinned IANA Example Domains, then IANA-managed Reserved Domains in B using Alt+D. With inversion enabled, the visible order was Reserved Domains → Example Domains → Drag Test Folder.
+- Switched B to Drag Destination and back: pinned order unchanged. Closed Example Domains using its sidebar close button and reopened its bookmark: same position and order.
+- Returned to A: B's pins appeared as closed bookmark shortcuts, not live tabs. Clicking Example Domains created another native tab in A while B retained its original tab; no cross-window focusing/reuse occurred.
+- Enabled sync in A's Settings. B still contained only its two native tabs and own live pin rows. Added example.net/window-b-temporary in B and clicked Clean All: only that temporary tab closed. B's pins and A's temporary tabs/Favorite remained intact.
+- Changed Show new tabs at the top off: pinned display reversed. Restored it on: original pinned display returned. Restored sync off.
+- Expanded Drag Test Folder in B, closed the actual side panel, confirmed it was gone, and reopened with Alt+S. The two pins retained their order and the folder remained expanded, with its Example Domain bookmark and Nested Renamed child visible.
+- Attempted native computer-use dragging of the second pin above the first; no movement or UI change occurred. Drag-reorder persistence therefore remains an explicit manual gap (automated bookmark-order round-trip coverage passes). No full drag/drop signoff is claimed.
+
+These observations supersede the locked-Mac verification blocker immediately above. They also verify folder expansion restoration across side-panel recreation; a full Chrome restart was not repeated during this run.

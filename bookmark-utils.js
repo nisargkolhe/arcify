@@ -362,10 +362,10 @@ export const BookmarkUtils = {
      * @param {Set} claimedTabIds - Tab IDs already bound to a bookmark in this run (shared across recursion)
      * @returns {Promise<Array>} Array of tab IDs that match bookmarks
      */
-    async matchTabsWithBookmarks(folder, spaceId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null, getUrlKey = null) {
+    async matchTabsWithBookmarks(folder, spaceId, setTabNameOverride = null, setPinnedTabState = null, claimedTabIds = null, getUrlKey = null, windowId = null) {
         const bookmarks = [];
         const items = await chrome.bookmarks.getChildren(folder.id);
-        const tabs = await getSpaceTabs(spaceId);
+        const tabs = (await getSpaceTabs(spaceId)).filter(tab => windowId === null || tab.windowId === windowId);
         const claimed = claimedTabIds || new Set();
         const { pinnedTabStatesById = {} } = await chrome.storage.local.get('pinnedTabStatesById');
 
@@ -403,7 +403,7 @@ export const BookmarkUtils = {
                 }
             } else {
                 // This is a folder, recursively process it
-                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, spaceId, setTabNameOverride, setPinnedTabState, claimed, getUrlKey);
+                const subFolderBookmarks = await this.matchTabsWithBookmarks(item, spaceId, setTabNameOverride, setPinnedTabState, claimed, getUrlKey, windowId);
                 bookmarks.push(...subFolderBookmarks);
             }
         }
