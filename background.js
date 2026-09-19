@@ -14,12 +14,26 @@ registerTourMessages();
  */
 
 import { SpaceStore, ownerOf } from './space-store.js';
+import { isProtectedFavorite } from './favorite-safety.js';
+import { registerBookmarkListeners } from './bookmark-events.js';
+import { enqueueBookmarkOrder } from './bookmark-writer.js';
+
+registerBookmarkListeners();
 
 const spaceStore = new SpaceStore();
 spaceStore.install();
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type !== 'spaceStore') return;
     spaceStore.dispatch(message).then(spaces => sendResponse({ success: true, spaces }), error => sendResponse({ success: false, error: error.message }));
+    return true;
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== 'bookmarkOrder') return;
+    enqueueBookmarkOrder(message).then(
+        order => sendResponse({ success: true, order }),
+        error => sendResponse({ success: false, error: error.message })
+    );
     return true;
 });
 
@@ -190,7 +204,7 @@ async function runAutoArchiveCheck() {
         // URLs normalized with the same pinned-URL key the renderer uses (origin+path).
         const protectedUrlKeys = new Set();
         try {
-            const [arcifyFolder] = await chrome.bookmarks.search({ title: 'Arcify' });
+            const arcifyFolder = (await chrome.bookmarks.search({ title: 'Arcify' })).find(node => !node.url);
             if (arcifyFolder) {
                 const [subTree] = await chrome.bookmarks.getSubTree(arcifyFolder.id);
                 const collectUrls = (node) => {
@@ -204,7 +218,12 @@ async function runAutoArchiveCheck() {
             }
         } catch (bookmarkError) {
             Logger.warn('Auto-archive: could not read Arcify bookmark tree for protection:', bookmarkError);
+            return;
         }
+
+        const currentSpaces = await spaceStore.dispatch({ action: 'get' });
+        const protectedIds = new Set(currentSpaces.flatMap(space => space.spaceBookmarks));
+        const bindings = await Utils.getPinnedTabStates();
 
         // Get all non-pinned tabs across all windows
         const tabs = await chrome.tabs.query({ pinned: false });
@@ -219,7 +238,7 @@ async function runAutoArchiveCheck() {
 
             // Protect Arcify favorites: never archive a tab whose URL matches a bookmark
             // in the Arcify tree (compared by origin+pathname to tolerate query/hash drift).
-            if (protectedUrlKeys.has(Utils.getPinnedUrlKey(tab.url))) {
+            if (isProtectedFavorite(tab, protectedIds, bindings, protectedUrlKeys)) {
                 // Refresh activity so protected favorites aren't re-checked repeatedly.
                 await updateTabLastActivity(tab.id);
                 continue;
@@ -370,8 +389,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }, sendResponse, 'searching bookmarks');
         
     } else if (message.action === 'activatePinnedTab') {
-        // Forward pinned tab activation to sidebar
-        chrome.runtime.sendMessage(message);
+        // The original runtime message is already delivered to every extension
+        // context, including the sidebar. A second send can duplicate activation.
         sendResponse({ success: true });
         return false; // Synchronous response
     }

@@ -18,10 +18,11 @@ test('reordering one window preserves other window slots and membership', () => 
 test('bookmark drag order round-trips through storage in both display directions', async () => {
     for (const inverted of [false, true]) {
         let stored = ['a', 'b', 'c'];
-        globalThis.chrome = { bookmarks: { move: async (id, { parentId, index }) => {
-            assert.equal(parentId, 'folder');
-            stored = stored.filter(value => value !== id);
-            stored.splice(index, 0, id);
+        globalThis.chrome = { runtime: { sendMessage: async request => {
+            assert.equal(request.parentId, 'folder');
+            const ids = request.inverted ? [...request.displayIds].reverse() : request.displayIds;
+            stored = ids;
+            return { success: true, order: stored };
         } } };
         await saveBookmarkOrder('folder', ['c', 'a', 'b'], inverted);
         assert.deepEqual(inverted ? [...stored].reverse() : stored, ['c', 'a', 'b']);

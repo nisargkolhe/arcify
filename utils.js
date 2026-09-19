@@ -217,49 +217,6 @@ const Utils = {
         return spaces.find(s => s.name === groupName)?.color || 'grey';
     },
 
-    updateBookmarkTitleIfNeeded: async function (tab, activeSpace, newTitle) {
-        Logger.log(`Attempting to update bookmark for pinned tab ${tab.id} in space ${activeSpace.name} to title: ${newTitle}`);
-
-        try {
-            const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(activeSpace.name);
-            if (!spaceFolder) {
-                Logger.error(`Bookmark folder for space ${activeSpace.name} not found.`);
-                return;
-            }
-
-            // Recursive function to find and update the bookmark
-            const findAndUpdate = async (folderId) => {
-                const items = await chrome.bookmarks.getChildren(folderId);
-                for (const item of items) {
-                    if (item.url && item.url === tab.url) {
-                        // Found the bookmark
-                        // Avoid unnecessary updates if title is already correct
-                        if (item.title !== newTitle) {
-                            Logger.log(`Found bookmark ${item.id} for URL ${tab.url}. Updating title to "${newTitle}"`);
-                            await chrome.bookmarks.update(item.id, { title: newTitle });
-                        } else {
-                            Logger.log(`Bookmark ${item.id} title already matches "${newTitle}". Skipping update.`);
-                        }
-                        return true; // Found
-                    } else if (!item.url) {
-                        // It's a subfolder, search recursively
-                        const found = await findAndUpdate(item.id);
-                        if (found) return true; // Stop searching if found in subfolder
-                    }
-                }
-                return false; // Not found in this folder
-            };
-
-            const updated = await findAndUpdate(spaceFolder.id);
-            if (!updated) {
-                Logger.log(`Bookmark for URL ${tab.url} not found in space folder ${activeSpace.name}.`);
-            }
-
-        } catch (error) {
-            Logger.error(`Error updating bookmark for tab ${tab.id}:`, error);
-        }
-    },
-
     // Function to get if archiving is enabled
     isArchivingEnabled: async function () {
         const settings = await this.getSettings();
@@ -394,35 +351,7 @@ const Utils = {
         await chrome.storage.sync.set({ invertTabOrder: enabled });
     },
 
-    // Search and remove bookmark by URL from a folder structure recursively
-    searchAndRemoveBookmark: async function (folderId, tabUrl, options = {}) {
-        const {
-            removeTabElement = false, // Whether to also remove the tab element from DOM
-            tabElement = null, // The tab element to remove if removeTabElement is true
-            logRemoval = false // Whether to log the removal
-        } = options;
 
-        const items = await chrome.bookmarks.getChildren(folderId);
-        for (const item of items) {
-            if (item.url === tabUrl) {
-                if (logRemoval) {
-                    Logger.log("removing bookmark", item);
-                }
-                await chrome.bookmarks.remove(item.id);
-
-                if (removeTabElement && tabElement) {
-                    tabElement.remove();
-                }
-
-                return true; // Bookmark found and removed
-            } else if (!item.url) {
-                // This is a folder, search recursively
-                const found = await this.searchAndRemoveBookmark(item.id, tabUrl, options);
-                if (found) return true;
-            }
-        }
-        return false; // Bookmark not found
-    },
     // Navigate to adjacent tab within a space (next or previous)
     _navigateTabInSpace: async function (tabId, sourceSpace, direction) {
         const temporaryTabs = sourceSpace?.temporaryTabs ?? [];

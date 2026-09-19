@@ -13,8 +13,7 @@ export function mergeVisibleOrder(allIds, visibleIds) {
 }
 
 export async function saveBookmarkOrder(parentId, displayIds, inverted) {
-    const ids = inverted ? [...displayIds].reverse() : displayIds;
-    for (let index = 0; index < ids.length; index++) {
-        await chrome.bookmarks.move(ids[index], { parentId, index });
-    }
+    const response = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', parentId, displayIds, inverted });
+    if (!response?.success) throw new Error(response?.error || 'Bookmark order could not be saved.');
+    return response.order;
 }

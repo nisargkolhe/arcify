@@ -29,6 +29,12 @@ jobs:
       
       - name: Build extension (production)
         run: npm run build
+
+      - name: Unit regression tests
+        run: npm run test:unit
+
+      - name: Favorite identity and independent space browser regressions
+        run: NODE_OPTIONS='--experimental-vm-modules' npx jest --config jest.config.js tests/e2e/favorite-identity.test.js tests/e2e/independent-spaces.test.js --runInBand
       
       - name: Create zip package
         run: npm run zip
@@ -57,4 +63,4 @@ jobs:
           path: |
             dist/
             *.zip
-          retention-days: 7 
+          retention-days: 7

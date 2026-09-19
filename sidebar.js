@@ -1,4 +1,4 @@
-import { getSpaceBookmarkFolder, removeSpacePin } from './space-bookmarks.js';
+import { getSpaceBookmarkById, getSpaceBookmarkFolder, removeSpacePin } from './space-bookmarks.js';
 import { initSidebarTour } from './sidebar-tour.js';
 /**
  * Sidebar - Main extension UI and tab/space management
@@ -16,6 +16,8 @@ import { initSidebarTour } from './sidebar-tour.js';
 
 import { ChromeHelper } from './chromeHelper.js';
 import { spaceRequest } from './space-client.js';
+import { SpacePatchQueue } from './space-patch-queue.js';
+import { isProtectedFavorite } from './favorite-safety.js';
 import { selectWindowSpaceTabs, mergeVisibleOrder, saveBookmarkOrder } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
 import { canCreateFolder, createFolder } from './folder-policy.js';
@@ -65,44 +67,46 @@ let currentWindow = null;
 let defaultSpaceName = 'Home';
 let showAllOpenTabsInCollapsedFolders = false; // default Arc behavior is false (active-only)
 let activeChromeTabId = null;
+let bookmarkRefreshTimer = null;
 // Arc-like behavior: track which tabs have been active in each collapsed folder.
 // These tabs stay visible until user manually opens/closes the folder.
 // WeakMap<HTMLElement (folder), Set<number (tabId)>>
 const collapsedFolderShownTabs = new WeakMap();
 
+chrome.runtime.onMessage.addListener(message => {
+    if (message.action !== 'arcifyBookmarksChanged') return;
+    scheduleBookmarkRefresh();
+});
+
+function scheduleBookmarkRefresh() {
+    clearTimeout(bookmarkRefreshTimer);
+    bookmarkRefreshTimer = setTimeout(async () => {
+        if (!sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount) {
+            scheduleBookmarkRefresh();
+            return;
+        }
+        try {
+            const next = await spaceRequest('get');
+            const changed = JSON.stringify(next) !== JSON.stringify(spaces);
+            if (changed) await adoptStoredSpaces(next);
+            else await refreshActiveSpaceUI();
+        } catch (error) {
+            Logger.warn('Could not refresh external bookmark changes:', error);
+        }
+    }, 100);
+}
+
 // Helper function to update bookmark for a tab
 async function updateBookmarkForTab(tab, bookmarkTitle) {
     Logger.log("updating bookmark", tab, bookmarkTitle);
-    const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-    const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-
-    for (const spaceFolder of spaceFolders) {
-        Logger.log("looking for space folder", spaceFolder);
-        // Prefer stored mapping (tabId -> bookmarkId) so we can update even if the tab navigated away.
-        const pinnedState = await Utils.getPinnedTabState(tab.id);
-        if (pinnedState?.bookmarkId) {
-            try {
-                await chrome.bookmarks.update(pinnedState.bookmarkId, { title: bookmarkTitle });
-                return;
-            } catch (e) {
-                Logger.warn('[Bookmarks] Failed updating bookmark by stored bookmarkId, falling back to URL search.', e);
-            }
-        }
-
-        // Fallback: search by pinned URL (not tab.url!) and only update title.
-        const pinnedUrl = pinnedState?.pinnedUrl;
-        if (!pinnedUrl) continue;
-        const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
-        Logger.log("looking for bookmarks", bookmarks);
-        const bookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, pinnedUrl);
-        if (bookmark) {
-            await chrome.bookmarks.update(bookmark.id, { title: bookmarkTitle });
-            await Utils.setPinnedTabState(tab.id, { bookmarkId: bookmark.id, pinnedUrl: pinnedUrl });
-            return;
-        }
-    }
-
+    const binding = await Utils.getPinnedTabState(tab.id);
+    if (!binding?.bookmarkId) return;
+    const space = ownerOf(spaces, tab.id);
+    const bookmark = space && await getSpaceBookmarkById(space, binding.bookmarkId);
+    if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
+    await chrome.bookmarks.update(bookmark.id, { title: bookmarkTitle });
 }
+
 
 async function replaceBookmarkUrlWithCurrentUrl(tab, tabElement) {
     if (!tab?.id) return;
@@ -126,20 +130,7 @@ async function replaceBookmarkUrlWithCurrentUrl(tab, tabElement) {
     const bookmarkId = tabElement?.dataset?.bookmarkId || stored?.bookmarkId;
     const pinnedUrl = tabElement?.dataset?.pinnedUrl || stored?.pinnedUrl;
 
-    // If we don't know the bookmarkId, try resolving by pinnedUrl within the current space folder.
-    let resolvedBookmarkId = bookmarkId;
-    if (!resolvedBookmarkId && pinnedUrl) {
-        const activeSpace = spaces.find(s => s.id === activeSpaceId);
-        if (activeSpace) {
-            const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-            const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-            const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
-            if (spaceFolder) {
-                const result = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { url: pinnedUrl });
-                resolvedBookmarkId = result?.bookmark?.id || null;
-            }
-        }
-    }
+    const resolvedBookmarkId = bookmarkId;
 
     if (!resolvedBookmarkId) {
         console.warn('[Arcify] Cannot replace bookmark URL: missing bookmarkId and unable to resolve.', {
@@ -151,10 +142,13 @@ async function replaceBookmarkUrlWithCurrentUrl(tab, tabElement) {
     }
 
     try {
+        const space = ownerOf(spaces, tab.id);
+        const bookmark = space && await getSpaceBookmarkById(space, resolvedBookmarkId);
+        if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
         const updatePayload = { url: newUrl };
         // Keep bookmark title in sync with the new pinned page for clarity.
         if (newTitle) updatePayload.title = newTitle;
-        await chrome.bookmarks.update(resolvedBookmarkId, updatePayload);
+        await chrome.bookmarks.update(bookmark.id, updatePayload);
     } catch (e) {
         console.error('[Arcify] chrome.bookmarks.update failed', { bookmarkId: resolvedBookmarkId, newUrl, error: e });
         return;
@@ -411,6 +405,13 @@ async function updatePinnedFavicons() {
                     // Fallback: append to end
                     pinnedFavicons.appendChild(draggingElement);
                 }
+                const ids = [...pinnedFavicons.querySelectorAll('.pinned-favicon[data-tab-id]')]
+                    .map(el => Number(el.dataset.tabId));
+                for (let index = 0; index < ids.length; index++) {
+                    const live = await chrome.tabs.get(ids[index]);
+                    if (live.pinned && live.windowId === currentWindow.id) await chrome.tabs.move(live.id, { index });
+                }
+                await updatePinnedFavicons();
             } else {
                 // Dragging a regular tab to make it pinned
                 const afterElement = getDragAfterElementFavicon(pinnedFavicons, e.clientX);
@@ -457,13 +458,15 @@ async function updatePinnedFavicons() {
 }
 
 // Utility function to activate a pinned tab by URL (reuses existing bookmark opening logic)
-async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
+async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName, bookmarkId = null) {
     Logger.log('[PinnedTabActivator] Activating pinned tab:', bookmarkUrl, targetSpaceId, spaceName);
 
     try {
-        // Try to find existing tab with this URL
+        const bindings = await Utils.getPinnedTabStates();
         const tabs = await getOwnedTabs(targetSpaceId);
-        const existingTab = BookmarkUtils.findTabByUrl(tabs, bookmarkUrl);
+        const existingTab = bookmarkId
+            ? tabs.find(tab => String(bindings[tab.id]?.bookmarkId) === String(bookmarkId))
+            : null;
 
         if (existingTab) {
             Logger.log('[PinnedTabActivator] Found existing tab, switching to it:', existingTab.id);
@@ -479,30 +482,22 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName) {
             }
         } else {
             Logger.log('[PinnedTabActivator] No existing tab found, opening bookmark');
-            // Find existing bookmark-only element to replace
-            const existingBookmarkElement = document.querySelector(`[data-url="${bookmarkUrl}"].bookmark-only`);
-
-            // Find the bookmark to get the correct title
-            const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-            const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-            const spaceFolder = spaceFolders.find(f => f.title === spaceName);
-
-            let bookmarkTitle = null;
-            if (spaceFolder) {
-                const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
-                const matchingBookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, bookmarkUrl);
-                if (matchingBookmark) {
-                    bookmarkTitle = matchingBookmark.title;
-                }
-            }
+            const spaceElement = document.querySelector(`[data-space-id="${targetSpaceId}"]`);
+            const candidates = [...(spaceElement?.querySelectorAll('.bookmark-only') || [])].filter(el =>
+                bookmarkId ? String(el.dataset.bookmarkId) === String(bookmarkId) : el.dataset.url === bookmarkUrl);
+            if (candidates.length !== 1) throw new Error('Favorite activation is ambiguous without a bookmark identity.');
+            const existingBookmarkElement = candidates[0];
+            const space = spaces.find(item => item.id === targetSpaceId);
+            const bookmark = await getSpaceBookmarkById(space, existingBookmarkElement.dataset.bookmarkId);
+            if (!bookmark) throw new Error('Favorite no longer belongs to this space.');
 
             // Prepare bookmark data for opening
             const bookmarkData = {
                 url: bookmarkUrl,
-                title: bookmarkTitle || 'Bookmark',
+                title: bookmark.title || 'Bookmark',
                 spaceName: spaceName,
                 pinnedUrl: bookmarkUrl,
-                bookmarkId: existingBookmarkElement?.dataset?.bookmarkId || null
+                bookmarkId: bookmark.id
             };
 
             // Prepare context for BookmarkUtils
@@ -652,19 +647,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { passive: false }); // 'passive: false' is required to use preventDefault()
 });
 
-let savedSpaces = [];
+const spaceSaveQueue = new SpacePatchQueue(
+    (before, after) => spaceRequest('patch', { before, after }),
+    async () => {
+        const current = await spaceRequest('get');
+        await adoptStoredSpaces(current);
+        alert('Your last change could not be saved. The current saved state has been restored. Please retry.');
+        return current;
+    }
+);
 let pendingSpaceSaves = Promise.resolve();
 let pendingSaveCount = 0;
 let sidebarReady = false;
 
 async function adoptStoredSpaces(next) {
+    const projection = list => JSON.stringify(list.map(({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs }) =>
+        ({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs })));
+    const needsRender = projection(spaces) !== projection(next);
     const old = spaces;
     const oldMetadata = new Map(old.map(s => [s.id, { name: s.name, color: s.color }]));
     spaces = next.map(space => {
         const existing = old.find(s => s.id === space.id);
         return existing ? Object.assign(existing, structuredClone(space)) : structuredClone(space);
     });
-    savedSpaces = structuredClone(next);
+    spaceSaveQueue.reset(next);
     for (const space of old) {
         if (!spaces.some(s => s.id === space.id)) getSpaceElement(space.id)?.remove();
     }
@@ -682,8 +688,10 @@ async function adoptStoredSpaces(next) {
         }
     }
     if (!spaces.some(s => s.id === activeSpaceId)) activeSpaceId = spaces[0]?.id;
-    await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
-    await refreshActiveSpaceUI();
+    if (needsRender) {
+        await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
+        await refreshActiveSpaceUI();
+    }
 }
 
 async function initSidebar() {
@@ -692,19 +700,23 @@ async function initSidebar() {
     showAllOpenTabsInCollapsedFolders = Boolean(settings.showAllOpenTabsInCollapsedFolders);
     currentWindow = await chrome.windows.getCurrent({ populate: false });
     spaces = await spaceRequest('get');
-    savedSpaces = structuredClone(spaces);
+    spaceSaveQueue.reset(spaces);
     const allTabs = await chrome.tabs.query({});
     await Utils.prunePinnedTabStates(allTabs.map(t => t.id));
     // Restore bookmark bindings using only this space's owned tabs.
     for (const space of spaces) {
-        const folder = await getSpaceBookmarkFolder(space);
-        const bound = await BookmarkUtils.matchTabsWithBookmarks(folder, space.id,
-            Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils), currentWindow.id);
-        const previousPins = space.spaceBookmarks;
-        const windowTabIds = new Set(allTabs.filter(t => t.windowId === currentWindow.id).map(t => t.id));
-        space.spaceBookmarks = [...new Set([...previousPins.filter(id => !windowTabIds.has(id)), ...bound])];
-        space.temporaryTabs = [...new Set([...space.temporaryTabs, ...previousPins])].filter(id => !space.spaceBookmarks.includes(id));
-        for (const id of previousPins) if (!space.spaceBookmarks.includes(id)) await Utils.removePinnedTabState(id);
+        try {
+            const folder = await getSpaceBookmarkFolder(space);
+            const bound = await BookmarkUtils.matchTabsWithBookmarks(folder, space.id,
+                Utils.setTabNameOverride.bind(Utils), Utils.setPinnedTabState.bind(Utils), null, Utils.getPinnedUrlKey.bind(Utils), currentWindow.id);
+            const previousPins = space.spaceBookmarks;
+            const windowTabIds = new Set(allTabs.filter(t => t.windowId === currentWindow.id).map(t => t.id));
+            space.spaceBookmarks = [...new Set([...previousPins.filter(id => !windowTabIds.has(id)), ...bound])];
+            space.temporaryTabs = [...new Set([...space.temporaryTabs, ...previousPins])].filter(id => !space.spaceBookmarks.includes(id));
+            for (const id of previousPins) if (!space.spaceBookmarks.includes(id)) await Utils.removePinnedTabState(id);
+        } catch (error) {
+            Logger.warn('Space bookmark association needs recovery:', space.id, error);
+        }
         createSpaceElement(space);
     }
     await saveSpaces();
@@ -717,17 +729,25 @@ async function initSidebar() {
     sidebarReady = true;
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== 'local' || !changes.spaces || !sidebarReady) return;
-        clearTimeout(storedSpacesRefresh);
-        storedSpacesRefresh = setTimeout(async () => {
-            await pendingSpaceSaves;
-            if (isDraggingTab || pendingSaveCount) return;
-            const next = await spaceRequest('get');
-            if (JSON.stringify(next) !== JSON.stringify(spaces)) await adoptStoredSpaces(next);
-        }, 100);
+        scheduleStoredSpacesRefresh();
     });
     await offerTabGroupImport();
 }
 let storedSpacesRefresh;
+function scheduleStoredSpacesRefresh() {
+    clearTimeout(storedSpacesRefresh);
+    storedSpacesRefresh = setTimeout(async () => {
+        try {
+            await pendingSpaceSaves;
+            if (isDraggingTab || pendingSaveCount || isOpeningBookmark) {
+                scheduleStoredSpacesRefresh();
+                return;
+            }
+            const next = await spaceRequest('get');
+            if (JSON.stringify(next) !== JSON.stringify(spaces)) await adoptStoredSpaces(next);
+        } catch (error) { Logger.warn('Could not refresh saved spaces:', error); }
+    }, 100);
+}
 
 async function offerTabGroupImport() {
     const { tabGroupImportDismissed } = await chrome.storage.local.get('tabGroupImportDismissed');
@@ -838,9 +858,9 @@ function createSpaceElement(space) {
     nameInput.value = space.name;
     nameInput.addEventListener('change', async () => {
         // Update bookmark folder name
-        const oldName = space.name;
-        const oldFolder = await LocalStorage.getOrCreateSpaceFolder(oldName);
+        const oldFolder = await getSpaceBookmarkFolder(space);
         await chrome.bookmarks.update(oldFolder.id, { title: nameInput.value });
+        await LocalStorage.updateSpaceRegistryEntry(oldFolder.id, { name: nameInput.value });
 
         space.name = nameInput.value;
         saveSpaces();
@@ -1322,38 +1342,28 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
 }
 
 function saveSpaces() {
-    const before = structuredClone(savedSpaces);
-    const after = structuredClone(spaces);
-    savedSpaces = structuredClone(after);
     pendingSaveCount++;
-    const run = pendingSpaceSaves.then(() => spaceRequest('patch', { before, after }));
+    const run = spaceSaveQueue.submit(spaces);
     pendingSpaceSaves = run.catch(error => Logger.error('Saving spaces failed', error)).finally(() => pendingSaveCount--);
     return run;
 }
 
 async function moveTabToPinned(space, tab) {
+    space = spaces.find(s => s.id === space.id);
+    if (!space) return;
+    const spaceFolder = await getSpaceBookmarkFolder(space);
+    const created = await chrome.bookmarks.create({
+        parentId: spaceFolder.id, title: tab.title, url: tab.url
+    });
+    const bookmarkIdToStore = created.id;
+
+    // Track the original pinned URL for Arc-like "Back to Pinned URL" behavior.
+    await Utils.setPinnedTabState(tab.id, { pinnedUrl: tab.url, bookmarkId: bookmarkIdToStore });
+
     space.temporaryTabs = space.temporaryTabs.filter(id => id !== tab.id);
     if (!space.spaceBookmarks.includes(tab.id)) {
         space.spaceBookmarks.push(tab.id);
     }
-    const spaceFolder = await getSpaceBookmarkFolder(space);
-    const bookmarks = await chrome.bookmarks.getChildren(spaceFolder.id);
-    const existingBookmark = BookmarkUtils.findBookmarkByUrl(bookmarks, tab.url);
-    let bookmarkIdToStore = existingBookmark?.id || null;
-    if (!existingBookmark) {
-        // delete existing bookmark
-        await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url);
-
-        const created = await chrome.bookmarks.create({
-            parentId: spaceFolder.id,
-            title: tab.title,
-            url: tab.url
-        });
-        bookmarkIdToStore = created?.id || null;
-    }
-
-    // Track the original pinned URL for Arc-like "Back to Pinned URL" behavior.
-    await Utils.setPinnedTabState(tab.id, { pinnedUrl: tab.url, bookmarkId: bookmarkIdToStore });
 
     // Update chevron state after moving tab to pinned
     const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
@@ -1371,6 +1381,8 @@ async function moveTabToPinned(space, tab) {
 }
 
 async function moveTabToTemp(space, tab) {
+    space = spaces.find(s => s.id === space.id);
+    if (!space) return;
     await removeSpacePin(space, tab);
 
     // Move tab from bookmarks to temporary tabs in space data
@@ -1393,6 +1405,7 @@ async function moveTabToTemp(space, tab) {
 
     // Persist extension ordering after membership changes.
     await persistSpaceTabOrder(space.id, { source: 'arcify', movedTabId: tab.id });
+    await refreshActiveSpaceUI();
 }
 
 // Helper function to manage folder placeholder state
@@ -1581,8 +1594,8 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
     if (container.dataset.tabType === 'pinned' && (draggingElement.dataset.tabId || draggingElement.dataset.url)) {
         // Handle favorite tab conversion
         if (draggingElement.classList.contains('pinned-favicon')) {
-            await convertFavoriteToTab(draggingElement, true);
-            return; // Exit early, conversion complete
+            const converted = await convertFavoriteToTab(draggingElement, true);
+            draggingElement = converted.newTabElement;
         }
 
         Logger.log("Tab dropped to pinned section or folder");
@@ -1631,6 +1644,22 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 return;
             }
 
+            // Determine the target folder
+            const targetFolderElement = targetFolder ? targetFolder.closest('.folder') : null;
+
+            const spaceFolder = await getSpaceBookmarkFolder(space);
+            if (targetFolderElement && !targetFolderElement.dataset.bookmarkId) throw new Error('Folder creation is not complete.');
+            const parentId = targetFolderElement?.dataset.bookmarkId || spaceFolder.id;
+            let bookmarkId = draggingElement.dataset.bookmarkId;
+            const pinnedUrl = draggingElement.dataset.pinnedUrl || tab.url;
+            if (bookmarkId) {
+                await chrome.bookmarks.move(bookmarkId, { parentId });
+            } else {
+                bookmarkId = (await chrome.bookmarks.create({ parentId, title: tab.title, url: pinnedUrl })).id;
+            }
+            draggingElement.dataset.bookmarkId = bookmarkId;
+            draggingElement.dataset.pinnedUrl = pinnedUrl;
+            if (tabId) await Utils.setPinnedTabState(tabId, { bookmarkId, pinnedUrl });
             // Move tab from temporary to pinned in space data (only for regular tabs with real IDs)
             if (!isBookmarkOnly && tabId) {
                 space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
@@ -1642,27 +1671,6 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 Logger.log("Skipping space data update for bookmark-only tab");
             }
 
-            // Determine the target folder
-            const targetFolderElement = targetFolder ? targetFolder.closest('.folder') : null;
-
-            const spaceFolder = await getSpaceBookmarkFolder(space);
-            const parentId = targetFolderElement?.dataset.bookmarkId || spaceFolder.id;
-            let bookmarkId = draggingElement.dataset.bookmarkId;
-            const pinnedUrl = draggingElement.dataset.pinnedUrl || tab.url;
-            if (bookmarkId) {
-                await chrome.bookmarks.move(bookmarkId, { parentId });
-            } else {
-                const existing = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { url: pinnedUrl });
-                if (existing) {
-                    bookmarkId = existing.bookmark.id;
-                    await chrome.bookmarks.move(bookmarkId, { parentId });
-                } else {
-                    bookmarkId = (await chrome.bookmarks.create({ parentId, title: tab.title, url: pinnedUrl })).id;
-                }
-            }
-            draggingElement.dataset.bookmarkId = bookmarkId;
-            draggingElement.dataset.pinnedUrl = pinnedUrl;
-            if (tabId) await Utils.setPinnedTabState(tabId, { bookmarkId, pinnedUrl });
             // Remove a closed placeholder for the same bookmark after dropping an open tab.
             container.querySelectorAll('.tab.bookmark-only').forEach(el => {
                 if (el !== draggingElement && el.dataset.bookmarkId === bookmarkId) el.remove();
@@ -1682,7 +1690,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
         if (draggingElement.classList.contains('pinned-favicon')) {
             const { tab } = await convertFavoriteToTab(draggingElement, false);
             const space = spaces.find(s => s.id === activeSpaceId);
-            if (space) moveTabToTemp(space, tab);
+            if (space) await moveTabToSpace(tab.id, space.id, false);
             return; // Exit early, conversion complete
         }
 
@@ -1695,7 +1703,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
 
             if (space && tab) {
                 // Remove tab from bookmarks if it exists
-                moveTabToTemp(space, tab);
+                if (space.spaceBookmarks.includes(tab.id)) await moveTabToTemp(space, tab);
 
                 // Update all folder placeholders after removing bookmark
                 updatePinnedSectionPlaceholders();
@@ -1935,17 +1943,24 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 await handleBookmarkOperations(e, draggingElement, container, targetFolder);
 
                 if (container.dataset.tabType === 'pinned') {
-                    const space = spaces.find(s => s.id === container.closest('.space').dataset.spaceId);
-                    const root = await getSpaceBookmarkFolder(space);
-                    const inverted = await Utils.getInvertTabOrder();
-                    const persist = async (content, parentId) => {
-                        const children = orderedBookmarkElements(content);
-                        await saveBookmarkOrder(parentId, children.map(el => el.dataset.bookmarkId), inverted);
-                        for (const child of children.filter(el => el.classList.contains('folder'))) {
-                            await persist(child.querySelector(':scope > .folder-content'), child.dataset.bookmarkId);
-                        }
-                    };
-                    await persist(container, root.id);
+                    try {
+                        const space = spaces.find(s => s.id === container.closest('.space').dataset.spaceId);
+                        const root = await getSpaceBookmarkFolder(space);
+                        const inverted = await Utils.getInvertTabOrder();
+                        const persist = async (content, parentId) => {
+                            const children = orderedBookmarkElements(content);
+                            await saveBookmarkOrder(parentId, children.map(el => el.dataset.bookmarkId), inverted);
+                            for (const child of children.filter(el => el.classList.contains('folder'))) {
+                                await persist(child.querySelector(':scope > .folder-content'), child.dataset.bookmarkId);
+                            }
+                        };
+                        await persist(container, root.id);
+                    } catch (error) {
+                        Logger.warn('Bookmark order changed during drag; restoring the saved order.', error);
+                        await refreshActiveSpaceUI();
+                        alert(error.message);
+                        return;
+                    }
                 }
 
                 // Resync collapsed-folder projections/icons after move (source + destination)
@@ -2034,8 +2049,8 @@ function setupPlaceholderDragAndDrop(placeholderContainer, pinnedContainer) {
 }
 
 async function createNewFolder(spaceElement, parentFolderElement = null) {
-    const spaceName = spaceElement.querySelector('.space-name').value;
-    const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(spaceName);
+    const space = spaces.find(s => s.id === spaceElement.dataset.spaceId);
+    const spaceFolder = await getSpaceBookmarkFolder(space);
     const parentId = parentFolderElement?.dataset.bookmarkId || spaceFolder.id;
     if (parentFolderElement && !parentFolderElement.dataset.bookmarkId) return;
     if (!await canCreateFolder(spaceFolder.id, parentId)) return;
@@ -2068,7 +2083,10 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
 
     // Keep the created folder's identity when this editor is used again.
     // Serialize Enter and blur so they cannot create two bookmark folders.
-    let createdFolderId;
+    const createdFolder = await createFolder(spaceFolder.id, parentId, 'Untitled');
+    let createdFolderId = createdFolder.id;
+    folderElement.dataset.bookmarkId = createdFolderId;
+    await saveFolderCollapsed(createdFolderId, false);
     let savedFolderName = 'Untitled';
     let folderSave = Promise.resolve();
     let cancelFolderBlur = false;
@@ -2142,7 +2160,7 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
     if (parentFolderElement) updateFolderPlaceholder(parentFolderElement);
 
     // Set up context menu for the new folder
-    setupFolderContextMenu(folderElement, { name: spaceElement.querySelector('.space-name').value });
+    setupFolderContextMenu(folderElement, space);
 
     // Ensure new empty folder shows placeholder
     updateFolderPlaceholder(folderElement);
@@ -2176,8 +2194,6 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         const invertTabOrder = await Utils.getInvertTabOrder();
         const tabs = (await getOwnedTabs(space.id)).filter(t => !t.pinned);
         const pinnedStatesById = await Utils.getPinnedTabStates();
-        const pinnedTabs = await chrome.tabs.query({ pinned: true, windowId: currentWindow.id });
-        const pinnedUrls = new Set(pinnedTabs.map(tab => tab.url));
 
         const spaceFolder = await getSpaceBookmarkFolder(space);
 
@@ -2186,7 +2202,6 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
             async function processBookmarkNode(node, container) {
                 const bookmarks = await chrome.bookmarks.getChildren(node.id);
                 Logger.log('Processing bookmarks:', bookmarks);
-                const processedUrls = new Set();
 
                 const itemsToRender = invertTabOrder ? [...bookmarks].reverse() : bookmarks;
                 for (const item of itemsToRender) {
@@ -2277,54 +2292,15 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                         setFolderCollapsed(folderElement, await loadFolderCollapsed(item.id), false);
                     } else {
                         // This is a bookmark
-                        if (!processedUrls.has(item.url) && !pinnedUrls.has(item.url)) {
-                            // Choose ONE open tab (if any) to represent this bookmark:
-                            // 1) Strongest: pinned state points to this bookmarkId
-                            // 2) Tab already bound to this space's pinned set, matching by base URL
-                            //    (prevents a newly opened URL twin from displacing the established pinned tab)
-                            // 3) Exact URL match, but only if not already used for another bookmark
-                            // 4) Base URL match (origin+pathname), but only if not already used for another bookmark
-                            const byBookmarkId = tabs.find(t => pinnedStatesById?.[t.id]?.bookmarkId === item.id);
-                            // A tab explicitly bound to a *different* bookmark belongs to that
-                            // bookmark's byBookmarkId match. Don't let a weaker URL-based match
-                            // steal it — that's what produced a duplicate render when two
-                            // bookmarks in the same space share a base-URL key.
-                            const notBoundElsewhere = t => {
-                                const bid = pinnedStatesById?.[t.id]?.bookmarkId;
-                                return !bid || bid === item.id;
-                            };
-                            const bySpaceMember = tabs.find(t =>
-                                t?.id &&
+                        {
+                            const existingTab = tabs.find(t =>
                                 !representedPinnedTabIds.has(t.id) &&
-                                notBoundElsewhere(t) &&
-                                space.spaceBookmarks.includes(t.id) &&
-                                Utils.getPinnedUrlKey(t.url) === Utils.getPinnedUrlKey(item.url)
-                            );
-                            const byExactUrl = tabs.find(t =>
-                                t?.id &&
-                                !representedPinnedTabIds.has(t.id) &&
-                                notBoundElsewhere(t) &&
-                                t.url === item.url
-                            );
-                            const byBaseUrl = tabs.find(t =>
-                                t?.id &&
-                                !representedPinnedTabIds.has(t.id) &&
-                                notBoundElsewhere(t) &&
-                                Utils.getPinnedUrlKey(t.url) === Utils.getPinnedUrlKey(item.url)
-                            );
-                            const existingTab = byBookmarkId || bySpaceMember || byExactUrl || byBaseUrl;
+                                pinnedStatesById[t.id]?.bookmarkId === item.id);
                             if (existingTab) {
                                 Logger.log('Creating UI element for active bookmark:', existingTab);
                                 representedPinnedTabIds.add(existingTab.id);
                                 existingTab.pinnedUrl = item.url;
                                 existingTab.bookmarkId = item.id;
-                                // Repair the persistent binding so subsequent renders use byBookmarkId
-                                // (cheap; only writes if state is missing or stale for this tab).
-                                const stored = pinnedStatesById?.[existingTab.id];
-                                if (!stored || stored.bookmarkId !== item.id || stored.pinnedUrl !== item.url) {
-                                    pinnedStatesById[existingTab.id] = { pinnedUrl: item.url, bookmarkId: item.id };
-                                    await Utils.setPinnedTabState(existingTab.id, { pinnedUrl: item.url, bookmarkId: item.id });
-                                }
                                 const tabElement = await createTabElement(existingTab, true);
                                 Logger.log('Appending tab element to container:', tabElement);
                                 container.appendChild(tabElement);
@@ -2343,7 +2319,6 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                                 const tabElement = await createTabElement(bookmarkTab, true, true);
                                 container.appendChild(tabElement);
                             }
-                            processedUrls.add(item.url);
                             // Update placeholder state for folder if this container is inside a folder
                             const parentFolder = container.closest('.folder');
                             if (parentFolder) {
@@ -2361,7 +2336,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
 
 
         // Load temporary tabs
-        let tabsToLoad = [...space.temporaryTabs]; // Create a copy
+        let tabsToLoad = [...new Set([...space.temporaryTabs, ...space.spaceBookmarks.filter(id => !representedPinnedTabIds.has(id))])]; // Create a copy
 
         if (invertTabOrder) {
             tabsToLoad.reverse();
@@ -2435,78 +2410,21 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
     Logger.log('Closing tab:', tab, tabElement, isPinned, isBookmarkOnly);
 
     if (isBookmarkOnly) {
-        // Remove from bookmarks
-        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-        const activeSpace = spaces.find(s => s.id === activeSpaceId);
-
-        const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
-        Logger.log("spaceFolder", spaceFolder);
-        if (spaceFolder) {
-            await BookmarkUtils.removeBookmarkByUrl(spaceFolder.id, tab.url, {
-                removeTabElement: true,
-                tabElement: tabElement,
-                logRemoval: true
-            });
-        }
+        const space = spaces.find(s => s.id === tabElement.closest('.space')?.dataset.spaceId);
+        if (!space) return;
+        await removeSpacePin(space, { bookmarkId: tabElement.dataset.bookmarkId });
+        tabElement.remove();
 
         // Update folder placeholders after removing bookmark
         updatePinnedSectionPlaceholders();
         return;
     }
 
-    const activeSpace = spaces.find(s => s.id === activeSpaceId);
-    Logger.log("activeSpace", activeSpace);
-    const isCurrentlyPinned = activeSpace?.spaceBookmarks.includes(tab.id);
-    const isCurrentlyTemporary = activeSpace?.temporaryTabs.includes(tab.id);
-    Logger.log("isCurrentlyPinned", isCurrentlyPinned, "isCurrentlyTemporary", isCurrentlyTemporary, "isPinned", isPinned);
-    if (isCurrentlyPinned || (isPinned && !isCurrentlyTemporary)) {
-        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-
-        const spaceFolder = spaceFolders.find(f => f.title === activeSpace.name);
-        Logger.log("spaceFolder", spaceFolder);
-        if (spaceFolder) {
-            Logger.log("tab", tab);
-
-            // For actual tabs, check overrides
-            const overrides = await Utils.getTabNameOverrides();
-            const override = overrides[tab.id];
-            const displayTitle = override ? override.name : tab.title;
-
-            const bookmarkTab = {
-                id: null,
-                title: displayTitle,
-                url: tab.url,
-                favIconUrl: tab.favIconUrl,
-                spaceName: tab.spaceName
-            };
-            const parentFolder = tabElement.closest('.folder');
-            const inactiveTabElement = await createTabElement(bookmarkTab, true, true);
-            tabElement.replaceWith(inactiveTabElement);
-            if (parentFolder) syncCollapsedFolderTabs(parentFolder);
-
-            chrome.tabs.remove(tab.id);
-
-            // Update chevron state after closing pinned tab
-            const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
-            if (spaceElement) {
-                const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
-                updateChevronState(spaceElement, pinnedContainer);
-            }
-            return;
-        }
-    } else {
-        chrome.tabs.remove(tab.id);
-    }
-
-    // Update chevron state after closing any tab
-    const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
-    if (spaceElement) {
-        const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
-        updateChevronState(spaceElement, pinnedContainer);
-    }
+    // Closing a live tab never deletes its durable favorite. The removal listener
+    // reconstructs the closed row from its exact bookmark identity.
+    await chrome.tabs.remove(tab.id);
 }
+
 
 async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     Logger.log('Creating tab element:', tab.id, 'IsBookmarkOnly:', isBookmarkOnly);
@@ -2556,7 +2474,6 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         const bookmarkIdForTab = tab.bookmarkId || stored?.bookmarkId || null;
         tabElement.dataset.pinnedUrl = pinnedUrlForTab;
         if (bookmarkIdForTab) tabElement.dataset.bookmarkId = bookmarkIdForTab;
-        await Utils.setPinnedTabState(tab.id, { pinnedUrl: pinnedUrlForTab, bookmarkId: bookmarkIdForTab });
     }
 
     // Set up favicon
@@ -2789,91 +2706,21 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
                     // A bookmark in this sidebar may only reuse a tab in this window.
                     const allTabs = await chrome.tabs.query({ windowId: currentWindow.id });
-                    const existingTab = BookmarkUtils.findTabByUrl(allTabs.filter(t => ownerOf(spaces, t.id)?.id === activeSpaceId), tabUrl);
-
+                    const clickedBookmarkId = tabElement.dataset.bookmarkId;
+                    const bindings = await Utils.getPinnedTabStates();
+                    const existingTab = clickedBookmarkId && allTabs.find(t =>
+                        ownerOf(spaces, t.id)?.id === activeSpaceId &&
+                        bindings[t.id]?.bookmarkId === clickedBookmarkId);
                     if (existingTab) {
-                        const clickedBookmarkId = tabElement.dataset.bookmarkId || null;
-                        const clickedPinnedUrl = tabElement.dataset.pinnedUrl || tabUrl;
-                        const clickedPinnedKey = Utils.getPinnedUrlKey(clickedPinnedUrl);
-
-                        // If another tab in the target space already represents this bookmark,
-                        // focus that one instead of promoting `existingTab` to pinned.
-                        // This prevents URL twins from being silently auto-pinned alongside
-                        // the original pinned tab.
-                        const pinnedStatesById = await Utils.getPinnedTabStates();
-                        const targetSpace = ownerOf(spaces, existingTab.id) || spaces.find(s => s.id === activeSpaceId);
-                        let boundTab = null;
-                        if (isPinned && targetSpace) {
-                            for (const boundId of targetSpace.spaceBookmarks) {
-                                if (boundId === existingTab.id) continue;
-                                const candidate = allTabs.find(t => t.id === boundId);
-                                if (!candidate) continue;
-                                const state = pinnedStatesById[boundId];
-                                const matchesByBookmark = clickedBookmarkId && state?.bookmarkId === clickedBookmarkId;
-                                const matchesByUrl = Utils.getPinnedUrlKey(candidate.url) === clickedPinnedKey;
-                                if (matchesByBookmark || matchesByUrl) {
-                                    boundTab = candidate;
-                                    break;
-                                }
-                            }
-                        }
-
-                        const tabToFocus = boundTab || existingTab;
-                        Logger.log('Found existing tab with same URL, activating:', tabToFocus.id, boundTab ? '(preferred already-bound pinned tab)' : '');
-                        await Utils.focusTab(tabToFocus.id);
-                        activateTabInDOM(tabToFocus.id);
-
-                        if (isPinned && !boundTab) {
-                            // Only persist pinned-state for `existingTab` when we're actually
-                            // promoting it (i.e., no other tab is already bound to this bookmark).
-                            await Utils.setPinnedTabState(existingTab.id, { pinnedUrl: clickedPinnedUrl, bookmarkId: clickedBookmarkId });
-                        }
-
-                        // Update space data if needed
-                        const space = ownerOf(spaces, tabToFocus.id);
-                        if (space) {
-                            space.lastTab = tabToFocus.id;
-                            // Only auto-add to spaceBookmarks when no other tab already represents this bookmark.
-                            if (isPinned && !boundTab && !space.spaceBookmarks.includes(existingTab.id)) {
-                                space.spaceBookmarks.push(existingTab.id);
-                                // If this tab was previously sitting in the temp section,
-                                // remove it from temporaryTabs and drop any temp DOM element
-                                // so it doesn't appear in both sections.
-                                if (space.temporaryTabs.includes(existingTab.id)) {
-                                    space.temporaryTabs = space.temporaryTabs.filter(id => id !== existingTab.id);
-                                    const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
-                                    if (spaceElement) {
-                                        const tempContainer = spaceElement.querySelector('[data-tab-type="temporary"]');
-                                        if (tempContainer) {
-                                            const targetTabId = String(existingTab.id);
-                                            tempContainer.querySelectorAll('.tab').forEach(el => {
-                                                if (el.dataset.tabId && String(el.dataset.tabId) === targetTabId) el.remove();
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                            saveSpaces();
-                        }
-
-                        // Replace the element with the active tab element for whichever tab now owns the bookmark.
-                        if (boundTab) {
-                            // boundTab already has its own live element in the pinned section
-                            // (it's a member of the space's spaceBookmarks). Cloning a second
-                            // element for it would duplicate the tab in the DOM, so just drop
-                            // the clicked placeholder instead.
-                            tabElement.remove();
-                        } else {
-                            const updatedTabElement = await createTabElement(tabToFocus, isPinned, false);
-                            tabElement.replaceWith(updatedTabElement);
-                        }
+                        await Utils.focusTab(existingTab.id);
+                        await refreshActiveSpaceUI();
                         isOpeningBookmark = false;
                         return;
                     }
 
                     // Check if tab is in archive and restore it
                     const archivedTabs = await Utils.getArchivedTabs();
-                    const archivedTab = archivedTabs.find(t => t.url === tabUrl);
+                    const archivedTab = !isPinned && archivedTabs.find(t => t.url === tabUrl);
 
                     let targetSpaceId = activeSpaceId;
                     let bookmarkTitle = tab.title || tabElement.querySelector('.tab-title-display')?.textContent || 'Bookmark';
@@ -2976,7 +2823,9 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 } catch (error) {
                     Logger.error("Error opening bookmark:", error);
                 } finally {
-                    isOpeningBookmark = false; // Reset flag
+                    isOpeningBookmark = false;
+                    await pendingSpaceSaves;
+                    await refreshActiveSpaceUI();
                 }
             } else {
                 // It's a regular tab, just activate it
@@ -3098,13 +2947,10 @@ async function createNewSpace() {
  * Used to protect favorites from bulk-close operations even if a favorite's tab id leaked
  * into temporaryTabs or its tab navigated away from the exact bookmarked URL.
  */
-async function getSpaceFavoriteUrlKeys(spaceName) {
+async function getSpaceFavoriteUrlKeys(space) {
     const keys = new Set();
     try {
-        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-        const spaceFolder = spaceFolders.find(f => !f.url && f.title === spaceName);
-        if (!spaceFolder) return keys;
+        const spaceFolder = await getSpaceBookmarkFolder(space);
         const [subTree] = await chrome.bookmarks.getSubTree(spaceFolder.id);
         const walk = (node) => {
             if (!node) return;
@@ -3113,7 +2959,8 @@ async function getSpaceFavoriteUrlKeys(spaceName) {
         };
         walk(subTree);
     } catch (error) {
-        Logger.warn('Could not read favorite URL keys for space:', spaceName, error);
+        Logger.warn('Could not read favorite URL keys for space:', space.id, error);
+        throw error;
     }
     return keys;
 }
@@ -3126,12 +2973,13 @@ async function cleanTemporaryTabs(spaceId) {
     // Only close live tabs owned by this space, protecting favorite bindings.
     const ownedTabs = await getOwnedTabs(spaceId);
     const protectedIds = new Set(space.spaceBookmarks);
-    const favoriteUrlKeys = await getSpaceFavoriteUrlKeys(space.name);
+    const favoriteUrlKeys = await getSpaceFavoriteUrlKeys(space);
+    const bindings = await Utils.getPinnedTabStates();
     const closable = ownedTabs.filter(t =>
-        !protectedIds.has(t.id) && !favoriteUrlKeys.has(Utils.getPinnedUrlKey(t.url))
+        !isProtectedFavorite(t, protectedIds, bindings, favoriteUrlKeys)
     );
 
-    closable.forEach(t => chrome.tabs.remove(t.id));
+    await Promise.all(closable.map(t => chrome.tabs.remove(t.id)));
 
     // Keep only surviving favorites.
     const closedIds = new Set(closable.map(t => t.id));
@@ -3144,136 +2992,6 @@ async function handleTabCreated(tab) {
     await pendingSpaceSaves;
     const next = await spaceRequest('get');
     await adoptStoredSpaces(next);
-    const space = ownerOf(spaces, tab.id);
-    if (space) await tryBindNewTabToPinnedBookmark(tab, space);
-}
-
-// Returns true if the new tab was successfully bound to an unrealized pinned
-// bookmark in the given space (and thus placed into the pinned section instead of temp).
-async function tryBindNewTabToPinnedBookmark(newTab, space) {
-    try {
-        if (!space || !newTab?.id) return false;
-        const url = newTab.url || newTab.pendingUrl || '';
-        if (!url) return false;
-        // Skip browser-internal URLs that pinned bookmarks would never match.
-        if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') ||
-            url.startsWith('about:') || url.startsWith('edge://') || url.startsWith('devtools://')) {
-            return false;
-        }
-        const targetUrlKey = Utils.getPinnedUrlKey(url);
-        if (!targetUrlKey) return false;
-
-        // Cheap short-circuit before the bookmark-tree walk: an unrealized pinned
-        // bookmark always renders a `.bookmark-only` placeholder. This runs only
-        // for the active (rendered) space, so if there are no placeholders there's
-        // nothing to bind to — skip the chrome.bookmarks traversal entirely.
-        const spaceEl = document.querySelector(`[data-space-id="${space.id}"]`);
-        if (spaceEl && !spaceEl.querySelector('.tab.bookmark-only')) return false;
-
-        // Compute which bookmarks/URL keys are already realized by tabs in this space.
-        const pinnedStatesById = await Utils.getPinnedTabStates();
-        const claimedBookmarkIds = new Set();
-        const claimedUrlKeys = new Set();
-        for (const boundId of space.spaceBookmarks) {
-            if (boundId === newTab.id) continue;
-            const state = pinnedStatesById[boundId];
-            if (state?.bookmarkId) claimedBookmarkIds.add(String(state.bookmarkId));
-            try {
-                const t = await chrome.tabs.get(boundId);
-                if (t?.url) claimedUrlKeys.add(Utils.getPinnedUrlKey(t.url));
-            } catch (e) { /* dead tab id; ignore */ }
-        }
-
-        // Locate the space's bookmark folder.
-        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-        const spaceFolder = spaceFolders.find(f => f.title === space.name);
-        if (!spaceFolder) return false;
-
-        const target = await BookmarkUtils.findUnboundPinnedBookmarkByUrlKey(
-            spaceFolder.id,
-            targetUrlKey,
-            Utils.getPinnedUrlKey.bind(Utils),
-            claimedBookmarkIds,
-            claimedUrlKeys
-        );
-        if (!target) return false;
-
-        Logger.log('[AutoBind] Binding new tab', newTab.id, 'to unrealized pinned bookmark', target.id, target.url);
-
-        // Capture the bookmark-only placeholder's slot BEFORE moveTabToSpace runs,
-        // because moveTabToSpace will append the new element to the bottom of the
-        // top-level pinned container. We want the bound tab to inherit the
-        // placeholder's exact position (including folder containment).
-        const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
-        const targetBookmarkId = String(target.id);
-        const targetUrl = target.url;
-        const matchingPlaceholders = [];
-        let anchorParent = null;
-        let anchorNextSibling = null;
-        let anchorFolder = null;
-        if (spaceElement) {
-            spaceElement.querySelectorAll('.tab.bookmark-only').forEach(el => {
-                const matchesById = el.dataset.bookmarkId && String(el.dataset.bookmarkId) === targetBookmarkId;
-                const matchesByUrl = el.dataset.url === targetUrl;
-                if (matchesById || matchesByUrl) {
-                    matchingPlaceholders.push(el);
-                    if (!anchorParent) {
-                        anchorParent = el.parentNode;
-                        anchorNextSibling = el.nextSibling;
-                        anchorFolder = el.closest('.folder');
-                    }
-                }
-            });
-        }
-
-        // Move the tab into the pinned section of the space.
-        await moveTabToSpace(newTab.id, space.id, true /* pinned */, newTab.openerTabId);
-        await Utils.setPinnedTabState(newTab.id, { pinnedUrl: target.url, bookmarkId: target.id });
-
-        // Reposition the newly created pinned element to the placeholder's slot,
-        // then drop the placeholder(s). Done in this order so insertBefore can
-        // still see the placeholder as a reference node if it happens to remain
-        // as anchorNextSibling.
-        if (spaceElement && anchorParent) {
-            const newTabIdStr = String(newTab.id);
-            let newElement = null;
-            spaceElement.querySelectorAll('.tab').forEach(el => {
-                if (el.dataset.tabId && String(el.dataset.tabId) === newTabIdStr && !el.classList.contains('bookmark-only')) {
-                    newElement = el;
-                }
-            });
-
-            const foldersToRefresh = new Set();
-            if (newElement) {
-                // Track the folder the new element was originally appended into (if any)
-                // so we can refresh its placeholder state after we move it out.
-                const formerFolder = newElement.closest('.folder');
-                if (formerFolder && formerFolder !== anchorFolder) {
-                    foldersToRefresh.add(formerFolder);
-                }
-                // Insert at the placeholder's slot. If anchorNextSibling has since
-                // been removed from the DOM (defensive), fall back to appendChild.
-                if (anchorNextSibling && anchorNextSibling.parentNode === anchorParent) {
-                    anchorParent.insertBefore(newElement, anchorNextSibling);
-                } else {
-                    anchorParent.appendChild(newElement);
-                }
-                if (anchorFolder) foldersToRefresh.add(anchorFolder);
-            }
-
-            matchingPlaceholders.forEach(el => {
-                const parentFolder = el.closest('.folder');
-                if (parentFolder) foldersToRefresh.add(parentFolder);
-                el.remove();
-            });
-            foldersToRefresh.forEach(f => updateFolderPlaceholder(f));
-        }
-        return true;
-    } catch (e) {
-        Logger.error('[AutoBind] Error while attempting to bind new tab to pinned bookmark:', e);
-        return false;
-    }
 }
 
 
@@ -3284,75 +3002,6 @@ function handleTabUpdate(tabId, changeInfo, tab) {
     chrome.windows.getCurrent({ populate: false }, async (currentWindow) => {
         if (tab.windowId !== currentWindow.id) return;
         Logger.log('Tab updated:', tabId, changeInfo, spaces);
-
-        // Check if a temporary tab's new URL matches a pinned bookmark in the space
-        if (changeInfo.url) {
-            const space = spaces.find(s => s.temporaryTabs.includes(tabId));
-            if (space) {
-                try {
-                    const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-                    const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-                    const spaceFolder = spaceFolders.find(f => f.title === space.name);
-                    if (spaceFolder) {
-                        // Try exact URL match first, then base URL match (same as loadTabs init logic)
-                        let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { url: changeInfo.url });
-                        if (!bookmarkResult) {
-                            // Base URL match: check all bookmarks ignoring query params/hash
-                            const allBookmarks = await BookmarkUtils.getBookmarksFromFolderRecursive(spaceFolder.id);
-                            const newUrlKey = Utils.getPinnedUrlKey(changeInfo.url);
-                            const baseMatch = allBookmarks.find(b => Utils.getPinnedUrlKey(b.url) === newUrlKey);
-                            if (baseMatch) {
-                                bookmarkResult = { bookmark: baseMatch };
-                            }
-                        }
-                        if (bookmarkResult) {
-                            Logger.log('[PinnedMatch] Temp tab URL matches bookmark, promoting to pinned:', tabId, changeInfo.url);
-                            // Move tab from temporaryTabs to spaceBookmarks
-                            space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
-                            space.spaceBookmarks.push(tabId);
-                            saveSpaces();
-
-                            // Remove the temporary tab element
-                            const tempTabEl = document.querySelector(`[data-tab-id="${tabId}"]`);
-                            if (tempTabEl) tempTabEl.remove();
-
-                            // Find and replace the bookmark-only element with an active pinned tab
-                            const bookmarkOnlyEl = document.querySelector(`.bookmark-only[data-bookmark-id="${bookmarkResult.bookmark.id}"]`)
-                                || document.querySelector(`.bookmark-only[data-url="${bookmarkResult.bookmark.url}"]`);
-
-                            const chromeTab = await chrome.tabs.get(tabId);
-                            chromeTab.pinnedUrl = bookmarkResult.bookmark.url;
-                            chromeTab.bookmarkId = bookmarkResult.bookmark.id;
-                            const newTabElement = await createTabElement(chromeTab, true);
-
-                            if (bookmarkOnlyEl) {
-                                bookmarkOnlyEl.replaceWith(newTabElement);
-                            } else {
-                                // No bookmark-only element found — append to pinned container
-                                const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
-                                const pinnedContainer = spaceElement?.querySelector('[data-tab-type="pinned"]');
-                                if (pinnedContainer) pinnedContainer.appendChild(newTabElement);
-                            }
-
-                            // Set pinned tab state
-                            await Utils.setPinnedTabState(tabId, {
-                                pinnedUrl: bookmarkResult.bookmark.url,
-                                bookmarkId: bookmarkResult.bookmark.id
-                            });
-
-                            // Activate in DOM if this tab is the active Chrome tab
-                            if (chromeTab.active) {
-                                activateTabInDOM(tabId);
-                            }
-
-                            return; // Skip normal update handling — tab has been promoted
-                        }
-                    }
-                } catch (err) {
-                    Logger.error('[PinnedMatch] Error checking bookmark match:', err);
-                }
-            }
-        }
 
         // Update tab element if it exists
         const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
@@ -3492,104 +3141,16 @@ async function handleTabRemove(tabId) {
     const isPinned = owningSpace ? owningSpace.spaceBookmarks.includes(tabId) : false;
     Logger.log("isPinned", isPinned);
 
-    if (isPinned) {
-        // For pinned tabs, convert to bookmark-only element using existing bookmark data
+    if (isPinned && tabElement.dataset.bookmarkId) {
         try {
-            // Find the bookmark in Chrome bookmarks for this space
-            const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-            const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-            const spaceFolder = spaceFolders.find(f => f.title === owningSpace.name);
-
-            if (spaceFolder) {
-                // Try to get tab URL from Chrome API first, then fall back to DOM extraction
-                let tabUrl;
-                try {
-                    const tabData = await chrome.tabs.get(tabId);
-                    tabUrl = tabData.url;
-                    Logger.log('Found tab URL from Chrome API:', tabUrl);
-                } catch (error) {
-                    // Tab already closed, try to extract URL from DOM or other means
-                    Logger.log('Tab already closed, unable to get URL from Chrome API');
-                }
-
-                // Fallback: Extract URL from bookmark-only element's dataset if Chrome API failed
-                if (!tabUrl && tabElement) {
-                    Logger.log('!!!!!!!! TAB ELEMENT', tabElement);
-                    if (tabElement.dataset.url) {
-                        tabUrl = tabElement.dataset.url;
-                        Logger.log('Extracted URL from bookmark-only element dataset:', tabUrl);
-                    } else if (tabElement.classList.contains('bookmark-only')) {
-                        Logger.log('Bookmark-only element found but no URL in dataset - this should not happen');
-                    } else {
-                        Logger.log('Real tab element found but Chrome API failed - tab may have been closed very recently');
-                    }
-                }
-
-                // Use recursive search to find bookmark in space folder and all subfolders
-                let matchingBookmark = null;
-                if (tabUrl) {
-                    Logger.log('Searching for bookmark recursively with URL:', tabUrl);
-                    let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { url: tabUrl });
-                    Logger.log('Bookmark search result:', bookmarkResult);
-                    matchingBookmark = bookmarkResult?.bookmark;
-                }
-
-                // If URL search failed, try fallback search by title (less reliable)
-                if (!matchingBookmark) {
-                    Logger.log('URL search failed, attempting fallback title search');
-                    const titleElement = tabElement.querySelector('.tab-title-display, .tab-details span');
-                    const titleText = titleElement?.textContent;
-
-                    if (titleText) {
-                        Logger.log('Searching for bookmark recursively with title:', titleText);
-                        let bookmarkResult = await BookmarkUtils.findBookmarkInFolderRecursive(spaceFolder.id, { title: titleText });
-                        Logger.log('Title search result:', bookmarkResult);
-                        matchingBookmark = bookmarkResult?.bookmark;
-                    }
-                }
-
-                if (matchingBookmark) {
-                    // Use the established pattern from loadTabs()
-                    const bookmarkTab = {
-                        id: null,
-                        title: matchingBookmark.title,
-                        url: matchingBookmark.url,
-                        favIconUrl: null,
-                        spaceName: owningSpace.name,
-                        bookmarkId: matchingBookmark.id,
-                        pinnedUrl: matchingBookmark.url
-                    };
-                    const bookmarkElement = await createTabElement(bookmarkTab, true, true);
-
-                    // Preserve folder context - replace in the same DOM location
-                    const parentFolder = tabElement.closest('.folder');
-                    tabElement.replaceWith(bookmarkElement);
-                    if (parentFolder) syncCollapsedFolderTabs(parentFolder);
-
-                    // Update folder placeholder state if the tab was in a folder
-                    if (parentFolder) {
-                        Logger.log('Updated folder placeholder state after tab-to-bookmark conversion');
-                        updateFolderPlaceholder(parentFolder);
-                    }
-
-                    Logger.log('Successfully converted closed pinned tab to bookmark-only element in', parentFolder ? 'folder' : 'root level');
-                } else {
-                    Logger.warn('Could not find matching bookmark for closed pinned tab, removing element');
-                    tabElement.remove();
-                }
-            } else {
-                Logger.warn('Could not find space folder for closed pinned tab, removing element');
-                tabElement.remove();
-            }
-        } catch (error) {
-            Logger.error('Error converting pinned tab to bookmark-only element:', error);
-            // Fallback: just remove the element
-            tabElement.remove();
-        }
-    } else {
-        // If not a pinned tab, remove the element
-        tabElement?.remove();
-    }
+            const [bookmark] = await chrome.bookmarks.get(tabElement.dataset.bookmarkId);
+            if (bookmark?.url) {
+                const row = await createTabElement({ id: null, title: bookmark.title,
+                    url: bookmark.url, pinnedUrl: bookmark.url, bookmarkId: bookmark.id }, true, true);
+                tabElement.replaceWith(row);
+            } else tabElement.remove();
+        } catch { tabElement.remove(); }
+    } else tabElement.remove();
 
     // Remove tab from spaces
     spaces.forEach(space => {
@@ -3672,6 +3233,9 @@ async function deleteSpace(spaceId) {
     Logger.log('Deleting space:', spaceId);
     const space = spaces.find(s => s.id === spaceId);
     if (space) {
+        const folderToDelete = await getSpaceBookmarkFolder(space);
+        await chrome.bookmarks.removeTree(folderToDelete.id);
+        await LocalStorage.removeSpaceRegistryEntry(folderToDelete.id);
         // Close live tabs owned by the deleted space.
         const ownedTabs = (await chrome.tabs.query({})).filter(t => ownerOf(spaces, t.id)?.id === spaceId);
 
@@ -3690,15 +3254,6 @@ async function deleteSpace(spaceId) {
         if (activeSpaceId === spaceId && spaces.length > 0) {
             await setActiveSpace(spaces[0].id);
         }
-
-        // Delete bookmark folder for this space
-        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
-        const spaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
-        const spaceFolder = spaceFolders.find(f => f.title === space.name);
-        // Clean up the durable registry entry keyed by the folder id (before removing folder).
-        const folderIdToForget = space.bookmarkFolderId ?? spaceFolder?.id;
-        if (folderIdToForget) await LocalStorage.removeSpaceRegistryEntry(folderIdToForget);
-        if (spaceFolder) await chrome.bookmarks.removeTree(spaceFolder.id);
 
         // Save changes
         saveSpaces();
@@ -3884,7 +3439,7 @@ function setupFolderContextMenu(folderElement, space, item = null) {
         contextMenu.style.top = `${e.clientY}px`;
 
         const spaceElement = folderElement.closest('.space');
-        const spaceFolder = await LocalStorage.getOrCreateSpaceFolder(space.name);
+        const spaceFolder = await getSpaceBookmarkFolder(space);
         const folderId = folderElement.dataset.bookmarkId;
         if (folderId && await canCreateFolder(spaceFolder.id, folderId)) {
             const newFolderOption = document.createElement('div');

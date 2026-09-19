@@ -116,6 +116,7 @@ export class SpaceStore {
     // Bookmark folders are durable space definitions regardless of Chrome group sync.
     // Run on every worker startup and sidebar read, including version-2 installations.
     async discoverBookmarkSpaces() {
+        const before = JSON.stringify(this.spaces);
         const root = await LocalStorage.getOrCreateArcifyFolder();
         const folders = (await chrome.bookmarks.getChildren(root.id)).filter(node => !node.url);
         for (const folder of folders) {
@@ -128,6 +129,7 @@ export class SpaceStore {
             }
             space.name = folder.title;
         }
+        return before !== JSON.stringify(this.spaces);
     }
     track(tab) {
         const url = tab.url || tab.pendingUrl;
@@ -205,7 +207,9 @@ export class SpaceStore {
     async dispatch(message) {
         return this.run(async () => {
             switch (message.action) {
-                case 'get': await this.discoverBookmarkSpaces(); break;
+                case 'get':
+                    if (await this.discoverBookmarkSpaces()) await this.persist();
+                    break;
                 case 'patch':
                     for (const next of message.after) {
                         const prev = message.before.find(s => s.id === next.id);

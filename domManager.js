@@ -530,7 +530,6 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                     if (spaceWithTempTab) {
                         Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
-                        await moveTabToSpace(tabToToggle.id, spaceWithTempTab.id, true);
                         await moveTabToPinned(spaceWithTempTab, tabToToggle);
                     } else {
                         const spaceWithBookmark = spaces.find(space =>
@@ -539,7 +538,6 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                         if (spaceWithBookmark) {
                             Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a bookmarked tab in space "${spaceWithBookmark.name}". Unpinning it.`);
-                            await moveTabToSpace(tabToToggle.id, spaceWithBookmark.id, false);
                             await moveTabToTemp(spaceWithBookmark, tabToToggle);
                         } else {
                             Logger.warn(`[QuickPin] Tab ${tabToToggle.id} not found in any space as temporary or bookmarked.`);
@@ -594,7 +592,7 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
             }
 
             // Use the utility function to handle pinned tab activation
-            activatePinnedTabByURL(request.bookmarkUrl, request.spaceId, request.spaceName);
+            activatePinnedTabByURL(request.bookmarkUrl, request.spaceId, request.spaceName, request.bookmarkId || null);
         }
     });
 }

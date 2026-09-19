@@ -23,6 +23,8 @@ function background(completed = false, onboardingVersion = undefined, version = 
     };
     runInNewContext(source, {
         chrome, console, registerTourMessages() {},
+        registerBookmarkListeners() {},
+        enqueueBookmarkOrder: async () => [],
         SpaceStore: class { install() {} async dispatch() { return [{ id: 'home' }]; } },
         Utils: { getSettings: async () => ({ autoArchiveEnabled: false }) },
         Logger: { log() {}, error() {} }
