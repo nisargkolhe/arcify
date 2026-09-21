@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getSpaceBookmarkById, removeSpacePin, getSpaceBookmarkFolder } from '../../space-bookmarks.js';
+import { getSpaceBookmarkById, removeSpacePin, getSpaceBookmarkFolder, getSpaceBookmarkTree } from '../../space-bookmarks.js';
 import { BookmarkUtils } from '../../bookmark-utils.js';
 function mock() {
     const removed = [];
@@ -58,4 +58,26 @@ test('bookmark identity is accepted only inside the associated space subtree', a
     mock();
     assert.equal((await getSpaceBookmarkById({ bookmarkFolderId: 'space' }, 'bound')).id, 'bound');
     assert.equal(await getSpaceBookmarkById({ bookmarkFolderId: 'space' }, 'url-twin'), null);
+});
+
+test('bookmark tree loading is all-or-nothing and performs no recovery writes', async () => {
+    const { tree } = mock();
+    const writes = [];
+    globalThis.chrome.bookmarks.create = async (...args) => writes.push(['create', ...args]);
+    globalThis.chrome.bookmarks.update = async (...args) => writes.push(['update', ...args]);
+    globalThis.chrome.bookmarks.move = async (...args) => writes.push(['move', ...args]);
+    const loaded = await getSpaceBookmarkTree({ bookmarkFolderId: 'space' });
+    assert.equal(loaded.id, 'space');
+    assert.equal(loaded.children[0].id, 'folder');
+    assert.deepEqual(loaded.children[0].children.map(node => node.id), ['first', 'bound']);
+    assert.deepEqual(writes, []);
+
+    const original = globalThis.chrome.bookmarks.getChildren;
+    globalThis.chrome.bookmarks.getChildren = async id => {
+        if (id === 'folder') throw new Error('injected read failure');
+        return original(id);
+    };
+    await assert.rejects(getSpaceBookmarkTree({ bookmarkFolderId: 'space' }), /injected read failure/);
+    assert.deepEqual(writes, []);
+    assert.equal(tree.folder.length, 2);
 });

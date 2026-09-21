@@ -1,4 +1,4 @@
-import { getSpaceBookmarkById, getSpaceBookmarkFolder, removeSpacePin } from './space-bookmarks.js';
+import { getSpaceBookmarkById, getSpaceBookmarkFolder, getSpaceBookmarkTree, removeSpacePin } from './space-bookmarks.js';
 import { initSidebarTour } from './sidebar-tour.js';
 /**
  * Sidebar - Main extension UI and tab/space management
@@ -2173,8 +2173,6 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
     const previous = spaceRenderTasks.get(space.id) || Promise.resolve();
     const run = previous.catch(error => Logger.warn('Previous space render failed', error)).then(async () => {
         if (!pinnedContainer.isConnected) return;
-        pinnedContainer.querySelectorAll('.tab, .folder').forEach(el => el.remove());
-        tempContainer.querySelectorAll('.tab').forEach(el => el.remove());
         await renderSpaceTabs(space, pinnedContainer, tempContainer);
     });
     spaceRenderTasks.set(space.id, run);
@@ -2185,22 +2183,19 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
 async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     Logger.log('Loading tabs for space:', space.id);
     Logger.log('Space bookmarks in space:', space.spaceBookmarks);
-
-    // Track which *tabIds* are already represented in the pinned bookmarks UI so we don't double-render them
-    // in the temporary section. We intentionally avoid URL-key based exclusion here because multiple open
-    // tabs can share the same base URL (e.g. abc.com?x=y and abc.com?x=z).
     const representedPinnedTabIds = new Set();
+    const invertTabOrder = await Utils.getInvertTabOrder();
+    const tabs = (await getOwnedTabs(space.id)).filter(t => !t.pinned);
+    const pinnedStatesById = await Utils.getPinnedTabStates();
+    const pinnedFragment = document.createDocumentFragment();
+    let treeAvailable = true;
+
     try {
-        const invertTabOrder = await Utils.getInvertTabOrder();
-        const tabs = (await getOwnedTabs(space.id)).filter(t => !t.pinned);
-        const pinnedStatesById = await Utils.getPinnedTabStates();
-
-        const spaceFolder = await getSpaceBookmarkFolder(space);
-
+        const spaceFolder = await getSpaceBookmarkTree(space);
         if (spaceFolder) {
             // Recursive function to process bookmarks and folders
             async function processBookmarkNode(node, container) {
-                const bookmarks = await chrome.bookmarks.getChildren(node.id);
+                const bookmarks = node.children || [];
                 Logger.log('Processing bookmarks:', bookmarks);
 
                 const itemsToRender = invertTabOrder ? [...bookmarks].reverse() : bookmarks;
@@ -2331,31 +2326,46 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
             }
 
             // Process the space folder and get all bookmarked URLs
-            await processBookmarkNode(spaceFolder, pinnedContainer);
-        }
-
-
-        // Load temporary tabs
-        let tabsToLoad = [...new Set([...space.temporaryTabs, ...space.spaceBookmarks.filter(id => !representedPinnedTabIds.has(id))])]; // Create a copy
-
-        if (invertTabOrder) {
-            tabsToLoad.reverse();
-        }
-
-        for (const tabId of tabsToLoad) {
-            Logger.log("checking", tabId, spaces);
-            const tab = tabs.find(t => t.id === tabId);
-            const representedAsPinned = representedPinnedTabIds.has(tabId);
-            Logger.log("representedAsPinned", representedAsPinned);
-
-            if (tab && !representedAsPinned) {
-                const tabElement = await createTabElement(tab);
-                tempContainer.appendChild(tabElement);
-            }
+            await processBookmarkNode(spaceFolder, pinnedFragment);
         }
     } catch (error) {
-        Logger.error('Error loading tabs:', error);
+        treeAvailable = false;
+        Logger.warn('Bookmark tree unavailable; rendering live tabs only:', error);
+        const notice = document.createElement('div');
+        notice.className = 'bookmark-association-error';
+        notice.textContent = 'Favorites are temporarily unavailable. Your bookmarks were not changed. ';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => scheduleBookmarkRefresh());
+        notice.appendChild(retry);
+        pinnedFragment.appendChild(notice);
     }
+
+    const tempFragment = document.createDocumentFragment();
+    let tabsToLoad = [...new Set([
+        ...space.temporaryTabs,
+        ...space.spaceBookmarks.filter(id => !representedPinnedTabIds.has(id))
+    ])];
+    if (invertTabOrder) tabsToLoad.reverse();
+    for (const tabId of tabsToLoad) {
+        const tab = tabs.find(t => t.id === tabId);
+        if (!tab || representedPinnedTabIds.has(tabId)) continue;
+        const tabElement = await createTabElement(tab);
+        if (!treeAvailable && space.spaceBookmarks.includes(tabId)) {
+            tabElement.classList.add('favorite-fallback');
+            tabElement.draggable = false;
+            tabElement.title = 'Favorite controls are unavailable until the bookmark folder is restored.';
+        }
+        tempFragment.appendChild(tabElement);
+    }
+
+    pinnedContainer.querySelectorAll('.tab, .folder, .bookmark-association-error').forEach(el => el.remove());
+    tempContainer.querySelectorAll('.tab').forEach(el => el.remove());
+    pinnedContainer.appendChild(pinnedFragment);
+    tempContainer.appendChild(tempFragment);
+    const spaceElement = pinnedContainer.closest('.space');
+    if (spaceElement) spaceElement.dataset.bookmarkTreeUnavailable = treeAvailable ? 'false' : 'true';
 }
 
 // Debounced UI refresh when settings change (e.g., invertTabOrder)
@@ -2373,10 +2383,6 @@ async function refreshActiveSpaceUI() {
         const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
         const tempContainer = spaceElement.querySelector('[data-tab-type="temporary"]');
         if (!pinnedContainer || !tempContainer) return;
-
-        // Clear existing rendered elements but keep templates (e.g., #folderTemplate).
-        pinnedContainer.querySelectorAll('.tab, .folder').forEach(el => el.remove());
-        tempContainer.querySelectorAll('.tab').forEach(el => el.remove());
 
         await loadTabs(space, pinnedContainer, tempContainer);
         updatePinnedSectionPlaceholders();

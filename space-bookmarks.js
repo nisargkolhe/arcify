@@ -11,6 +11,16 @@ export async function getSpaceBookmarkFolder(space) {
     return folder;
 }
 
+export async function getSpaceBookmarkTree(space) {
+    const folder = await getSpaceBookmarkFolder(space);
+    const read = async node => ({
+        ...node,
+        children: await Promise.all((await chrome.bookmarks.getChildren(node.id)).map(child =>
+            child.url ? Promise.resolve({ ...child }) : read(child)))
+    });
+    return read(folder);
+}
+
 export async function getSpaceBookmarkById(space, bookmarkId) {
     if (!bookmarkId) return null;
     const folder = await getSpaceBookmarkFolder(space);
