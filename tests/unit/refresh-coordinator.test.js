@@ -80,3 +80,19 @@ test('activation-only space updates avoid rendering without bookmark dirtiness',
     await flush();
     assert.equal(renders, 0);
 });
+
+test('a render failure does not acknowledge the bookmark generation', async () => {
+    let fail = true;
+    const scheduled = [];
+    const coordinator = new RefreshCoordinator({
+        readSpaces: async () => [], adoptSpaces: async () => false,
+        render: async () => { if (fail) throw new Error('render failed'); },
+        schedule: callback => { scheduled.push(callback); return callback; }, cancel
+    });
+    coordinator.invalidateBookmarks();
+    await scheduled.shift()();
+    assert.equal(coordinator.handledBookmarkGeneration, 0);
+    fail = false;
+    await scheduled.shift()();
+    assert.equal(coordinator.handledBookmarkGeneration, 1);
+});

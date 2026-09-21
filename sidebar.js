@@ -20,7 +20,7 @@ import { SpacePatchQueue } from './space-patch-queue.js';
 import { RefreshCoordinator } from './refresh-coordinator.js';
 import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
-import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, saveBookmarkOrder } from './sidebar-tabs.js';
+import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
 import { canCreateFolder, createFolder } from './folder-policy.js';
 import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
@@ -74,6 +74,7 @@ let activeChromeTabId = null;
 // These tabs stay visible until user manually opens/closes the folder.
 // WeakMap<HTMLElement (folder), Set<number (tabId)>>
 const collapsedFolderShownTabs = new WeakMap();
+const bookmarkOrderBaselines = new Map();
 
 chrome.runtime.onMessage.addListener(message => {
     if (message.action !== 'arcifyBookmarksChanged') return;
@@ -1671,14 +1672,22 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
 
             const spaceFolder = await getSpaceBookmarkFolder(space);
             if (targetFolderElement && !targetFolderElement.dataset.bookmarkId) throw new Error('Folder creation is not complete.');
-            const parentId = targetFolderElement?.dataset.bookmarkId || spaceFolder.id;
             let bookmarkId = draggingElement.dataset.bookmarkId;
             const pinnedUrl = draggingElement.dataset.pinnedUrl || tab.url;
-            if (bookmarkId) {
-                await chrome.bookmarks.move(bookmarkId, { parentId });
-            } else {
-                bookmarkId = (await chrome.bookmarks.create({ parentId, title: tab.title, url: pinnedUrl })).id;
+            if (!dropIntent?.bookmarkSourceContent || !dropIntent?.bookmarkTargetContent) {
+                throw new Error('Bookmark drop context is unavailable. Refresh and retry.');
             }
+            const operation = makeBookmarkDropOperation({
+                sourceContent: dropIntent.bookmarkSourceContent,
+                targetContent: dropIntent.bookmarkTargetContent,
+                draggingElement,
+                rootId: spaceFolder.id,
+                inverted: dropIntent.inverted,
+                tab
+            });
+            const result = await saveBookmarkOperation(operation);
+            bookmarkId = result.createdId || bookmarkId;
+            for (const [id, order] of Object.entries(result.orders || {})) bookmarkOrderBaselines.set(String(id), order.map(String));
             draggingElement.dataset.bookmarkId = bookmarkId;
             draggingElement.dataset.pinnedUrl = pinnedUrl;
             if (tabId) await Utils.setPinnedTabState(tabId, { bookmarkId, pinnedUrl });
@@ -1697,8 +1706,6 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             container.querySelectorAll('.tab.bookmark-only').forEach(el => {
                 if (el !== draggingElement && el.dataset.bookmarkId === bookmarkId) el.remove();
             });
-
-            saveSpaces();
 
             // Update all folder placeholders after bookmark operations
             updatePinnedSectionPlaceholders();
@@ -1788,6 +1795,47 @@ function orderedBookmarkElements(content) {
         }
         return node.nodeType === Node.ELEMENT_NODE ? node : null;
     }).filter(el => el?.dataset.bookmarkId);
+}
+
+function orderedBookmarkKeys(content, pendingElement = null) {
+    const folder = content.parentElement;
+    const projected = folder?.classList.contains('folder')
+        ? [...folder.querySelector(':scope > .folder-collapsed-tabs').children] : [];
+    return [...content.childNodes].map(node => {
+        if (node.nodeType === Node.COMMENT_NODE && node.bookmarkKey) {
+            return projected.find(el => (el.dataset.bookmarkId || el.dataset.tabId) === node.bookmarkKey);
+        }
+        return node.nodeType === Node.ELEMENT_NODE ? node : null;
+    }).filter(el => el?.classList.contains('folder') || el?.classList.contains('tab')).map(el => {
+        if (el === pendingElement && !el.dataset.bookmarkId) return '$new';
+        return el.dataset.bookmarkId || null;
+    }).filter(Boolean).map(String);
+}
+
+function bookmarkParentIdForContent(content, rootId) {
+    return String(content.closest('.folder')?.dataset.bookmarkId || rootId);
+}
+
+function makeBookmarkDropOperation({ sourceContent, targetContent, draggingElement, rootId, inverted, tab }) {
+    const bookmarkId = draggingElement.dataset.bookmarkId || null;
+    const sourceParentId = bookmarkId ? bookmarkParentIdForContent(sourceContent, rootId) : null;
+    const targetParentId = bookmarkParentIdForContent(targetContent, rootId);
+    const parentIds = [...new Set([sourceParentId, targetParentId].filter(Boolean))];
+    const parents = parentIds.map(parentId => {
+        const content = parentId === targetParentId ? targetContent : sourceContent;
+        const displayIds = orderedBookmarkKeys(content, draggingElement);
+        const desiredCanonicalIds = canonicalOrderFromDisplay(displayIds, inverted);
+        const expectedCanonicalIds = bookmarkOrderBaselines.get(parentId);
+        if (!expectedCanonicalIds) throw new Error('The bookmark order baseline is unavailable. Refresh and retry.');
+        return { parentId, expectedCanonicalIds: [...expectedCanonicalIds], desiredCanonicalIds };
+    });
+    let relocation = null;
+    if (!bookmarkId) {
+        relocation = { kind: 'create', parentId: targetParentId, title: tab.title, url: draggingElement.dataset.pinnedUrl || tab.url };
+    } else if (sourceParentId !== targetParentId) {
+        relocation = { kind: 'move', bookmarkId, parentId: targetParentId };
+    }
+    return { parents, relocation };
 }
 
 function getFlattenedPinnedSectionTabIds(spaceElement) {
@@ -1931,6 +1979,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 if (container.dataset.tabType === 'pinned' && spaceElement?.dataset.bookmarkTreeUnavailable === 'true') {
                     throw new Error('Favorites are unavailable until this space bookmark folder is restored.');
                 }
+                const originalContent = draggingElement.parentElement;
                 const sourceContent = dragSourceFolderElement?.querySelector(':scope > .folder-content');
                 const anchorKey = draggingElement.dataset.bookmarkId || draggingElement.dataset.tabId;
                 const sourceAnchor = sourceContent && projectedTabAnchors.get(sourceContent)?.get(anchorKey);
@@ -1976,31 +2025,16 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 }
 
                 const dropInverted = await Utils.getInvertTabOrder();
-                const dropIntent = container.dataset.tabType === 'temporary' ? {
-                    temporaryDisplayOrder: getTempSectionTabIds(spaceElement),
-                    inverted: dropInverted
-                } : null;
+                const dropIntent = container.dataset.tabType === 'temporary'
+                    ? { temporaryDisplayOrder: getTempSectionTabIds(spaceElement), inverted: dropInverted }
+                    : {
+                        bookmarkSourceContent: draggingElement.dataset.bookmarkId ? (sourceContent || originalContent) : targetContainer,
+                        bookmarkTargetContent: targetContainer,
+                        inverted: dropInverted
+                    };
 
                 // Capture order before bookmark/storage awaits can emit a refresh notification.
                 const operationResult = await handleBookmarkOperations(e, draggingElement, container, targetFolder, dropIntent);
-
-                if (container.dataset.tabType === 'pinned') {
-                    try {
-                        const space = spaces.find(s => s.id === container.closest('.space').dataset.spaceId);
-                        const root = await getSpaceBookmarkFolder(space);
-                        const inverted = await Utils.getInvertTabOrder();
-                        const persist = async (content, parentId) => {
-                            const children = orderedBookmarkElements(content);
-                            await saveBookmarkOrder(parentId, children.map(el => el.dataset.bookmarkId), inverted);
-                            for (const child of children.filter(el => el.classList.contains('folder'))) {
-                                await persist(child.querySelector(':scope > .folder-content'), child.dataset.bookmarkId);
-                            }
-                        };
-                        await persist(container, root.id);
-                    } catch (error) {
-                        throw error;
-                    }
-                }
 
                 // Resync collapsed-folder projections/icons after move (source + destination)
                 if (dragSourceFolderElement) {
@@ -2231,13 +2265,16 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     const pinnedStatesById = await Utils.getPinnedTabStates();
     const pinnedFragment = document.createDocumentFragment();
     let treeAvailable = true;
+    let treeLoaded = false;
 
     try {
         const spaceFolder = await getSpaceBookmarkTree(space);
+        treeLoaded = true;
         if (spaceFolder) {
             // Recursive function to process bookmarks and folders
             async function processBookmarkNode(node, container) {
                 const bookmarks = node.children || [];
+                bookmarkOrderBaselines.set(String(node.id), bookmarks.map(item => String(item.id)));
                 Logger.log('Processing bookmarks:', bookmarks);
 
                 const itemsToRender = invertTabOrder ? [...bookmarks].reverse() : bookmarks;
@@ -2363,7 +2400,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                                 container.appendChild(tabElement);
                             }
                             // Update placeholder state for folder if this container is inside a folder
-                            const parentFolder = container.closest('.folder');
+                            const parentFolder = container.closest?.('.folder');
                             if (parentFolder) {
                                 updateFolderPlaceholder(parentFolder);
                             }
@@ -2377,6 +2414,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
             await processBookmarkNode(spaceFolder, pinnedFragment);
         }
     } catch (error) {
+        if (treeLoaded) throw error;
         treeAvailable = false;
         Logger.warn('Bookmark tree unavailable; rendering live tabs only:', error);
         const notice = document.createElement('div');

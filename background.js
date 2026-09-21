@@ -16,7 +16,7 @@ registerTourMessages();
 import { SpaceStore, ownerOf } from './space-store.js';
 import { isProtectedFavorite } from './favorite-safety.js';
 import { registerBookmarkListeners } from './bookmark-events.js';
-import { enqueueBookmarkOrder } from './bookmark-writer.js';
+import { enqueueBookmarkOperation } from './bookmark-writer.js';
 
 registerBookmarkListeners();
 
@@ -30,9 +30,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type !== 'bookmarkOrder') return;
-    enqueueBookmarkOrder(message).then(
-        order => sendResponse({ success: true, order }),
-        error => sendResponse({ success: false, error: error.message })
+    enqueueBookmarkOperation(message.operation).then(
+        result => sendResponse({ success: true, ...result }),
+        error => sendResponse({ success: false, error: error.message, code: error.code,
+            observedOrders: error.observedOrders, moved: error.moved })
     );
     return true;
 });

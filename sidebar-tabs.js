@@ -20,8 +20,18 @@ export function mergeCapturedTemporaryOrder(allIds, displayIds, inverted) {
     return mergeVisibleOrder(allIds, canonicalOrderFromDisplay(displayIds, inverted));
 }
 
-export async function saveBookmarkOrder(parentId, displayIds, inverted) {
-    const response = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', parentId, displayIds, inverted });
-    if (!response?.success) throw new Error(response?.error || 'Bookmark order could not be saved.');
-    return response.order;
+export async function saveBookmarkOperation(operation) {
+    const response = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', operation });
+    if (!response?.success) {
+        const error = new Error(response?.error || 'Bookmark order could not be saved.');
+        error.code = response?.code;
+        error.observedOrders = response?.observedOrders;
+        error.moved = response?.moved;
+        throw error;
+    }
+    return response;
+}
+
+export async function saveBookmarkOrder(parentId, expectedCanonicalIds, desiredCanonicalIds) {
+    return saveBookmarkOperation({ parents: [{ parentId, expectedCanonicalIds, desiredCanonicalIds }] });
 }

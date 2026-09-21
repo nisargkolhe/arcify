@@ -91,6 +91,46 @@ test('same-URL tabs remain distinct through pin, navigation, reload, close, reop
     expect(await page.evaluate(async id => { try { await chrome.bookmarks.get(id); return true; } catch { return false; } }, second)).toBe(false);
 }, 60000);
 
+test('favorite demotion keeps the captured middle temporary position after refresh and reload', async () => {
+    const ids = await page.evaluate(async ({ url, spaceId }) => {
+        const created = [];
+        for (const suffix of ['demote-favorite', 'demote-left', 'demote-right']) {
+            const tab = await chrome.tabs.create({ url: `${url}${suffix}`, active: false });
+            await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
+            created.push(tab.id);
+        }
+        return created;
+    }, { url, spaceId: fixture.spaceId });
+    const [favorite, left, right] = ids;
+    await page.waitForSelector(row(favorite));
+    await page.waitForSelector(row(right));
+    await toggle(favorite);
+    await page.waitForFunction(id => document.querySelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${id}"]`),
+        { polling: 100 }, favorite);
+    const desired = await page.evaluate(({ favorite, left, right }) => {
+        const dragged = document.querySelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${favorite}"]`);
+        const pair = [...document.querySelectorAll('.space.active [data-tab-type="temporary"] .tab[data-tab-id]')]
+            .filter(el => [left, right].includes(Number(el.dataset.tabId)));
+        const target = pair[1];
+        const container = target.closest('[data-tab-type="temporary"]');
+        dragged.classList.add('dragging');
+        const rect = target.getBoundingClientRect();
+        container.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientY: rect.top + rect.height / 2 - 1 }));
+        dragged.classList.remove('dragging');
+        return [Number(pair[0].dataset.tabId), favorite, Number(pair[1].dataset.tabId)];
+    }, { favorite, left, right });
+    await page.waitForFunction(desired => {
+        const ids = [...document.querySelectorAll('.space.active [data-tab-type="temporary"] .tab[data-tab-id]')].map(el => Number(el.dataset.tabId));
+        const positions = desired.map(id => ids.indexOf(id));
+        return positions.every(index => index >= 0) && positions[0] < positions[1] && positions[1] < positions[2];
+    }, { polling: 100 }, desired);
+    await page.reload();
+    await page.waitForSelector(row(favorite));
+    const order = await page.$$eval('.space.active [data-tab-type="temporary"] .tab[data-tab-id]', els => els.map(el => Number(el.dataset.tabId)));
+    expect(order.indexOf(desired[0])).toBeLessThan(order.indexOf(desired[1]));
+    expect(order.indexOf(desired[1])).toBeLessThan(order.indexOf(desired[2]));
+});
+
 test('native pinning does not hide its same-URL favorite', async () => {
     const binding = (await state()).bindings[fixture.a];
     await page.evaluate(id => chrome.tabs.update(id, { pinned: true }), fixture.a);
@@ -148,20 +188,45 @@ test('external bookmark creation, rename and deletion update the open sidebar', 
     await page.waitForFunction(id => !document.querySelector(`.space.active .tab[data-bookmark-id="${id}"]`), { polling: 100 }, id);
 });
 
+test('moving the associated folder out of Arcify keeps live tabs visible and recovers by exact ID', async () => {
+    const live = await page.evaluate(async ({ url, spaceId }) => {
+        const tab = await chrome.tabs.create({ url: `${url}folder-recovery`, active: false });
+        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
+        return tab.id;
+    }, { url, spaceId: fixture.spaceId });
+    await page.waitForSelector(row(live));
+    const originalParent = await page.evaluate(async id => (await chrome.bookmarks.get(id))[0].parentId, fixture.folderId);
+    await page.evaluate(id => chrome.bookmarks.move(id, { parentId: '1' }), fixture.folderId);
+    await page.waitForSelector('.space.active .bookmark-association-error');
+    await page.waitForSelector(`${row(live)}.favorite-fallback, ${row(live)}:not(.favorite-fallback)`);
+    expect(await page.$$eval(row(live), els => els.length)).toBe(1);
+    await page.evaluate(({ id, parentId }) => chrome.bookmarks.move(id, { parentId }), { id: fixture.folderId, parentId: originalParent });
+    await page.$eval('.space.active .bookmark-association-error button', el => el.click());
+    await page.waitForFunction(() => !document.querySelector('.space.active .bookmark-association-error'), { polling: 100 });
+    await page.waitForSelector(row(live));
+});
+
 test('service-worker ordering matches real Chrome move semantics and rejects partial views', async () => {
     const ordered = await page.evaluate(async folderId => {
         const folder = await chrome.bookmarks.create({ parentId: folderId, title: 'Order fixture' });
         const nodes = [];
         for (const title of ['A', 'B', 'C']) nodes.push(await chrome.bookmarks.create({ parentId: folder.id, title, url: `https://${title.toLowerCase()}.test/` }));
-        const first = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', parentId: folder.id,
-            displayIds: [nodes[2].id, nodes[0].id, nodes[1].id], inverted: false });
-        const second = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', parentId: folder.id,
-            displayIds: [nodes[0].id, nodes[2].id, nodes[1].id], inverted: true });
-        const partial = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', parentId: folder.id,
-            displayIds: [nodes[0].id, nodes[1].id], inverted: false });
-        return { first, second, partial, live: (await chrome.bookmarks.getChildren(folder.id)).map(node => node.id), ids: nodes.map(node => node.id) };
+        const request = parents => chrome.runtime.sendMessage({ type: 'bookmarkOrder', operation: { parents } });
+        const initial = nodes.map(node => node.id);
+        const firstOrder = [nodes[2].id, nodes[0].id, nodes[1].id];
+        const finalOrder = [nodes[1].id, nodes[2].id, nodes[0].id];
+        const first = await request([{ parentId: folder.id, expectedCanonicalIds: initial, desiredCanonicalIds: firstOrder }]);
+        const stale = await request([{ parentId: folder.id, expectedCanonicalIds: initial,
+            desiredCanonicalIds: [nodes[1].id, nodes[0].id, nodes[2].id] }]);
+        const second = await request([{ parentId: folder.id, expectedCanonicalIds: firstOrder, desiredCanonicalIds: finalOrder }]);
+        const partial = await request([{ parentId: folder.id, expectedCanonicalIds: finalOrder,
+            desiredCanonicalIds: [nodes[0].id, nodes[1].id] }]);
+        return { first, stale, second, partial, live: (await chrome.bookmarks.getChildren(folder.id)).map(node => node.id), ids: nodes.map(node => node.id) };
     }, fixture.folderId);
     expect(ordered.first.success).toBe(true);
+    expect(ordered.stale.success).toBe(false);
+    expect(ordered.stale.code).toBe('conflict');
+    expect(ordered.stale.moved).toBe(false);
     expect(ordered.second.success).toBe(true);
     expect(ordered.live).toEqual([ordered.ids[1], ordered.ids[2], ordered.ids[0]]);
     expect(ordered.partial.success).toBe(false);
@@ -196,6 +261,25 @@ test('new folders have a bookmark identity before naming and remain usable after
     });
     await page.reload();
     await page.waitForSelector(`.space.active .folder[data-bookmark-id="${id}"]`);
+});
+
+test('new folder editor survives its own bookmark event and commits once after slow typing', async () => {
+    const before = await page.$$eval('.space.active .folder', els => els.map(el => el.dataset.bookmarkId));
+    await page.$eval('.space.active .new-folder-btn', el => el.click());
+    await page.waitForFunction(before => [...document.querySelectorAll('.space.active .folder')]
+        .some(el => el.dataset.bookmarkId && !before.includes(el.dataset.bookmarkId)), { polling: 100 }, before);
+    const id = await page.$$eval('.space.active .folder', (els, before) => els.find(el => !before.includes(el.dataset.bookmarkId)).dataset.bookmarkId, before);
+    const selector = `.space.active .folder[data-bookmark-id="${id}"] > .folder-header .folder-name`;
+    await page.$eval(selector, input => { input.value = 'Slow'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await new Promise(resolve => setTimeout(resolve, 350));
+    expect(await page.$eval(selector, input => ({ value: input.value, focused: document.activeElement === input })))
+        .toEqual({ value: 'Slow', focused: true });
+    await page.$eval(selector, input => {
+        input.value += ' folder';
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await page.waitForFunction(async id => (await chrome.bookmarks.get(id))[0].title === 'Slow folder', { polling: 100 }, id);
+    expect(await page.$$eval(`.space.active .folder[data-bookmark-id="${id}"]`, els => els.length)).toBe(1);
 });
 
 test('deleting one of two same-named spaces removes only its exact bookmark folder', async () => {

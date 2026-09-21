@@ -19,16 +19,13 @@ test('captured temporary drop order survives delayed demotion and preserves othe
     assert.deepEqual(mergeCapturedTemporaryOrder([1, 20, 2, 21, 3], [3, 1, 2], false), [3, 20, 1, 21, 2]);
     assert.deepEqual(mergeCapturedTemporaryOrder([1, 20, 2, 21, 3], [3, 1, 2], true), [2, 20, 1, 21, 3]);
 });
-test('bookmark drag order round-trips through storage in both display directions', async () => {
-    for (const inverted of [false, true]) {
-        let stored = ['a', 'b', 'c'];
-        globalThis.chrome = { runtime: { sendMessage: async request => {
-            assert.equal(request.parentId, 'folder');
-            const ids = request.inverted ? [...request.displayIds].reverse() : request.displayIds;
-            stored = ids;
-            return { success: true, order: stored };
-        } } };
-        await saveBookmarkOrder('folder', ['c', 'a', 'b'], inverted);
-        assert.deepEqual(inverted ? [...stored].reverse() : stored, ['c', 'a', 'b']);
-    }
+test('bookmark order requests send the rendered baseline and canonical destination', async () => {
+    globalThis.chrome = { runtime: { sendMessage: async request => {
+        assert.deepEqual(request.operation.parents[0], {
+            parentId: 'folder', expectedCanonicalIds: ['a', 'b', 'c'], desiredCanonicalIds: ['c', 'a', 'b']
+        });
+        return { success: true, orders: { folder: ['c', 'a', 'b'] } };
+    } } };
+    const response = await saveBookmarkOrder('folder', ['a', 'b', 'c'], ['c', 'a', 'b']);
+    assert.deepEqual(response.orders.folder, ['c', 'a', 'b']);
 });
