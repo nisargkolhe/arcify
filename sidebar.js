@@ -17,6 +17,7 @@ import { initSidebarTour } from './sidebar-tour.js';
 import { ChromeHelper } from './chromeHelper.js';
 import { spaceRequest } from './space-client.js';
 import { SpacePatchQueue } from './space-patch-queue.js';
+import { RefreshCoordinator } from './refresh-coordinator.js';
 import { isProtectedFavorite } from './favorite-safety.js';
 import { selectWindowSpaceTabs, mergeVisibleOrder, saveBookmarkOrder } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
@@ -67,7 +68,6 @@ let currentWindow = null;
 let defaultSpaceName = 'Home';
 let showAllOpenTabsInCollapsedFolders = false; // default Arc behavior is false (active-only)
 let activeChromeTabId = null;
-let bookmarkRefreshTimer = null;
 // Arc-like behavior: track which tabs have been active in each collapsed folder.
 // These tabs stay visible until user manually opens/closes the folder.
 // WeakMap<HTMLElement (folder), Set<number (tabId)>>
@@ -79,21 +79,7 @@ chrome.runtime.onMessage.addListener(message => {
 });
 
 function scheduleBookmarkRefresh() {
-    clearTimeout(bookmarkRefreshTimer);
-    bookmarkRefreshTimer = setTimeout(async () => {
-        if (!sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount) {
-            scheduleBookmarkRefresh();
-            return;
-        }
-        try {
-            const next = await spaceRequest('get');
-            const changed = JSON.stringify(next) !== JSON.stringify(spaces);
-            if (changed) await adoptStoredSpaces(next);
-            else await refreshActiveSpaceUI();
-        } catch (error) {
-            Logger.warn('Could not refresh external bookmark changes:', error);
-        }
-    }, 100);
+    refreshCoordinator.invalidateBookmarks();
 }
 
 // Helper function to update bookmark for a tab
@@ -659,8 +645,21 @@ const spaceSaveQueue = new SpacePatchQueue(
 let pendingSpaceSaves = Promise.resolve();
 let pendingSaveCount = 0;
 let sidebarReady = false;
+const refreshCoordinator = new RefreshCoordinator({
+    readSpaces: async () => {
+        await pendingSpaceSaves;
+        return spaceRequest('get');
+    },
+    adoptSpaces: next => adoptStoredSpaces(next, { render: false }),
+    render: async () => {
+        await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
+        await refreshActiveSpaceUI();
+    },
+    isBusy: () => !sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount > 0,
+    onError: error => Logger.warn('Could not refresh external changes:', error)
+});
 
-async function adoptStoredSpaces(next) {
+async function adoptStoredSpaces(next, { render = true } = {}) {
     const projection = list => JSON.stringify(list.map(({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs }) =>
         ({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs })));
     const needsRender = projection(spaces) !== projection(next);
@@ -688,10 +687,11 @@ async function adoptStoredSpaces(next) {
         }
     }
     if (!spaces.some(s => s.id === activeSpaceId)) activeSpaceId = spaces[0]?.id;
-    if (needsRender) {
+    if (needsRender && render) {
         await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
         await refreshActiveSpaceUI();
     }
+    return needsRender;
 }
 
 async function initSidebar() {
@@ -733,20 +733,8 @@ async function initSidebar() {
     });
     await offerTabGroupImport();
 }
-let storedSpacesRefresh;
 function scheduleStoredSpacesRefresh() {
-    clearTimeout(storedSpacesRefresh);
-    storedSpacesRefresh = setTimeout(async () => {
-        try {
-            await pendingSpaceSaves;
-            if (isDraggingTab || pendingSaveCount || isOpeningBookmark) {
-                scheduleStoredSpacesRefresh();
-                return;
-            }
-            const next = await spaceRequest('get');
-            if (JSON.stringify(next) !== JSON.stringify(spaces)) await adoptStoredSpaces(next);
-        } catch (error) { Logger.warn('Could not refresh saved spaces:', error); }
-    }, 100);
+    refreshCoordinator.invalidateSpaces();
 }
 
 async function offerTabGroupImport() {
