@@ -18,6 +18,7 @@ import { ChromeHelper } from './chromeHelper.js';
 import { spaceRequest } from './space-client.js';
 import { SpacePatchQueue } from './space-patch-queue.js';
 import { RefreshCoordinator } from './refresh-coordinator.js';
+import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
 import { selectWindowSpaceTabs, mergeVisibleOrder, saveBookmarkOrder } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
@@ -645,6 +646,7 @@ const spaceSaveQueue = new SpacePatchQueue(
 let pendingSpaceSaves = Promise.resolve();
 let pendingSaveCount = 0;
 let sidebarReady = false;
+let editorSessions;
 const refreshCoordinator = new RefreshCoordinator({
     readSpaces: async () => {
         await pendingSpaceSaves;
@@ -655,11 +657,16 @@ const refreshCoordinator = new RefreshCoordinator({
         await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
         await refreshActiveSpaceUI();
     },
-    isBusy: () => !sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount > 0,
+    isBusy: () => !sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount > 0 || editorSessions?.isActive(),
     onError: error => Logger.warn('Could not refresh external changes:', error)
 });
+editorSessions = new EditSessionRegistry(() => refreshCoordinator.schedule());
 
 async function adoptStoredSpaces(next, { render = true } = {}) {
+    if (render && editorSessions.isActive()) {
+        refreshCoordinator.invalidateSpaces();
+        return false;
+    }
     const projection = list => JSON.stringify(list.map(({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs }) =>
         ({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs })));
     const needsRender = projection(spaces) !== projection(next);
@@ -844,15 +851,33 @@ function createSpaceElement(space) {
     // Set up space name input
     const nameInput = spaceElement.querySelector('.space-name');
     nameInput.value = space.name;
+    let spaceEditSession = null;
+    nameInput.addEventListener('focus', () => {
+        if (!spaceEditSession) spaceEditSession = editorSessions.begin('space', space.id);
+    });
     nameInput.addEventListener('change', async () => {
-        // Update bookmark folder name
-        const oldFolder = await getSpaceBookmarkFolder(space);
-        await chrome.bookmarks.update(oldFolder.id, { title: nameInput.value });
-        await LocalStorage.updateSpaceRegistryEntry(oldFolder.id, { name: nameInput.value });
-
-        space.name = nameInput.value;
-        saveSpaces();
-        await updateSpaceSwitcher();
+        const session = spaceEditSession || editorSessions.begin('space', space.id);
+        try {
+            await editorSessions.complete(session, async () => {
+                const oldFolder = await getSpaceBookmarkFolder(space);
+                await chrome.bookmarks.update(oldFolder.id, { title: nameInput.value });
+                await LocalStorage.updateSpaceRegistryEntry(oldFolder.id, { name: nameInput.value });
+                space.name = nameInput.value;
+                await saveSpaces();
+                await updateSpaceSwitcher();
+            });
+        } catch (error) {
+            nameInput.value = space.name;
+            alert(error.message);
+        } finally {
+            spaceEditSession = null;
+        }
+    });
+    nameInput.addEventListener('blur', () => {
+        if (!spaceEditSession) return;
+        const session = spaceEditSession;
+        spaceEditSession = null;
+        editorSessions.complete(session);
     });
 
     // Set up chevron toggle for pinned section
@@ -2071,13 +2096,19 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
 
     // Keep the created folder's identity when this editor is used again.
     // Serialize Enter and blur so they cannot create two bookmark folders.
-    const createdFolder = await createFolder(spaceFolder.id, parentId, 'Untitled');
+    let folderEditSession = editorSessions.begin('folder', `new:${space.id}`);
+    let createdFolder;
+    try {
+        createdFolder = await createFolder(spaceFolder.id, parentId, 'Untitled');
+    } catch (error) {
+        await editorSessions.complete(folderEditSession);
+        alert(error.message);
+        return;
+    }
     let createdFolderId = createdFolder.id;
     folderElement.dataset.bookmarkId = createdFolderId;
     await saveFolderCollapsed(createdFolderId, false);
     let savedFolderName = 'Untitled';
-    let folderSave = Promise.resolve();
-    let cancelFolderBlur = false;
 
     // Add double-click functionality for folder name editing (for new folders)
     folderHeader.addEventListener('dblclick', (e) => {
@@ -2088,56 +2119,44 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
         folderNameInput.style.display = 'inline-block';
         folderNameInput.readOnly = false;
         folderNameInput.disabled = false;
+        if (!folderEditSession) folderEditSession = editorSessions.begin('folder', createdFolderId);
         folderNameInput.select();
         folderNameInput.focus();
     });
 
     const saveOrCancelNewFolderEdit = async (save) => {
+        const session = folderEditSession;
+        if (!session) return;
         const newName = folderNameInput.value.trim();
-        if (save) {
-            if (newName) {
-                folderSave = folderSave.then(async () => {
-                    if (createdFolderId) {
-                        if (newName !== savedFolderName) await chrome.bookmarks.update(createdFolderId, { title: newName });
-                    } else {
-                        const folder = await createFolder(spaceFolder.id, parentId, newName);
-                        createdFolderId = folder.id;
-                        folderElement.dataset.bookmarkId = folder.id;
-                        await saveFolderCollapsed(folder.id, folderElement.classList.contains('collapsed'));
-                    }
+        try {
+            await editorSessions.complete(session, async () => {
+                if (save && newName && newName !== savedFolderName) {
+                    await chrome.bookmarks.update(createdFolderId, { title: newName });
                     savedFolderName = newName;
-                });
-                try {
-                    await folderSave;
-                } catch (error) {
-                    folderSave = Promise.resolve();
-                    alert(error.message);
-                    if (!createdFolderId) {
-                        folderElement.remove();
-                        if (parentFolderElement) updateFolderPlaceholder(parentFolderElement);
-                    }
-                    return;
                 }
-            }
+                folderNameInput.value = savedFolderName;
+                folderNameInput.style.display = 'none';
+                folderTitle.textContent = savedFolderName;
+                folderTitle.style.display = 'inline';
+            });
+        } catch (error) {
+            folderNameInput.value = savedFolderName;
+            folderTitle.textContent = savedFolderName;
+            folderNameInput.style.display = 'none';
+            folderTitle.style.display = 'inline';
+            alert(error.message);
+        } finally {
+            if (folderEditSession === session) folderEditSession = null;
         }
-        // Update display regardless of save/cancel
-        folderNameInput.value = savedFolderName;
-        folderNameInput.style.display = 'none';
-        folderTitle.textContent = savedFolderName;
-        folderTitle.style.display = 'inline';
     };
 
-    folderNameInput.addEventListener('blur', () => {
-        if (cancelFolderBlur) { cancelFolderBlur = false; return; }
-        saveOrCancelNewFolderEdit(true);
-    });
+    folderNameInput.addEventListener('blur', () => saveOrCancelNewFolderEdit(true));
     folderNameInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             await saveOrCancelNewFolderEdit(true);
             folderNameInput.blur();
         } else if (e.key === 'Escape') {
-            cancelFolderBlur = true;
             await saveOrCancelNewFolderEdit(false);
             folderNameInput.blur();
         }
@@ -2201,6 +2220,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                         const folderContent = folderElement.querySelector('.folder-content');
                         const folderToggle = folderElement.querySelector('.folder-toggle');
                         const placeHolderElement = folderElement.querySelector('.tab-placeholder');
+                        let folderEditSession = null;
                         // Set up folder toggle functionality
                         // Add context menu for folder
                         setupFolderContextMenu(folderElement, space, item);
@@ -2220,29 +2240,34 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                             folderNameInput.style.display = 'inline-block';
                             folderNameInput.readOnly = false;
                             folderNameInput.disabled = false;
+                            if (!folderEditSession) folderEditSession = editorSessions.begin('folder', item.id);
                             folderNameInput.select();
                             folderNameInput.focus();
                         });
 
                         const saveOrCancelFolderEdit = async (save) => {
-                            if (save) {
-                                const newName = folderNameInput.value.trim();
-                                if (newName && newName !== item.title) {
-                                    try {
+                            const session = folderEditSession;
+                            if (!session) return;
+                            const newName = folderNameInput.value.trim();
+                            try {
+                                await editorSessions.complete(session, async () => {
+                                    if (save && newName && newName !== item.title) {
                                         await chrome.bookmarks.update(item.id, { title: newName });
-                                        item.title = newName; // Update local item object
-                                    } catch (error) {
-                                        Logger.error("Error updating folder name:", error);
+                                        item.title = newName;
                                     }
-                                }
+                                    folderNameInput.value = item.title;
+                                    folderNameInput.readOnly = true;
+                                    folderNameInput.disabled = true;
+                                    folderNameInput.style.display = 'none';
+                                    folderTitle.textContent = item.title;
+                                    folderTitle.style.display = 'inline';
+                                });
+                            } catch (error) {
+                                Logger.error("Error updating folder name:", error);
+                                alert(error.message);
+                            } finally {
+                                if (folderEditSession === session) folderEditSession = null;
                             }
-                            // Update display regardless of save/cancel
-                            folderNameInput.value = item.title;
-                            folderNameInput.readOnly = true;
-                            folderNameInput.disabled = true;
-                            folderNameInput.style.display = 'none';
-                            folderTitle.textContent = item.title;
-                            folderTitle.style.display = 'inline';
                         };
 
                         folderNameInput.addEventListener('blur', () => saveOrCancelFolderEdit(true));
@@ -2360,6 +2385,10 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
 let refreshActiveSpaceUITimeout = null;
 
 async function refreshActiveSpaceUI() {
+    if (editorSessions.isActive()) {
+        refreshCoordinator.invalidateSpaces();
+        return;
+    }
     try {
         if (!activeSpaceId) return;
         const space = spaces.find(s => s.id === activeSpaceId);
@@ -2382,6 +2411,7 @@ async function refreshActiveSpaceUI() {
         }
     } catch (e) {
         Logger.warn('[UIRefresh] Error refreshing active space UI:', e);
+        throw e;
     }
 }
 
@@ -2592,6 +2622,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
     // --- Event Listeners for Editing (Only for actual tabs) ---
     if (!isBookmarkOnly) {
+        let tabEditSession = null;
         tabDetails.addEventListener('dblclick', (e) => {
             // Prevent dblclick on favicon or close button from triggering rename
             if (e.target === favicon || e.target === actionButton) return;
@@ -2599,14 +2630,18 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             titleDisplay.style.display = 'none';
             domainDisplay.style.display = 'none'; // Hide domain while editing
             titleInput.style.display = 'inline-block'; // Or 'block'
+            if (!tabEditSession) tabEditSession = editorSessions.begin('tab', tab.id);
             titleInput.select(); // Select text for easy replacement
             titleInput.focus(); // Focus the input
         });
 
         const saveOrCancelEdit = async (save) => {
-            if (save) {
-                const newName = titleInput.value.trim();
-                try {
+            const session = tabEditSession;
+            if (!session) return;
+            const newName = titleInput.value.trim();
+            try {
+                await editorSessions.complete(session, async () => {
+                    if (save) {
                     // Fetch the latest tab info in case the title changed naturally
                     const currentTabInfo = await chrome.tabs.get(tab.id);
                     const originalTitle = currentTabInfo.title;
@@ -2624,23 +2659,18 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                             await updateBookmarkForTab(tab, originalTitle);
                         }
                     }
-                } catch (error) {
-                    Logger.error("Error getting tab info or saving override:", error);
-                    // Handle cases where the tab might have been closed during edit
-                }
+                    }
+                    const potentiallyUpdatedTab = await chrome.tabs.get(tab.id);
+                    tab.title = potentiallyUpdatedTab.title;
+                    tab.url = potentiallyUpdatedTab.url;
+                    await updateDisplay();
+                });
+            } catch (error) {
+                Logger.error("Error getting tab info or saving override:", error);
+                alert(error.message);
+            } finally {
+                if (tabEditSession === session) tabEditSession = null;
             }
-            // Update display regardless of save/cancel to show correct state
-            // Need to fetch tab again in case URL changed during edit? Unlikely but possible.
-            try {
-                const potentiallyUpdatedTab = await chrome.tabs.get(tab.id);
-                tab.title = potentiallyUpdatedTab.title; // Update local tab object title
-                tab.url = potentiallyUpdatedTab.url; // Update local tab object url
-            } catch (e) {
-                Logger.log("Tab likely closed during edit, cannot update display.");
-                // If tab closed, the element will be removed by handleTabRemove anyway
-                return;
-            }
-            await updateDisplay();
         };
 
         titleInput.addEventListener('blur', () => saveOrCancelEdit(true));
