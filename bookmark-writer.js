@@ -30,6 +30,25 @@ async function readOrders(parents) {
     return result;
 }
 
+function predictRelocationOrders(parents, relocation, createdId = null) {
+    const predicted = Object.fromEntries(parents.map(parent => [parent.parentId, [...parent.expected]]));
+    const targetParentId = String(relocation.parentId);
+    const target = parents.find(parent => parent.parentId === targetParentId);
+    const relocatedId = relocation.kind === 'create' ? String(createdId) : String(relocation.bookmarkId);
+
+    if (relocation.kind === 'move') {
+        for (const order of Object.values(predicted)) {
+            const currentIndex = order.indexOf(relocatedId);
+            if (currentIndex >= 0) order.splice(currentIndex, 1);
+        }
+    }
+
+    const desiredToken = relocation.kind === 'create' ? '$new' : relocatedId;
+    const destinationIndex = target.desired.indexOf(desiredToken);
+    predicted[targetParentId].splice(destinationIndex, 0, relocatedId);
+    return predicted;
+}
+
 async function reorderParent(parentId, desired, initial, observedOrders) {
     let live = [...initial];
     for (let index = 0; index < desired.length; index++) {
@@ -134,6 +153,7 @@ async function applyOperation(request = {}) {
                 });
             }
         }
+        let predictedAfterRelocation;
         if (relocation.kind === 'create') {
             const target = parents.find(parent => parent.parentId === String(relocation.parentId));
             if (!target || target.desired.filter(id => id === '$new').length !== 1) {
@@ -144,6 +164,7 @@ async function applyOperation(request = {}) {
                 parentId: target.parentId, index, title: relocation.title, url: relocation.url
             });
             createdId = String(created.id);
+            predictedAfterRelocation = predictRelocationOrders(parents, relocation, createdId);
             for (const parent of parents) parent.desired = parent.desired.map(id => id === '$new' ? createdId : id);
         } else if (relocation.kind === 'move') {
             const bookmarkId = String(relocation.bookmarkId);
@@ -151,11 +172,19 @@ async function applyOperation(request = {}) {
             if (!target || !target.desired.includes(bookmarkId)) {
                 throw new BookmarkOrderError('Bookmark destination is invalid.', { code: 'invalid_request', observedOrders: fresh });
             }
+            predictedAfterRelocation = predictRelocationOrders(parents, relocation);
             await chrome.bookmarks.move(bookmarkId, { parentId: target.parentId, index: target.desired.indexOf(bookmarkId) });
         } else {
             throw new BookmarkOrderError('Bookmark relocation is invalid.', { code: 'invalid_request', observedOrders: fresh });
         }
         observedOrders = await readOrders(parents);
+        for (const parent of parents) {
+            if (!equal(observedOrders[parent.parentId], predictedAfterRelocation[parent.parentId])) {
+                throw new BookmarkOrderError('Bookmark order changed during this action. Refresh and retry.', {
+                    code: 'partial', observedOrders, moved: true
+                });
+            }
+        }
     }
 
     for (const parent of parents) {

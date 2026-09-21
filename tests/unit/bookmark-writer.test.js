@@ -9,6 +9,7 @@ function install(initialByParent, { delayed = false } = {}) {
     const moves = [];
     const creates = [];
     let afterMove = null;
+    let afterCreate = null;
     globalThis.chrome = { bookmarks: {
         getChildren: async parentId => structuredClone(trees[parentId] || []),
         move: async (id, { parentId, index }) => {
@@ -29,13 +30,15 @@ function install(initialByParent, { delayed = false } = {}) {
             const node = { ...data, id: String(nextId++), parentId: data.parentId };
             trees[data.parentId].splice(data.index, 0, node);
             creates.push(node);
+            if (afterCreate) await afterCreate({ trees, creates, node });
             return structuredClone(node);
         }
     } };
     return {
         ids: parent => trees[parent].map(node => node.id), moves, creates,
         mutate: (parent, values) => { trees[parent] = values.map(id => ({ id: String(id), parentId: parent })); },
-        afterMove: callback => { afterMove = callback; }
+        afterMove: callback => { afterMove = callback; },
+        afterCreate: callback => { afterCreate = callback; }
     };
 }
 
@@ -101,6 +104,36 @@ test('cross-parent move and creation use validated worker-side positions', async
     assert.deepEqual(state.ids('source'), ['b']);
     assert.deepEqual(state.ids('target'), [result.createdId, 'c', 'a', 'd']);
     assert.equal(state.creates.length, 1);
+});
+
+test('cross-parent relocation stops when an external same-set reorder wins after the move', async () => {
+    const state = install({ source: ['a', 'b'], target: ['c', 'd'] });
+    state.afterMove(({ moves }) => {
+        if (moves.length === 1) state.mutate('target', ['d', 'a', 'c']);
+    });
+    await assert.rejects(enqueueBookmarkOperation({
+        parents: [
+            { parentId: 'source', expectedCanonicalIds: ['a', 'b'], desiredCanonicalIds: ['b'] },
+            { parentId: 'target', expectedCanonicalIds: ['c', 'd'], desiredCanonicalIds: ['c', 'a', 'd'] }
+        ],
+        relocation: { kind: 'move', bookmarkId: 'a', parentId: 'target' }
+    }), error => error.code === 'partial' && error.moved === true);
+    assert.deepEqual(state.ids('source'), ['b']);
+    assert.deepEqual(state.ids('target'), ['d', 'a', 'c']);
+    assert.equal(state.moves.length, 1);
+});
+
+test('creation stops when an external same-set reorder wins after the create', async () => {
+    const state = install({ target: ['c', 'd'] });
+    state.afterCreate(({ node }) => state.mutate('target', ['d', node.id, 'c']));
+    await assert.rejects(enqueueBookmarkOperation({
+        parents: [
+            { parentId: 'target', expectedCanonicalIds: ['c', 'd'], desiredCanonicalIds: ['c', '$new', 'd'] }
+        ],
+        relocation: { kind: 'create', parentId: 'target', title: 'New', url: 'https://new.test/' }
+    }), error => error.code === 'partial' && error.moved === true);
+    assert.deepEqual(state.ids('target'), ['d', state.creates[0].id, 'c']);
+    assert.equal(state.moves.length, 0);
 });
 
 test('a deleted parent fails safely before any mutation', async () => {
