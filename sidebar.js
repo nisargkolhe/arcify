@@ -76,6 +76,17 @@ let activeChromeTabId = null;
 const collapsedFolderShownTabs = new WeakMap();
 const bookmarkOrderBaselines = new Map();
 
+function disposeEditorsInElement(element) {
+    if (!element) return;
+    const dispose = node => {
+        if (node.matches?.('.tab[data-tab-id]')) editorSessions?.dispose('tab', node.dataset.tabId);
+        if (node.matches?.('.folder[data-bookmark-id]')) editorSessions?.dispose('folder', node.dataset.bookmarkId);
+        if (node.matches?.('.space[data-space-id]')) editorSessions?.dispose('space', node.dataset.spaceId);
+    };
+    dispose(element);
+    element.querySelectorAll?.('.tab[data-tab-id], .folder[data-bookmark-id], .space[data-space-id]').forEach(dispose);
+}
+
 chrome.runtime.onMessage.addListener(message => {
     if (message.action !== 'arcifyBookmarksChanged') return;
     scheduleBookmarkRefresh();
@@ -507,6 +518,7 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName, boo
                 await BookmarkUtils.openBookmarkAsTab(bookmarkData, targetSpaceId, existingBookmarkElement, context, /*isPinned=*/true);
             } finally {
                 isOpeningBookmark = false;
+                refreshCoordinator.schedule();
             }
         }
     } catch (error) {
@@ -657,7 +669,7 @@ const refreshCoordinator = new RefreshCoordinator({
     adoptSpaces: next => adoptStoredSpaces(next, { render: false }),
     render: async () => {
         await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
-        await refreshActiveSpaceUI();
+        return refreshActiveSpaceUI();
     },
     isBusy: () => !sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount > 0 || pendingMutationCount > 0 || editorSessions?.isActive(),
     onError: error => Logger.warn('Could not refresh external changes:', error)
@@ -665,9 +677,9 @@ const refreshCoordinator = new RefreshCoordinator({
 editorSessions = new EditSessionRegistry(() => refreshCoordinator.schedule());
 
 async function adoptStoredSpaces(next, { render = true } = {}) {
-    if (render && editorSessions.isActive()) {
+    if (editorSessions.isActive()) {
         refreshCoordinator.invalidateSpaces();
-        return false;
+        return { needsRender: false, completed: false };
     }
     if (render && pendingMutationCount > 0) {
         render = false;
@@ -684,18 +696,27 @@ async function adoptStoredSpaces(next, { render = true } = {}) {
     });
     spaceSaveQueue.reset(next);
     for (const space of old) {
-        if (!spaces.some(s => s.id === space.id)) getSpaceElement(space.id)?.remove();
+        if (!spaces.some(s => s.id === space.id)) {
+            const element = getSpaceElement(space.id);
+            disposeEditorsInElement(element);
+            element?.remove();
+        }
     }
     for (const space of spaces) {
         // Remove old projections immediately when another panel moves or closes a tab.
         // Newly added rows are rendered when the destination space is shown.
         const owned = new Set([...space.spaceBookmarks, ...space.temporaryTabs]);
         getSpaceElement(space.id)?.querySelectorAll('.tab[data-tab-id]').forEach(element => {
-            if (!owned.has(Number(element.dataset.tabId))) element.remove();
+            if (!owned.has(Number(element.dataset.tabId))) {
+                disposeEditorsInElement(element);
+                element.remove();
+            }
         });
         const previous = oldMetadata.get(space.id);
         if (!previous || previous.name !== space.name || previous.color !== space.color) {
-            getSpaceElement(space.id)?.remove();
+            const element = getSpaceElement(space.id);
+            disposeEditorsInElement(element);
+            element?.remove();
             createSpaceElement(space);
         }
     }
@@ -704,7 +725,7 @@ async function adoptStoredSpaces(next, { render = true } = {}) {
         await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
         await refreshActiveSpaceUI();
     }
-    return needsRender;
+    return { needsRender, completed: true };
 }
 
 async function initSidebar() {
@@ -740,6 +761,7 @@ async function initSidebar() {
     previousSpaceId = activeSpaceId;
     setupDOMElements(createNewSpace, () => spaces);
     sidebarReady = true;
+    refreshCoordinator.schedule();
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== 'local' || !changes.spaces || !sidebarReady) return;
         scheduleStoredSpacesRefresh();
@@ -1287,7 +1309,12 @@ function clearFolderOpenTimer() {
 async function setActiveSpace(spaceId, updateTab = true) {
     const space = spaces.find(s => s.id === spaceId);
     if (!space) return;
-    if (activeSpaceId && activeSpaceId !== spaceId) previousSpaceId = activeSpaceId;
+    if (activeSpaceId && activeSpaceId !== spaceId) {
+        previousSpaceId = activeSpaceId;
+        const activeEditor = document.activeElement?.closest?.(`[data-space-id="${activeSpaceId}"]`);
+        if (activeEditor) document.activeElement.blur();
+        editorSessions.dispose('folder-pending', activeSpaceId);
+    }
     activeSpaceId = spaceId;
     await pendingSpaceSaves;
     await spaceRequest('activate', { windowId: currentWindow.id, spaceId });
@@ -1366,7 +1393,10 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
 function saveSpaces() {
     pendingSaveCount++;
     const run = spaceSaveQueue.submit(spaces);
-    pendingSpaceSaves = run.catch(error => Logger.error('Saving spaces failed', error)).finally(() => pendingSaveCount--);
+    pendingSpaceSaves = run.catch(error => Logger.error('Saving spaces failed', error)).finally(() => {
+        pendingSaveCount--;
+        refreshCoordinator.schedule();
+    });
     return run;
 }
 
@@ -2165,7 +2195,7 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
 
     // Keep the created folder's identity when this editor is used again.
     // Serialize Enter and blur so they cannot create two bookmark folders.
-    let folderEditSession = editorSessions.begin('folder', `new:${space.id}`);
+    let folderEditSession = editorSessions.begin('folder-pending', space.id);
     let createdFolder;
     try {
         createdFolder = await createFolder(spaceFolder.id, parentId, 'Untitled');
@@ -2177,6 +2207,11 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
     let createdFolderId = createdFolder.id;
     folderElement.dataset.bookmarkId = createdFolderId;
     await saveFolderCollapsed(createdFolderId, false);
+    if (folderEditSession.disposed || activeSpaceId !== space.id || !spaceElement.isConnected) {
+        refreshCoordinator.schedule();
+        return;
+    }
+    editorSessions.setOwner(folderEditSession, 'folder', createdFolderId);
     let savedFolderName = 'Untitled';
 
     // Add double-click functionality for folder name editing (for new folders)
@@ -2249,10 +2284,10 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
     const previous = spaceRenderTasks.get(space.id) || Promise.resolve();
     const run = previous.catch(error => Logger.warn('Previous space render failed', error)).then(async () => {
         if (!pinnedContainer.isConnected) return;
-        await renderSpaceTabs(space, pinnedContainer, tempContainer);
+        return renderSpaceTabs(space, pinnedContainer, tempContainer);
     });
     spaceRenderTasks.set(space.id, run);
-    try { await run; }
+    try { return await run; }
     finally { if (spaceRenderTasks.get(space.id) === run) spaceRenderTasks.delete(space.id); }
 }
 
@@ -2457,12 +2492,24 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         tempFragment.appendChild(tabElement);
     }
 
-    pinnedContainer.querySelectorAll('.tab, .folder, .bookmark-association-error').forEach(el => el.remove());
-    tempContainer.querySelectorAll('.tab').forEach(el => el.remove());
+    if (editorSessions.isActive()) {
+        refreshCoordinator.invalidateSpaces();
+        return false;
+    }
+
+    pinnedContainer.querySelectorAll('.tab, .folder, .bookmark-association-error').forEach(el => {
+        disposeEditorsInElement(el);
+        el.remove();
+    });
+    tempContainer.querySelectorAll('.tab').forEach(el => {
+        disposeEditorsInElement(el);
+        el.remove();
+    });
     pinnedContainer.appendChild(pinnedFragment);
     tempContainer.appendChild(tempFragment);
     const spaceElement = pinnedContainer.closest('.space');
     if (spaceElement) spaceElement.dataset.bookmarkTreeUnavailable = treeAvailable ? 'false' : 'true';
+    return true;
 }
 
 // Debounced UI refresh when settings change (e.g., invertTabOrder)
@@ -2471,21 +2518,21 @@ let refreshActiveSpaceUITimeout = null;
 async function refreshActiveSpaceUI({ force = false } = {}) {
     if (!force && (editorSessions.isActive() || pendingMutationCount > 0)) {
         refreshCoordinator.invalidateSpaces();
-        return;
+        return false;
     }
     try {
-        if (!activeSpaceId) return;
+        if (!activeSpaceId) return true;
         const space = spaces.find(s => s.id === activeSpaceId);
-        if (!space) return;
+        if (!space) return true;
 
         const spaceElement = document.querySelector(`[data-space-id="${activeSpaceId}"]`);
-        if (!spaceElement) return;
+        if (!spaceElement) return true;
 
         const pinnedContainer = spaceElement.querySelector('[data-tab-type="pinned"]');
         const tempContainer = spaceElement.querySelector('[data-tab-type="temporary"]');
-        if (!pinnedContainer || !tempContainer) return;
+        if (!pinnedContainer || !tempContainer) return true;
 
-        await loadTabs(space, pinnedContainer, tempContainer);
+        if (await loadTabs(space, pinnedContainer, tempContainer) === false) return false;
         updatePinnedSectionPlaceholders();
 
         // Restore active highlight if possible
@@ -2493,6 +2540,7 @@ async function refreshActiveSpaceUI({ force = false } = {}) {
         if (activeTabs?.length) {
             activateTabInDOM(activeTabs[0].id);
         }
+        return true;
     } catch (e) {
         Logger.warn('[UIRefresh] Error refreshing active space UI:', e);
         throw e;
@@ -2934,6 +2982,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                     isOpeningBookmark = false;
                     await pendingSpaceSaves;
                     await refreshActiveSpaceUI();
+                    refreshCoordinator.schedule();
                 }
             } else {
                 // It's a regular tab, just activate it
@@ -3145,6 +3194,8 @@ function handleTabUpdate(tabId, changeInfo, tab) {
                     });
                     await Utils.removePinnedTabState(tabId);
                     saveSpaces();
+                    editorSessions.dispose('tab', tabId);
+                    disposeEditorsInElement(tabElement);
                     tabElement.remove(); // Remove from space
                 } else {
                     moveTabToSpace(tabId, activeSpaceId, false /* pinned */);
@@ -3225,6 +3276,7 @@ function handleTabUpdate(tabId, changeInfo, tab) {
 
 async function handleTabRemove(tabId) {
     Logger.log('Tab removed:', tabId);
+    editorSessions.dispose('tab', tabId);
     await Utils.removePinnedTabState(tabId);
     // Get tab element before removing it
     const tabElement = document.querySelector(`[data-tab-id="${tabId}"]`);
@@ -3341,6 +3393,8 @@ async function deleteSpace(spaceId) {
     Logger.log('Deleting space:', spaceId);
     const space = spaces.find(s => s.id === spaceId);
     if (space) {
+        editorSessions.dispose('folder-pending', spaceId);
+        editorSessions.dispose('space', spaceId);
         const folderToDelete = await getSpaceBookmarkFolder(space);
         await chrome.bookmarks.removeTree(folderToDelete.id);
         await LocalStorage.removeSpaceRegistryEntry(folderToDelete.id);
@@ -3355,6 +3409,7 @@ async function deleteSpace(spaceId) {
         // Remove space element from DOM
         const spaceElement = document.querySelector(`[data-space-id="${spaceId}"]`);
         if (spaceElement) {
+            disposeEditorsInElement(spaceElement);
             spaceElement.remove();
         }
 
@@ -3566,7 +3621,9 @@ function setupFolderContextMenu(folderElement, space, item = null) {
         deleteOption.addEventListener('click', async () => {
             if (confirm('Are you sure you want to delete this folder and all its contents?')) {
                 if (folderId) await chrome.bookmarks.removeTree(folderId);
+                editorSessions.dispose('folder', folderId);
                 const parentFolder = folderElement.parentElement.closest('.folder');
+                disposeEditorsInElement(folderElement);
                 folderElement.remove();
                 if (parentFolder) updateFolderPlaceholder(parentFolder);
                 updatePinnedSectionPlaceholders();

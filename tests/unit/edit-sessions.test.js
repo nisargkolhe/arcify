@@ -29,3 +29,26 @@ test('cancel releases the exact editor even when its operation fails', async () 
     await assert.rejects(registry.complete(session, async () => { throw new Error('deleted'); }), /deleted/);
     assert.equal(registry.isActive(), false);
 });
+
+test('disposing a row owner releases an unblurred editor and wakes pending refresh', async () => {
+    let wakes = 0;
+    const registry = new EditSessionRegistry(() => wakes++);
+    registry.begin('tab', 42);
+    registry.begin('folder', 'kept');
+    registry.dispose('tab', 42);
+    assert.equal(registry.isActive(), true);
+    assert.equal(wakes, 0);
+    registry.dispose('folder', 'kept');
+    assert.equal(registry.isActive(), false);
+    assert.equal(wakes, 1);
+});
+
+test('a new editor can be readdressed to its durable bookmark ID before disposal', () => {
+    const registry = new EditSessionRegistry();
+    const session = registry.begin('folder', 'new:space');
+    registry.setOwner(session, 'folder', 'bookmark-7');
+    registry.dispose('folder', 'new:space');
+    assert.equal(registry.isActive(), true);
+    registry.dispose('folder', 'bookmark-7');
+    assert.equal(registry.isActive(), false);
+});
