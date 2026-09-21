@@ -1,5 +1,7 @@
 export class RefreshCoordinator {
-    constructor({ readSpaces, adoptSpaces, render, isBusy = () => false, onError = () => {}, delay = 100, schedule = setTimeout, cancel = clearTimeout }) {
+    constructor({ readSpaces, adoptSpaces, render, isBusy = () => false, onError = () => {}, delay = 100,
+        schedule = (callback, timeout) => globalThis.setTimeout(callback, timeout),
+        cancel = timer => globalThis.clearTimeout(timer) }) {
         this.readSpaces = readSpaces;
         this.adoptSpaces = adoptSpaces;
         this.render = render;
