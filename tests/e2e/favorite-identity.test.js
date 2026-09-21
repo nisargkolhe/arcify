@@ -198,21 +198,32 @@ test('external bookmark creation, rename and deletion update the open sidebar', 
 });
 
 test('moving the associated folder out of Arcify keeps live tabs visible and recovers by exact ID', async () => {
-    const live = await page.evaluate(async ({ url, spaceId }) => {
-        const tab = await chrome.tabs.create({ url: `${url}folder-recovery`, active: false });
-        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
-        return tab.id;
+    const [live, favorite] = await page.evaluate(async ({ url, spaceId }) => {
+        const ids = [];
+        for (const suffix of ['folder-recovery', 'folder-recovery-favorite']) {
+            const tab = await chrome.tabs.create({ url: `${url}${suffix}`, active: false });
+            await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
+            ids.push(tab.id);
+        }
+        return ids;
     }, { url, spaceId: fixture.spaceId });
     await page.waitForSelector(row(live));
+    await page.waitForSelector(row(favorite));
+    await toggle(favorite);
+    await page.waitForFunction(id => document.querySelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${id}"][data-bookmark-id]`),
+        { polling: 100 }, favorite);
+    const bookmarkId = await page.$eval(row(favorite), el => el.dataset.bookmarkId);
     const originalParent = await page.evaluate(async id => (await chrome.bookmarks.get(id))[0].parentId, fixture.folderId);
     await page.evaluate(id => chrome.bookmarks.move(id, { parentId: '1' }), fixture.folderId);
     await page.waitForSelector('.space.active .bookmark-association-error');
-    await page.waitForSelector(`${row(live)}.favorite-fallback, ${row(live)}:not(.favorite-fallback)`);
+    await page.waitForSelector(`${row(favorite)}.favorite-fallback[data-bookmark-id="${bookmarkId}"]`);
     expect(await page.$$eval(row(live), els => els.length)).toBe(1);
+    expect(await page.$$eval(row(favorite), els => els.length)).toBe(1);
     await page.evaluate(({ id, parentId }) => chrome.bookmarks.move(id, { parentId }), { id: fixture.folderId, parentId: originalParent });
     await page.$eval('.space.active .bookmark-association-error button', el => el.click());
     await page.waitForFunction(() => !document.querySelector('.space.active .bookmark-association-error'), { polling: 100 });
     await page.waitForSelector(row(live));
+    await page.waitForSelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${favorite}"][data-bookmark-id="${bookmarkId}"]`);
 });
 
 test('service-worker ordering matches real Chrome move semantics and rejects partial views', async () => {

@@ -2437,11 +2437,22 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     for (const tabId of tabsToLoad) {
         const tab = tabs.find(t => t.id === tabId);
         if (!tab || representedPinnedTabIds.has(tabId)) continue;
-        const tabElement = await createTabElement(tab);
-        if (!treeAvailable && space.spaceBookmarks.includes(tabId)) {
+        const isFavoriteFallback = !treeAvailable && space.spaceBookmarks.includes(tabId);
+        if (isFavoriteFallback) {
+            tab.bookmarkId = pinnedStatesById[tabId]?.bookmarkId;
+            tab.pinnedUrl = pinnedStatesById[tabId]?.pinnedUrl;
+        }
+        const tabElement = await createTabElement(tab, isFavoriteFallback);
+        if (isFavoriteFallback) {
             tabElement.classList.add('favorite-fallback');
             tabElement.draggable = false;
             tabElement.title = 'Favorite controls are unavailable until the bookmark folder is restored.';
+            const blockUnavailableMutation = event => {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            };
+            tabElement.addEventListener('contextmenu', blockUnavailableMutation, { capture: true });
+            tabElement.addEventListener('dblclick', blockUnavailableMutation, { capture: true });
         }
         tempFragment.appendChild(tabElement);
     }
