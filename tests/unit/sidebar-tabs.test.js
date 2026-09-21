@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectWindowSpaceTabs, mergeVisibleOrder, saveBookmarkOrder } from '../../sidebar-tabs.js';
+import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, saveBookmarkOrder } from '../../sidebar-tabs.js';
 
 test('window-scoped space tabs retain extension order despite native order and duplicate URLs', () => {
     const space = { spaceBookmarks: [3, 2], temporaryTabs: [4, 1, 5] };
@@ -14,6 +14,10 @@ test('window-scoped space tabs retain extension order despite native order and d
 test('reordering one window preserves other window slots and membership', () => {
     assert.deepEqual(mergeVisibleOrder([1, 2, 3, 4], [3, 1]), [3, 2, 1, 4]);
     assert.deepEqual(mergeVisibleOrder([1, 2, 3], [3, 1, 5]), [3, 2, 1, 5]);
+});
+test('captured temporary drop order survives delayed demotion and preserves other-window slots', () => {
+    assert.deepEqual(mergeCapturedTemporaryOrder([1, 20, 2, 21, 3], [3, 1, 2], false), [3, 20, 1, 21, 2]);
+    assert.deepEqual(mergeCapturedTemporaryOrder([1, 20, 2, 21, 3], [3, 1, 2], true), [2, 20, 1, 21, 3]);
 });
 test('bookmark drag order round-trips through storage in both display directions', async () => {
     for (const inverted of [false, true]) {

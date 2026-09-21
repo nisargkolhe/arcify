@@ -20,7 +20,7 @@ import { SpacePatchQueue } from './space-patch-queue.js';
 import { RefreshCoordinator } from './refresh-coordinator.js';
 import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
-import { selectWindowSpaceTabs, mergeVisibleOrder, saveBookmarkOrder } from './sidebar-tabs.js';
+import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, saveBookmarkOrder } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
 import { canCreateFolder, createFolder } from './folder-policy.js';
 import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
@@ -65,6 +65,7 @@ let previousSpaceId = null;
 let isCreatingSpace = false;
 let isOpeningBookmark = false;
 let isDraggingTab = false;
+let pendingMutationCount = 0;
 let currentWindow = null;
 let defaultSpaceName = 'Home';
 let showAllOpenTabsInCollapsedFolders = false; // default Arc behavior is false (active-only)
@@ -657,7 +658,7 @@ const refreshCoordinator = new RefreshCoordinator({
         await activateSpaceInDOM(activeSpaceId, spaces, updateSpaceSwitcher);
         await refreshActiveSpaceUI();
     },
-    isBusy: () => !sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount > 0 || editorSessions?.isActive(),
+    isBusy: () => !sidebarReady || isDraggingTab || isOpeningBookmark || pendingSaveCount > 0 || pendingMutationCount > 0 || editorSessions?.isActive(),
     onError: error => Logger.warn('Could not refresh external changes:', error)
 });
 editorSessions = new EditSessionRegistry(() => refreshCoordinator.schedule());
@@ -666,6 +667,10 @@ async function adoptStoredSpaces(next, { render = true } = {}) {
     if (render && editorSessions.isActive()) {
         refreshCoordinator.invalidateSpaces();
         return false;
+    }
+    if (render && pendingMutationCount > 0) {
+        render = false;
+        refreshCoordinator.invalidateSpaces();
     }
     const projection = list => JSON.stringify(list.map(({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs }) =>
         ({ id, name, color, bookmarkFolderId, spaceBookmarks, temporaryTabs })));
@@ -1218,6 +1223,7 @@ function calculatePinnedTabIndex(afterElement, position, pinnedFavicons) {
 // Helper function to set up drag event listeners for tab elements
 function setupTabDragHandlers(tabElement) {
     tabElement.addEventListener('dragstart', event => {
+        isDraggingTab = true;
         event.dataTransfer.setData('text/plain', tabElement.dataset.tabId || tabElement.dataset.url || '');
         event.dataTransfer.effectAllowed = 'move';
         tabElement.classList.add('dragging');
@@ -1226,8 +1232,10 @@ function setupTabDragHandlers(tabElement) {
     });
 
     tabElement.addEventListener('dragend', () => {
+        isDraggingTab = false;
         tabElement.classList.remove('dragging');
         dragSourceFolderElement = null;
+        refreshCoordinator.schedule();
     });
 }
 
@@ -1393,7 +1401,7 @@ async function moveTabToPinned(space, tab) {
     await refreshActiveSpaceUI();
 }
 
-async function moveTabToTemp(space, tab) {
+async function moveTabToTemp(space, tab, { temporaryDisplayOrder = null, inverted = false, refresh = true } = {}) {
     space = spaces.find(s => s.id === space.id);
     if (!space) return;
     await removeSpacePin(space, tab);
@@ -1403,11 +1411,12 @@ async function moveTabToTemp(space, tab) {
     if (!space.temporaryTabs.includes(tab.id)) {
         space.temporaryTabs.push(tab.id);
     }
+    if (temporaryDisplayOrder) {
+        space.temporaryTabs = mergeCapturedTemporaryOrder(space.temporaryTabs, temporaryDisplayOrder, inverted);
+    }
 
     // No longer a space-pinned tab; clear pinned state mapping.
     await Utils.removePinnedTabState(tab.id);
-
-    saveSpaces();
 
     // Update chevron state after moving tab from pinned
     const spaceElement = document.querySelector(`[data-space-id="${space.id}"]`);
@@ -1418,7 +1427,7 @@ async function moveTabToTemp(space, tab) {
 
     // Persist extension ordering after membership changes.
     await persistSpaceTabOrder(space.id, { source: 'arcify', movedTabId: tab.id });
-    await refreshActiveSpaceUI();
+    if (refresh) await refreshActiveSpaceUI();
 }
 
 // Helper function to manage folder placeholder state
@@ -1596,7 +1605,7 @@ async function convertFavoriteToTab(draggingElement, targetIsPinned) {
 }
 
 // Handle bookmark operations during drop events
-async function handleBookmarkOperations(event, draggingElement, container, targetFolder) {
+async function handleBookmarkOperations(event, draggingElement, container, targetFolder, dropIntent = null) {
     // Validate required elements exist
     if (!draggingElement || !container || !event) {
         Logger.warn('Missing required elements for bookmark operations');
@@ -1695,8 +1704,8 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             updatePinnedSectionPlaceholders();
         } catch (error) {
             Logger.error('Error handling pinned tab drop:', error);
-            // Update placeholders even if there was an error
             updatePinnedSectionPlaceholders();
+            throw error;
         }
     } else if (container.dataset.tabType === 'temporary' && draggingElement.dataset.tabId) {
         // Handle favorite tab conversion
@@ -1716,15 +1725,22 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
 
             if (space && tab) {
                 // Remove tab from bookmarks if it exists
-                if (space.spaceBookmarks.includes(tab.id)) await moveTabToTemp(space, tab);
+                if (space.spaceBookmarks.includes(tab.id)) {
+                    await moveTabToTemp(space, tab, {
+                        temporaryDisplayOrder: dropIntent?.temporaryDisplayOrder,
+                        inverted: dropIntent?.inverted,
+                        refresh: false
+                    });
+                    return { orderHandled: true };
+                }
 
                 // Update all folder placeholders after removing bookmark
                 updatePinnedSectionPlaceholders();
             }
         } catch (error) {
             Logger.error('Error handling temporary tab drop:', error);
-            // Update placeholders even if there was an error
             updatePinnedSectionPlaceholders();
+            throw error;
         }
     } else if (draggingElement && draggingElement.classList.contains('pinned-favicon') && draggingElement.dataset.tabId) {
         const tabId = parseInt(draggingElement.dataset.tabId);
@@ -1736,10 +1752,11 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             updatePinnedSectionPlaceholders();
         } catch (error) {
             Logger.error('Error converting favorite tab to space tab:', error);
-            // Update placeholders even if there was an error
             updatePinnedSectionPlaceholders();
+            throw error;
         }
     }
+    return { orderHandled: false };
 }
 
 function uniqPreserveOrder(ids) {
@@ -1908,6 +1925,12 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
+                pendingMutationCount++;
+                try {
+                const spaceElement = container.closest('.space');
+                if (container.dataset.tabType === 'pinned' && spaceElement?.dataset.bookmarkTreeUnavailable === 'true') {
+                    throw new Error('Favorites are unavailable until this space bookmark folder is restored.');
+                }
                 const sourceContent = dragSourceFolderElement?.querySelector(':scope > .folder-content');
                 const anchorKey = draggingElement.dataset.bookmarkId || draggingElement.dataset.tabId;
                 const sourceAnchor = sourceContent && projectedTabAnchors.get(sourceContent)?.get(anchorKey);
@@ -1952,8 +1975,14 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                     targetContainer.appendChild(draggingElement);
                 }
 
-                // Handle bookmark operations after DOM positioning is complete
-                await handleBookmarkOperations(e, draggingElement, container, targetFolder);
+                const dropInverted = await Utils.getInvertTabOrder();
+                const dropIntent = container.dataset.tabType === 'temporary' ? {
+                    temporaryDisplayOrder: getTempSectionTabIds(spaceElement),
+                    inverted: dropInverted
+                } : null;
+
+                // Capture order before bookmark/storage awaits can emit a refresh notification.
+                const operationResult = await handleBookmarkOperations(e, draggingElement, container, targetFolder, dropIntent);
 
                 if (container.dataset.tabType === 'pinned') {
                     try {
@@ -1969,10 +1998,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                         };
                         await persist(container, root.id);
                     } catch (error) {
-                        Logger.warn('Bookmark order changed during drag; restoring the saved order.', error);
-                        await refreshActiveSpaceUI();
-                        alert(error.message);
-                        return;
+                        throw error;
                     }
                 }
 
@@ -1986,8 +2012,17 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
                 // Update the model from the DOM (Arcify is source of truth here), then reconcile Chrome.
                 // This is intentionally done after bookmark operations so section membership is correct.
-                if (droppedTabId) {
+                if (droppedTabId && !operationResult?.orderHandled) {
                     await handleArcifyOrderChangeAfterDropByTabId(droppedTabId, container);
+                }
+                if (operationResult?.orderHandled) await refreshActiveSpaceUI({ force: true });
+                } catch (error) {
+                    Logger.warn('Drop could not be completed; restoring saved state.', error);
+                    await refreshActiveSpaceUI({ force: true });
+                    alert(error.message);
+                } finally {
+                    pendingMutationCount--;
+                    refreshCoordinator.schedule();
                 }
             }
         });
@@ -2384,8 +2419,8 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
 // Debounced UI refresh when settings change (e.g., invertTabOrder)
 let refreshActiveSpaceUITimeout = null;
 
-async function refreshActiveSpaceUI() {
-    if (editorSessions.isActive()) {
+async function refreshActiveSpaceUI({ force = false } = {}) {
+    if (!force && (editorSessions.isActive() || pendingMutationCount > 0)) {
         refreshCoordinator.invalidateSpaces();
         return;
     }

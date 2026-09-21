@@ -12,6 +12,14 @@ export function mergeVisibleOrder(allIds, visibleIds) {
     return [...result, ...visibleIds.slice(index)];
 }
 
+export function canonicalOrderFromDisplay(displayIds, inverted) {
+    return inverted ? [...displayIds].reverse() : [...displayIds];
+}
+
+export function mergeCapturedTemporaryOrder(allIds, displayIds, inverted) {
+    return mergeVisibleOrder(allIds, canonicalOrderFromDisplay(displayIds, inverted));
+}
+
 export async function saveBookmarkOrder(parentId, displayIds, inverted) {
     const response = await chrome.runtime.sendMessage({ type: 'bookmarkOrder', parentId, displayIds, inverted });
     if (!response?.success) throw new Error(response?.error || 'Bookmark order could not be saved.');
