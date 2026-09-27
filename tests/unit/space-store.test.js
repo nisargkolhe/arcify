@@ -66,6 +66,37 @@ test('worker restart preserves session membership and opener determines new tab 
     const next = new SpaceStore(); await next.dispatch({ action: 'get' });
     assert.deepEqual(next.spaces[1].temporaryTabs, [2, 3]);
 });
+test('external links without an opener use the last selected space in a new window', async () => {
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'activate', spaceId: 'b', windowId: 1 });
+    const external = { id: 3, windowId: 2, url: 'https://external.test/' };
+    tabs.push(external);
+    await store.run(async () => { store.track(external); await store.persist(); });
+    assert.equal(ownerOf(local.spaces, 3).id, 'b');
+    assert.equal(session.lastActiveSpaceId, 'b');
+    assert.equal(local.lastActiveSpaceId, 'b');
+});
+test('external links use the durable last selected space after a browser restart', async () => {
+    session.spaceSession = false;
+    local.lastActiveSpaceId = 'b';
+    local.spaceTabSnapshot = [
+        { spaceId: 'a', section: 'temporaryTabs', order: 0, url: 'https://one.test/' },
+        { spaceId: 'b', section: 'temporaryTabs', order: 0, url: 'https://two.test/' }
+    ];
+    const external = { id: 3, windowId: 1, active: true, url: 'https://external.test/' };
+    tabs.push(external);
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'get' });
+    assert.equal(ownerOf(local.spaces, 3).id, 'b');
+});
+test('ordinary links still follow their opener instead of the last selected space', async () => {
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'activate', spaceId: 'b', windowId: 1 });
+    const child = { id: 3, windowId: 1, openerTabId: 1, url: 'https://linked.test/' };
+    tabs.push(child);
+    await store.run(async () => { store.track(child); await store.persist(); });
+    assert.equal(ownerOf(local.spaces, 3).id, 'a');
+});
 test('explicit assignment beats creation fallback', async () => {
     const store = new SpaceStore(); await store.dispatch({ action: 'get' });
     await store.dispatch({ action: 'assign', tabId: 1, spaceId: 'b', pinned: true });

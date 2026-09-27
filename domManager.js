@@ -183,7 +183,7 @@ export function activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher) {
     updateSpaceSwitcher();
 }
 
-export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive, onReplaceBookmarkUrlWithCurrent = null) {
+export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive, onReplaceBookmarkUrlWithCurrent = null, bulkActions = null) {
     // Remove any existing context menus
     const existingMenu = document.getElementById('tab-context-menu');
     if (existingMenu) {
@@ -196,6 +196,15 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     contextMenu.style.position = 'fixed';
     contextMenu.style.left = `${x}px`;
     contextMenu.style.top = `${y}px`;
+    contextMenu.setAttribute('role', 'menu');
+    contextMenu.setAttribute('aria-label', bulkActions ? `${bulkActions.tabIds.length} selected tabs` : 'Tab actions');
+
+    const selectedCount = bulkActions?.tabIds?.length || 1;
+    const plural = selectedCount > 1;
+    const finishBulkAction = () => {
+        bulkActions?.clearSelection?.();
+        contextMenu.remove();
+    };
 
     // --- Menu Items ---
 
@@ -203,24 +212,42 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     if (!isBookmarkOnly) {
         const addToFavoritesOption = document.createElement('div');
         addToFavoritesOption.className = 'context-menu-item';
-        addToFavoritesOption.textContent = 'Add to Favorites';
+        addToFavoritesOption.textContent = plural ? `Add ${selectedCount} Tabs to Favorites` : 'Add to Favorites';
+        addToFavoritesOption.setAttribute('role', 'menuitem');
         addToFavoritesOption.addEventListener('click', async () => {
-            await chrome.tabs.update(tab.id, { pinned: true });
-            contextMenu.remove();
+            if (bulkActions) await bulkActions.addToFavorites(bulkActions.tabIds);
+            else await chrome.tabs.update(tab.id, { pinned: true });
+            finishBulkAction();
         });
         contextMenu.appendChild(addToFavoritesOption);
 
         const pinInSpaceOption = document.createElement('div');
         pinInSpaceOption.className = 'context-menu-item';
-        pinInSpaceOption.textContent = isPinned ? 'Unpin Tab' : 'Pin Tab';
-        pinInSpaceOption.addEventListener('click', () => {
-            chrome.runtime.sendMessage({ command: 'toggleSpacePin', tabId: tab.id });
-            contextMenu.remove();
+        pinInSpaceOption.textContent = plural
+            ? `${isPinned ? 'Unpin' : 'Pin'} ${selectedCount} Tabs`
+            : isPinned ? 'Unpin Tab' : 'Pin Tab';
+        pinInSpaceOption.setAttribute('role', 'menuitem');
+        pinInSpaceOption.addEventListener('click', async () => {
+            if (bulkActions) await bulkActions.setSpacePinned(bulkActions.tabIds, !isPinned);
+            else chrome.runtime.sendMessage({ command: 'toggleSpacePin', tabId: tab.id });
+            finishBulkAction();
         });
         contextMenu.appendChild(pinInSpaceOption);
 
+        if (bulkActions) {
+            const newFolderOption = document.createElement('div');
+            newFolderOption.className = 'context-menu-item';
+            newFolderOption.setAttribute('role', 'menuitem');
+            newFolderOption.textContent = `New Folder with ${selectedCount} Items`;
+            newFolderOption.addEventListener('click', async () => {
+                await bulkActions.createFolder(bulkActions.tabIds);
+                finishBulkAction();
+            });
+            contextMenu.appendChild(newFolderOption);
+        }
+
         // Arc-like: allow updating the underlying space bookmark URL to the current tab URL.
-        if (isPinned && typeof onReplaceBookmarkUrlWithCurrent === 'function') {
+        if (!bulkActions && isPinned && typeof onReplaceBookmarkUrlWithCurrent === 'function') {
             const replaceBookmarkUrlOption = document.createElement('div');
             replaceBookmarkUrlOption.className = 'context-menu-item';
             replaceBookmarkUrlOption.textContent = 'Replace Bookmark URL with Current URL';
@@ -244,7 +271,8 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         // 2. Move to Space
         const moveToSpaceItem = document.createElement('div');
         moveToSpaceItem.className = 'context-menu-item with-submenu';
-        moveToSpaceItem.textContent = 'Move to Space';
+        moveToSpaceItem.textContent = plural ? `Move ${selectedCount} Tabs to Space` : 'Move to Space';
+        moveToSpaceItem.setAttribute('role', 'menuitem');
 
         const submenu = document.createElement('div');
         submenu.className = 'context-menu submenu';
@@ -260,11 +288,15 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
                 e.stopPropagation();
                 contextMenu.remove(); // Close menu immediately for better UX
 
-                await moveTabToSpace(tab.id, space.id, false);
-                // Set the space as active, but prevent it from auto-activating a different tab
-                await setActiveSpace(space.id, false);
-                // Explicitly activate the tab that was just moved
-                await Utils.focusTab(tab.id);
+                if (bulkActions) {
+                    await bulkActions.moveToSpace(bulkActions.tabIds, space.id);
+                } else {
+                    await moveTabToSpace(tab.id, space.id, false);
+                    // Set the space as active, but prevent it from auto-activating a different tab
+                    await setActiveSpace(space.id, false);
+                    // Explicitly activate the tab that was just moved
+                    await Utils.focusTab(tab.id);
+                }
             });
             submenu.appendChild(submenuItem);
         });
@@ -283,9 +315,10 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
             const submenuItem = document.createElement('div');
             submenuItem.className = 'context-menu-item';
             submenuItem.textContent = folder.title;
-            submenuItem.addEventListener('click', (e) => {
+            submenuItem.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                createSpaceFromInactive(folder.title, tab);
+                if (bulkActions) await bulkActions.createInactiveSpace(folder.title, bulkActions.tabIds);
+                else await createSpaceFromInactive(folder.title, tab);
                 contextMenu.remove();
             });
             submenu.appendChild(submenuItem);
@@ -333,10 +366,12 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     if (!isBookmarkOnly) {
         const archiveOption = document.createElement('div');
         archiveOption.className = 'context-menu-item';
-        archiveOption.textContent = 'Archive Tab';
+        archiveOption.textContent = plural ? `Archive ${selectedCount} Tabs` : 'Archive Tab';
+        archiveOption.setAttribute('role', 'menuitem');
         archiveOption.addEventListener('click', async () => {
-            await Utils.archiveTab(tab.id); // Use the utility function
-            contextMenu.remove();
+            if (bulkActions) await bulkActions.archive(bulkActions.tabIds);
+            else await Utils.archiveTab(tab.id); // Use the utility function
+            finishBulkAction();
         });
         contextMenu.appendChild(archiveOption);
     }
@@ -344,10 +379,14 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     // Close Tab / Remove Bookmark
     const closeOption = document.createElement('div');
     closeOption.className = 'context-menu-item';
-    closeOption.textContent = isBookmarkOnly ? 'Remove Bookmark' : 'Close Tab';
-    closeOption.addEventListener('click', () => {
-        closeTab(tabElement, tab, isPinned, isBookmarkOnly);
-        contextMenu.remove();
+    closeOption.textContent = isBookmarkOnly
+        ? 'Remove Bookmark'
+        : plural ? `Close ${selectedCount} Tabs` : 'Close Tab';
+    closeOption.setAttribute('role', 'menuitem');
+    closeOption.addEventListener('click', async () => {
+        if (bulkActions) await bulkActions.close(bulkActions.tabIds);
+        else await closeTab(tabElement, tab, isPinned, isBookmarkOnly);
+        finishBulkAction();
     });
     contextMenu.appendChild(closeOption);
 
