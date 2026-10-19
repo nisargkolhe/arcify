@@ -497,7 +497,9 @@ async function activatePinnedTabByURL(bookmarkUrl, targetSpaceId, spaceName, boo
                 title: bookmark.title || 'Bookmark',
                 spaceName: spaceName,
                 pinnedUrl: bookmarkUrl,
-                bookmarkId: bookmark.id
+                bookmarkId: bookmark.id,
+                // An explicit activation adopts one unbound open tab with the same URL.
+                adoptTab: BookmarkUtils.findAdoptableTab(tabs, bindings, bookmark.url || bookmarkUrl, Utils.getPinnedUrlKey.bind(Utils))
             };
 
             // Prepare context for BookmarkUtils
@@ -2873,6 +2875,10 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                         isOpeningBookmark = false;
                         return;
                     }
+                    // An explicit click adopts one unbound open tab with the same URL.
+                    const adoptTab = isPinned && clickedBookmarkId ? BookmarkUtils.findAdoptableTab(
+                        allTabs.filter(t => ownerOf(spaces, t.id)?.id === activeSpaceId),
+                        bindings, tabElement.dataset.pinnedUrl || tabUrl, Utils.getPinnedUrlKey.bind(Utils)) : null;
 
                     // Check if tab is in archive and restore it
                     const archivedTabs = await Utils.getArchivedTabs();
@@ -2958,7 +2964,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                         title: bookmarkTitle,
                         spaceName: tab.spaceName || space.name,
                         pinnedUrl: tabElement.dataset.pinnedUrl || tabUrl,
-                        bookmarkId: tabElement.dataset.bookmarkId || null
+                        bookmarkId: tabElement.dataset.bookmarkId || null,
+                        adoptTab
                     };
 
                     // Prepare context for BookmarkUtils

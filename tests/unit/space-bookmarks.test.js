@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getSpaceBookmarkById, removeSpacePin, getSpaceBookmarkFolder, getSpaceBookmarkTree } from '../../space-bookmarks.js';
 import { BookmarkUtils } from '../../bookmark-utils.js';
+import { Utils } from '../../utils.js';
 function mock() {
     const removed = [];
     const tree = { root: [{ id: 'space', parentId: 'root', title: 'Renamed' }, { id: 'other', parentId: 'root', title: 'Old name' }], space: [{ id: 'folder', parentId: 'space', title: 'Nested' }], folder: [
@@ -80,4 +81,31 @@ test('bookmark tree loading is all-or-nothing and performs no recovery writes', 
     await assert.rejects(getSpaceBookmarkTree({ bookmarkFolderId: 'space' }), /injected read failure/);
     assert.deepEqual(writes, []);
     assert.equal(tree.folder.length, 2);
+});
+
+test('favorite adoption prefers the exact URL over an earlier same-key tab and never takes a bound tab', () => {
+    const tabs = [{ id: 1, url: 'https://v.test/watch?v=A' }, { id: 2, url: 'https://v.test/watch?v=B' }, { id: 3, url: 'https://v.test/watch?v=A' }];
+    const bindings = { 1: { bookmarkId: 'other' } };
+    const key = Utils.getPinnedUrlKey.bind(Utils);
+    assert.equal(BookmarkUtils.findAdoptableTab(tabs, bindings, 'https://v.test/watch?v=A', key).id, 3);
+    assert.equal(BookmarkUtils.findAdoptableTab(tabs, bindings, 'https://v.test/watch?v=C', key).id, 2);
+    assert.equal(BookmarkUtils.findAdoptableTab(tabs, bindings, 'https://w.test/', key), null);
+});
+
+test('adopting a renamed tab replaces its custom name with the favorite title without opening a duplicate', async () => {
+    const store = { tabNameOverridesById: { 7: { name: 'Scratch', originalDomain: 'mail.test' } } };
+    const created = [];
+    const spaces = [{ id: 's', spaceBookmarks: [], temporaryTabs: [7] }];
+    globalThis.chrome = {
+        storage: { local: { async get(key) { return { [key]: store[key] }; }, async set(values) { Object.assign(store, values); } } },
+        runtime: { async sendMessage() { return { success: true, spaces }; } },
+        tabs: { async create(options) { created.push(options); return { id: 99 }; }, async update() {} }
+    };
+    const tab = { id: 7, url: 'https://mail.test/inbox', title: 'Inbox' };
+    await BookmarkUtils.openBookmarkAsTab({ url: tab.url, title: 'Inbox', bookmarkId: 'fav', adoptTab: tab }, 's', null,
+        { spaces, currentWindow: { id: 1 }, saveSpaces() {}, Utils }, true);
+    assert.deepEqual(created, []);
+    assert.equal(store.tabNameOverridesById[7].name, 'Inbox');
+    assert.equal(store.pinnedTabStatesById[7].bookmarkId, 'fav');
+    assert.deepEqual(spaces[0], { id: 's', spaceBookmarks: [7], temporaryTabs: [] });
 });

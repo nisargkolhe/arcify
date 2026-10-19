@@ -131,10 +131,11 @@ export const BookmarkUtils = {
      * @param {string} bookmarkData.url - Bookmark URL
      * @param {string} bookmarkData.title - Bookmark title
      * @param {string} bookmarkData.spaceName - Space name the bookmark belongs to
+     * @param {Object} [bookmarkData.adoptTab] - Open tab to adopt instead of creating one (see findAdoptableTab)
      * @param {string} targetSpaceId - Space ID to open the tab in
      * @param {HTMLElement} replaceElement - DOM element to replace with active tab element (optional)
      * @param {Object} context - Context object with required functions and data
-     * @returns {Object} The created Chrome tab object
+     * @returns {Object} The adopted or created Chrome tab object
      */
     async openBookmarkAsTab(bookmarkData, targetSpaceId, replaceElement = null, context, isPinned) {
         const {
@@ -150,16 +151,17 @@ export const BookmarkUtils = {
 
         Logger.log('[BookmarkUtils] Opening bookmark as tab:', bookmarkData.url, targetSpaceId);
 
-        // Create the bookmark tab and assign its target space
-        const newTab = await chrome.tabs.create({
+        // Adopt an explicitly chosen open tab, or create the bookmark tab, then assign its target space
+        const adoptedTab = bookmarkData.adoptTab || null;
+        const newTab = adoptedTab || await chrome.tabs.create({
             url: bookmarkData.url,
             active: true,
             windowId: currentWindow.id
         });
 
         // If bookmark has a custom name, set tab name override
-        if (bookmarkData.title && newTab.title !== bookmarkData.title) {
-            await Utils.setTabNameOverride(newTab.id, bookmarkData.url, bookmarkData.title);
+        if (bookmarkData.title && (adoptedTab || newTab.title !== bookmarkData.title)) {
+            await Utils.setTabNameOverride(newTab.id, adoptedTab?.url || bookmarkData.url, bookmarkData.title);
         }
 
         if (isPinned) {
@@ -225,6 +227,22 @@ export const BookmarkUtils = {
 
         Logger.log('[BookmarkUtils] Successfully opened bookmark as tab:', newTab.id);
         return newTab;
+    },
+
+    /**
+     * Find an open tab an explicit favorite click may adopt instead of opening a duplicate.
+     * Only unbound tabs whose URL key matches qualify, preferring an exact URL;
+     * callers pass tabs already limited to the target window and space.
+     * @param {Array} tabs - Candidate Chrome tabs in the target window and space
+     * @param {Object} bindings - pinnedTabStatesById map
+     * @param {string} bookmarkUrl - The favorite's URL
+     * @param {Function} getUrlKey - Normalizes URLs for comparison
+     * @returns {Object|null} The tab to adopt, if any
+     */
+    findAdoptableTab(tabs, bindings, bookmarkUrl, getUrlKey) {
+        const targetKey = getUrlKey(bookmarkUrl);
+        const matches = tabs.filter(t => t.url && !bindings[t.id]?.bookmarkId && getUrlKey(t.url) === targetKey);
+        return matches.find(t => t.url === bookmarkUrl) || matches[0] || null;
     },
 
     /**
