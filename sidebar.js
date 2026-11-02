@@ -45,7 +45,8 @@ import {
     hideAllDropIndicators,
     showDropIndicator,
     getDropPosition,
-    handleEmptyContainerDrop
+    handleEmptyContainerDrop,
+    showUndoToast
 } from './domManager.js';
 import { BookmarkUtils } from './bookmark-utils.js';
 import { Logger } from './logger.js';
@@ -1433,10 +1434,33 @@ async function moveTabToPinned(space, tab) {
     await refreshActiveSpaceUI();
 }
 
+function offerFavoriteUndo(removed, restoreTab = null) {
+    if (!removed) return;
+    // A bookmark is the favorite's durable record, so give intentional removal a recovery window.
+    showUndoToast('Favorite removed.', async () => {
+        const siblings = await chrome.bookmarks.getChildren(removed.parentId);
+        const bookmark = await chrome.bookmarks.create({ ...removed, index: Math.min(removed.index, siblings.length) });
+        if (restoreTab) await restoreTab(bookmark);
+        scheduleBookmarkRefresh();
+    });
+}
+
+async function restoreFavoriteTab(spaceId, tabId, index, bookmark) {
+    const space = spaces.find(s => s.id === spaceId);
+    if (!space?.temporaryTabs.includes(tabId)) return;
+    await Utils.setPinnedTabState(tabId, { pinnedUrl: bookmark.url, bookmarkId: bookmark.id });
+    space.temporaryTabs = space.temporaryTabs.filter(id => id !== tabId);
+    space.spaceBookmarks.splice(index, 0, tabId);
+    await persistSpaceTabOrder(space.id, { source: 'arcify', movedTabId: tabId });
+    await refreshActiveSpaceUI();
+}
+
 async function moveTabToTemp(space, tab, { temporaryDisplayOrder = null, inverted = false, refresh = true } = {}) {
     space = spaces.find(s => s.id === space.id);
     if (!space) return;
-    await removeSpacePin(space, tab);
+    const favoriteIndex = space.spaceBookmarks.indexOf(tab.id);
+    offerFavoriteUndo(await removeSpacePin(space, tab),
+        bookmark => restoreFavoriteTab(space.id, tab.id, favoriteIndex, bookmark));
 
     // Move tab from bookmarks to temporary tabs in space data
     space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tab.id);
@@ -2598,7 +2622,7 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
     if (isBookmarkOnly) {
         const space = spaces.find(s => s.id === tabElement.closest('.space')?.dataset.spaceId);
         if (!space) return;
-        await removeSpacePin(space, { bookmarkId: tabElement.dataset.bookmarkId });
+        offerFavoriteUndo(await removeSpacePin(space, { bookmarkId: tabElement.dataset.bookmarkId }));
         tabElement.remove();
 
         // Update folder placeholders after removing bookmark

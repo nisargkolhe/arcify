@@ -42,5 +42,9 @@ export async function removeSpacePin(space, tab) {
     const bookmarkId = tab.bookmarkId || binding?.bookmarkId;
     if (!bookmarkId) throw new Error('Cannot remove a favorite without its bookmark identity.');
     const bookmark = await getSpaceBookmarkById(space, bookmarkId);
-    if (bookmark) await chrome.bookmarks.remove(bookmark.id);
+    if (!bookmark) return null;
+    const { parentId, index, title, url } = bookmark;
+    await chrome.bookmarks.remove(bookmark.id);
+    // Keep the bookmark details because Chrome cannot recover them after deletion.
+    return { parentId, index, title, url };
 }

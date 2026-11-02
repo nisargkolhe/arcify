@@ -140,6 +140,48 @@ test('favorite demotion keeps the captured middle temporary position after refre
     expect(order.indexOf(desired[1])).toBeLessThan(order.indexOf(desired[2]));
 });
 
+test('undoing an open favorite unpin re-pins the same tab without opening a duplicate', async () => {
+    const pinnedUrl = `${url}undo-unpin`;
+    const tabId = await page.evaluate(async ({ pinnedUrl, spaceId }) => {
+        const tab = await chrome.tabs.create({ url: pinnedUrl, active: false });
+        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
+        return tab.id;
+    }, { pinnedUrl, spaceId: fixture.spaceId });
+    await page.waitForSelector(row(tabId));
+    await page.waitForFunction(async ({ tabId, pinnedUrl }) => (await chrome.tabs.get(tabId)).url === pinnedUrl,
+        { polling: 100 }, { tabId, pinnedUrl });
+    await toggle(tabId);
+    await page.waitForFunction(id => document.querySelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${id}"][data-bookmark-id]`),
+        { polling: 100 }, tabId);
+    const original = (await state()).bindings[tabId].bookmarkId;
+
+    await toggle(tabId);
+    await page.waitForFunction(id => document.querySelector(`.space.active [data-tab-type="temporary"] .tab[data-tab-id="${id}"]`),
+        { polling: 100 }, tabId);
+    expect(await page.evaluate(async id => { try { await chrome.bookmarks.get(id); return true; } catch { return false; } }, original)).toBe(false);
+    await page.$eval('#undoToast .undo-toast-button', el => el.click());
+
+    const restored = await (await page.waitForFunction(async ({ folderId, pinnedUrl }) =>
+        (await chrome.bookmarks.getChildren(folderId)).find(node => node.url === pinnedUrl)?.id,
+    { polling: 100 }, { folderId: fixture.folderId, pinnedUrl })).jsonValue();
+    const favorite = `.space.active [data-tab-type="pinned"] .tab[data-bookmark-id="${restored}"]`;
+    await page.waitForSelector(`${favorite}[data-tab-id="${tabId}"]`);
+    expect(await page.$$eval(`.space.active .tab[data-bookmark-id="${restored}"]`, els => els.length)).toBe(1);
+    expect(await page.$$eval(`.space.active [data-tab-type="temporary"] .tab[data-tab-id="${tabId}"]`, els => els.length)).toBe(0);
+    expect((await state()).bindings[tabId]).toEqual({ pinnedUrl, bookmarkId: restored });
+    await page.waitForFunction(async ({ tabId, spaceId }) => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        const space = spaces.find(s => s.id === spaceId);
+        return space.spaceBookmarks.includes(tabId) && !space.temporaryTabs.includes(tabId);
+    }, { polling: 100 }, { tabId, spaceId: fixture.spaceId });
+
+    const tabCount = await page.evaluate(async () => (await chrome.tabs.query({})).length);
+    await page.$eval(favorite, el => el.click());
+    await page.waitForFunction(async id => (await chrome.tabs.get(id)).active, { polling: 100 }, tabId);
+    expect(await page.evaluate(async () => (await chrome.tabs.query({})).length)).toBe(tabCount);
+    expect(await page.evaluate(async url => (await chrome.tabs.query({})).filter(t => t.url === url).length, pinnedUrl)).toBe(1);
+});
+
 test('native pinning does not hide its same-URL favorite', async () => {
     const binding = (await state()).bindings[fixture.a];
     await page.evaluate(id => chrome.tabs.update(id, { pinned: true }), fixture.a);

@@ -521,6 +521,36 @@ export function showUrlCopyToast() {
     }, 2000);
 }
 
+export function showUndoToast(message, onUndo, duration = 5000) {
+    document.getElementById('undoToast')?.remove();
+    const toast = document.createElement('div');
+    toast.id = 'undoToast';
+    toast.className = 'undo-toast';
+    toast.setAttribute('role', 'status');
+    const text = document.createElement('span');
+    text.textContent = message;
+    const undoButton = document.createElement('button');
+    undoButton.className = 'undo-toast-button';
+    undoButton.type = 'button';
+    undoButton.textContent = 'Undo';
+    const hide = () => {
+        clearTimeout(toast.hideTimeout);
+        toast.remove();
+    };
+    undoButton.addEventListener('click', async () => {
+        hide();
+        try {
+            await onUndo();
+        } catch (error) {
+            Logger.error('Undo failed:', error);
+            alert(error.message);
+        }
+    });
+    toast.append(text, undoButton);
+    document.body.appendChild(toast);
+    toast.hideTimeout = setTimeout(hide, duration);
+}
+
 export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, currentActiveSpaceId, setActiveSpaceFunc, activatePinnedTabByURL) {
     chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
         if (request.command === "quickPinToggle" || request.command === "toggleSpacePin") {

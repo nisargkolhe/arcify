@@ -1380,4 +1380,91 @@ describe('Bookmarks and Pinned Tabs', () => {
       }
     });
   });
+
+  describe('Undo Favorite Removal', () => {
+    test('should restore a removed favorite at the same parent and index', async () => {
+      try {
+        logTestStep('Testing undo after removing a favorite with "−"...');
+
+        const fixture = await sidebarPage.evaluate(async () => {
+          const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+          const parentId = spaces[0].bookmarkFolderId;
+          for (const n of [1, 2, 3]) {
+            await chrome.bookmarks.create({ parentId, title: `Undo ${n}`, url: `https://example.com/undo-${n}` });
+          }
+          const target = (await chrome.bookmarks.getChildren(parentId)).find(node => node.title === 'Undo 2');
+          return { id: target.id, parentId, index: target.index, title: target.title, url: target.url };
+        });
+
+        await sidebarPage.reload();
+        const removeSelector = `.space.active .bookmark-only[data-bookmark-id="${fixture.id}"] .tab-remove`;
+        await sidebarPage.waitForSelector(removeSelector);
+        await sidebarPage.$eval(removeSelector, el => el.click());
+
+        await sidebarPage.waitForSelector('#undoToast .undo-toast-button');
+        const removed = await sidebarPage.evaluate(async id => {
+          try { await chrome.bookmarks.get(id); return false; } catch { return true; }
+        }, fixture.id);
+        expect(removed).toBe(true);
+        await sidebarPage.$eval('#undoToast .undo-toast-button', el => el.click());
+
+        await waitForCondition(async () => sidebarPage.evaluate(async ({ parentId, url }) =>
+          (await chrome.bookmarks.getChildren(parentId)).some(node => node.url === url), fixture), 10000,
+          'Removed favorite was not restored');
+        const restored = await sidebarPage.evaluate(async ({ parentId, url }) =>
+          (await chrome.bookmarks.getChildren(parentId)).find(node => node.url === url), fixture);
+        expect({ parentId: restored.parentId, index: restored.index, title: restored.title, url: restored.url })
+          .toEqual({ parentId: fixture.parentId, index: fixture.index, title: fixture.title, url: fixture.url });
+        await sidebarPage.waitForSelector(`.space.active .bookmark-only[data-bookmark-id="${restored.id}"]`);
+        expect(await sidebarPage.$('#undoToast')).toBeNull();
+        logTestStep('✓ Favorite restored at its original position');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'undo-favorite-removal-failure');
+        throw error;
+      }
+    });
+
+    test('should restore a removed favorite at the end when its saved index no longer exists', async () => {
+      try {
+        logTestStep('Testing undo after a sibling removal shifts the saved index...');
+
+        const fixture = await sidebarPage.evaluate(async () => {
+          const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+          const parentId = spaces[0].bookmarkFolderId;
+          const created = [];
+          for (const n of [1, 2, 3]) {
+            created.push(await chrome.bookmarks.create({ parentId, title: `Stale ${n}`, url: `https://example.com/stale-${n}` }));
+          }
+          const target = (await chrome.bookmarks.getChildren(parentId)).find(node => node.id === created[2].id);
+          return { id: target.id, sibling: created[0].id, parentId, index: target.index, title: target.title, url: target.url };
+        });
+
+        await sidebarPage.reload();
+        const removeSelector = `.space.active .bookmark-only[data-bookmark-id="${fixture.id}"] .tab-remove`;
+        await sidebarPage.waitForSelector(removeSelector);
+        await sidebarPage.$eval(removeSelector, el => el.click());
+        await sidebarPage.waitForSelector('#undoToast .undo-toast-button');
+
+        const remaining = await sidebarPage.evaluate(async ({ sibling, parentId }) => {
+          await chrome.bookmarks.remove(sibling);
+          return (await chrome.bookmarks.getChildren(parentId)).length;
+        }, fixture);
+        expect(remaining).toBeLessThan(fixture.index);
+        await sidebarPage.$eval('#undoToast .undo-toast-button', el => el.click());
+
+        await waitForCondition(async () => sidebarPage.evaluate(async ({ parentId, url }) =>
+          (await chrome.bookmarks.getChildren(parentId)).some(node => node.url === url), fixture), 10000,
+          'Removed favorite was not restored after its index shifted');
+        const restored = await sidebarPage.evaluate(async ({ parentId, url }) =>
+          (await chrome.bookmarks.getChildren(parentId)).find(node => node.url === url), fixture);
+        expect({ parentId: restored.parentId, index: restored.index, title: restored.title })
+          .toEqual({ parentId: fixture.parentId, index: remaining, title: fixture.title });
+        await sidebarPage.waitForSelector(`.space.active .bookmark-only[data-bookmark-id="${restored.id}"]`);
+        logTestStep('✓ Favorite restored at the end of its folder');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'undo-stale-index-failure');
+        throw error;
+      }
+    });
+  });
 });
