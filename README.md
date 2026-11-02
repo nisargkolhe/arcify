@@ -265,4 +265,4 @@ Run `npm run test:unit` for storage, migration, and sync regression tests. Brows
 coverage lives in `tests/e2e/independent-spaces.test.js` alongside the space, tab,
 bookmark, and drag-and-drop suites.
 
-With **Sync spaces to Chrome tab groups** off, right-click a top-level folder and choose **New Folder** to create a child folder. Spaces support two folder levels (parent → child). Turning sync on disables new nested-folder creation and preserves existing folders.
+With **Sync spaces to Chrome tab groups** off, right-click a folder and choose **New Folder** to create a child folder. Spaces support up to four folder levels. Turning sync on disables new nested-folder creation and preserves existing folders.

@@ -17,7 +17,7 @@ export const TOUR_STEPS = [
     { id: 'folders', label: 'Folders', title: 'Keep a project together',
       tip: 'Open Options → New Folder and give it a name. We added “Practice: file this tab” for you to drag inside.',
       caption: 'Drop related tabs into a folder. Collapse it when you need a little more room.',
-      detail: 'Click a folder to expand or collapse it. With Chrome tab group sync off, right-click a top-level folder → New Folder to add one child level. Settings controls whether collapsed folders show all open tabs or just the active one.',
+      detail: 'Click a folder to expand or collapse it. With Chrome tab group sync off, right-click a folder → New Folder to create a child folder. Spaces support up to four folder levels. Settings controls whether collapsed folders show all open tabs or just the active one.',
       target: '.space .space-options' },
     { id: 'favorites', label: 'Favorites', title: 'Your everyday sites, everywhere',
       tip: 'Drag “Practice: favorite this tab” into the highlighted area, or right-click it → Add to Favorites. It will follow you into every space.',
