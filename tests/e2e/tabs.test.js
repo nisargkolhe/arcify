@@ -2,6 +2,7 @@
  * E2E Tests for Tab Management
  * Tests tab creation, switching, closing, and organization within spaces
  */
+import { createServer } from 'node:http';
 import {
   launchBrowserWithExtension,
   openSidebar,
@@ -842,5 +843,57 @@ describe('Tab Management', () => {
         throw error;
       }
     });
+  });
+
+  describe('Favorite Open State', () => {
+    test('should style an open favorite differently from an unloaded one', async () => {
+      const pin = async id => {
+        await sidebarPage.waitForSelector(`.space.active .tab[data-tab-id="${id}"]`);
+        await sidebarPage.$eval(`.space.active .tab[data-tab-id="${id}"]`,
+          el => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })));
+        await sidebarPage.waitForSelector('.context-menu-item');
+        await sidebarPage.evaluate(() => [...document.querySelectorAll('.context-menu-item')]
+          .find(el => el.textContent === 'Pin Tab').click());
+        await sidebarPage.waitForSelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${id}"]`);
+      };
+      const server = createServer((req, res) => {
+        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Connection', 'close');
+        res.end('<title>Favorite fixture</title>');
+      });
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      const url = `http://127.0.0.1:${server.address().port}/`;
+      try {
+        const [open, active, unloaded] = await sidebarPage.evaluate(async url => {
+          const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+          const ids = [];
+          for (const name of ['favorite-open', 'favorite-active', 'favorite-unloaded']) {
+            const tab = await chrome.tabs.create({ url: `${url}${name}`, active: false });
+            await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId: spaces[0].id });
+            ids.push(tab.id);
+          }
+          return ids;
+        }, url);
+        await sidebarPage.reload();
+        await pin(open);
+        await pin(active);
+        await pin(unloaded);
+        await sidebarPage.evaluate(id => chrome.tabs.remove(id), unloaded);
+        await sidebarPage.waitForSelector('.space.active [data-tab-type="pinned"] .tab.bookmark-only');
+        await sidebarPage.click(`.space.active .tab[data-tab-id="${active}"]`);
+        await sidebarPage.waitForSelector(`.space.active .tab[data-tab-id="${active}"].active`);
+        const style = selector => sidebarPage.$eval(selector, el => ({
+          favicon: getComputedStyle(el.querySelector('.tab-favicon')).opacity,
+          title: getComputedStyle(el.querySelector('.tab-title-display')).color,
+        }));
+        const openStyle = await style(`.space.active .tab[data-tab-id="${open}"]:not(.active)`);
+        const unloadedStyle = await style('.space.active [data-tab-type="pinned"] .tab.bookmark-only');
+        expect(openStyle.favicon).not.toBe(unloadedStyle.favicon);
+        expect(openStyle.title).not.toBe(unloadedStyle.title);
+      } finally {
+        server.closeAllConnections();
+        await new Promise(resolve => server.close(resolve));
+      }
+    }, 30000);
   });
 });

@@ -841,6 +841,15 @@ h3 {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* Favorites with no open tab are dimmed so open ones stand out, as in Arc */
+.tab.bookmark-only .tab-favicon {
+    opacity: 0.5;
+}
+
+.tab.bookmark-only .tab-title-display {
+    color: rgba(51, 51, 51, 0.6);
+}
+
 .tab-favicon {
     width: 16px;
     height: 16px;
@@ -1946,6 +1955,10 @@ h3 {
     .tab.active .tab-title-display,
     .tab.active .tab-title-input {
         color: #000000;
+    }
+
+    .tab.bookmark-only .tab-title-display {
+        color: rgba(236, 239, 241, 0.6);
     }
 
     .tab-domain-display {
