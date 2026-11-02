@@ -1017,6 +1017,19 @@ function createSpaceElement(space) {
     }
 }
 
+async function moveSpaceFolderBefore(space, nextSpace) {
+    try {
+        const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
+        const children = await chrome.bookmarks.getChildren(arcifyFolder.id);
+        if (!children.some(node => node.id === space.bookmarkFolderId)) return;
+        const nextIndex = children.findIndex(node => node.id === nextSpace?.bookmarkFolderId);
+        const index = nextIndex < 0 ? children.length : nextIndex;
+        await chrome.bookmarks.move(space.bookmarkFolderId, { parentId: arcifyFolder.id, index });
+    } catch (error) {
+        Logger.warn('Could not reorder space folder:', error);
+    }
+}
+
 function clearSpaceSwitcherDropPlaceholders() {
     const buttons = spaceSwitcher.querySelectorAll('button');
     buttons.forEach(button => {
@@ -1065,6 +1078,7 @@ async function handleSpaceSwitcherDrop(e) {
         const newIndex = targetIndex >= 0 ? targetIndex : spaces.length;
 
         spaces.splice(newIndex, 0, draggedSpace);
+        await moveSpaceFolderBefore(draggedSpace, spaces[newIndex + 1]);
         saveSpaces();
         await updateSpaceSwitcher();
     }

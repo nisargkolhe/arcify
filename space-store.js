@@ -129,6 +129,10 @@ export class SpaceStore {
             }
             space.name = folder.title;
         }
+        // Bookmark folders are durable, so discovery also restores their order in the switcher.
+        const rank = new Map(folders.map((folder, index) => [folder.id, index]));
+        this.spaces.sort((a, b) =>
+            (rank.get(a.bookmarkFolderId) ?? folders.length) - (rank.get(b.bookmarkFolderId) ?? folders.length));
         return before !== JSON.stringify(this.spaces);
     }
     track(tab) {

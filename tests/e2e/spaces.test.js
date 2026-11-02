@@ -804,6 +804,120 @@ describe('Space Management', () => {
     }, 120000);
   });
 
+  describe('Space Order', () => {
+    const chipOrder = page => page.$$eval('.space-switcher button', els => els.map(el => el.textContent.trim()));
+    const folderOrder = page => page.evaluate(async () => {
+      const [root] = (await chrome.bookmarks.search({ title: 'Arcify' })).filter(node => !node.url);
+      return (await chrome.bookmarks.getChildren(root.id)).filter(node => !node.url).map(node => node.title);
+    });
+    const waitForOrder = (page, expected) => page.waitForFunction(async expected => {
+      const chips = [...document.querySelectorAll('.space-switcher button')].map(el => el.textContent.trim());
+      const [root] = (await chrome.bookmarks.search({ title: 'Arcify' })).filter(node => !node.url);
+      const folders = (await chrome.bookmarks.getChildren(root.id)).filter(node => !node.url).map(node => node.title);
+      return [chips, folders].every(order => JSON.stringify(order) === JSON.stringify(expected));
+    }, { polling: 100, timeout: 5000 }, expected);
+    const dragChip = (page, from, to, edge) => page.evaluate(async (from, to, edge) => {
+      const buttons = [...document.querySelectorAll('.space-switcher button')];
+      const source = buttons.at(from);
+      const target = to === null ? document.getElementById('spaceSwitcher') : buttons.at(to);
+      const rect = target.getBoundingClientRect();
+      source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() }));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, clientX: edge === 'left' ? rect.left + 1 : rect.right - 1 }));
+      source.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    }, from, to, edge);
+
+    test('should keep space chips and Arcify bookmark folders in the same order', async () => {
+      try {
+        for (const name of ['Order A', 'Order B']) {
+          await sidebarPage.close();
+          sidebarPage = await createSpace(browser, extensionId, name);
+        }
+        let expected = await chipOrder(sidebarPage);
+        expect(expected.length).toBeGreaterThanOrEqual(3);
+        expect(await folderOrder(sidebarPage)).toEqual(expected);
+
+        logTestStep('Dragging the last chip to the front...');
+        expected = [expected.at(-1), ...expected.slice(0, -1)];
+        await dragChip(sidebarPage, -1, 0, 'left');
+        await waitForOrder(sidebarPage, expected);
+        logTestStep('✓ Chip drag reordered the bookmark folders');
+
+        logTestStep('Dragging the first chip past the second...');
+        expected = [expected[1], expected[0], ...expected.slice(2)];
+        await dragChip(sidebarPage, 0, 1, 'right');
+        await waitForOrder(sidebarPage, expected);
+        logTestStep('✓ Forward chip drag moved its bookmark folder one place right');
+
+        logTestStep('Dropping the first chip after the last chip...');
+        expected = [...expected.slice(1), expected[0]];
+        await dragChip(sidebarPage, 0, null, 'right');
+        await waitForOrder(sidebarPage, expected);
+        logTestStep('✓ Drop at the end moved the bookmark folder last');
+
+        logTestStep('Dropping the last chip on itself...');
+        await dragChip(sidebarPage, -1, -1, 'right');
+        await delay(1000);
+        expect(await folderOrder(sidebarPage)).toEqual(expected);
+        expect(await chipOrder(sidebarPage)).toEqual(expected);
+        logTestStep('✓ Self-drop left chips and bookmark folders in place');
+
+        logTestStep('Moving the last folder to the top in bookmarks...');
+        const moved = await sidebarPage.evaluate(async () => {
+          const [root] = (await chrome.bookmarks.search({ title: 'Arcify' })).filter(node => !node.url);
+          const folder = (await chrome.bookmarks.getChildren(root.id)).filter(node => !node.url).at(-1);
+          await chrome.bookmarks.move(folder.id, { parentId: root.id, index: 0 });
+          return folder.title;
+        });
+        await sidebarPage.waitForFunction(name => document.querySelector('.space-switcher button')?.textContent.trim() === name,
+          { polling: 100, timeout: 5000 }, moved);
+        expect(await chipOrder(sidebarPage)).toEqual(await folderOrder(sidebarPage));
+
+        await sidebarPage.close();
+        sidebarPage = await openSidebar(browser, extensionId);
+        expect(await chipOrder(sidebarPage)).toEqual(await folderOrder(sidebarPage));
+        logTestStep('✓ Bookmark folder move reordered the chips');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'space-order-failure');
+        throw error;
+      }
+    }, 120000);
+
+    test('should not pull a space folder moved out of Arcify back in when its chip is dragged', async () => {
+      try {
+        await sidebarPage.close();
+        sidebarPage = await createSpace(browser, extensionId, 'Relocated');
+        const folderId = await sidebarPage.evaluate(async () => {
+          const [folder] = (await chrome.bookmarks.search({ title: 'Relocated' })).filter(node => !node.url);
+          await chrome.bookmarks.move(folder.id, { parentId: '1' });
+          return folder.id;
+        });
+        await sidebarPage.close();
+        sidebarPage = await openSidebar(browser, extensionId);
+        await sidebarPage.waitForFunction(() =>
+          [...document.querySelectorAll('.space-switcher button')].at(-1)?.textContent.trim() === 'Relocated',
+          { polling: 100, timeout: 5000 });
+        const before = await folderOrder(sidebarPage);
+
+        logTestStep('Dragging the relocated space chip to the front...');
+        await dragChip(sidebarPage, -1, 0, 'left');
+        await delay(1000);
+        const [folder] = await sidebarPage.evaluate(id => chrome.bookmarks.get(id), folderId);
+        expect(folder.parentId).toBe('1');
+        expect(await folderOrder(sidebarPage)).toEqual(before);
+        logTestStep('✓ Chip drag left the relocated folder where the user put it');
+
+        await sidebarPage.evaluate(async id => {
+          const [root] = (await chrome.bookmarks.search({ title: 'Arcify' })).filter(node => !node.url);
+          await chrome.bookmarks.move(id, { parentId: root.id });
+        }, folderId);
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'space-order-relocated-failure');
+        throw error;
+      }
+    }, 60000);
+  });
+
   describe('Space Persistence', () => {
     test('should persist spaces after closing and reopening sidebar', async () => {
       try {

@@ -217,3 +217,15 @@ test('sidebar reads discover later bookmark folders and follow folder renames by
     assert.equal(store.spaces[2].bookmarkFolderId, 'later');
     assert.deepEqual(mutations, []);
 });
+test('space order follows the order of space folders under Arcify', async () => {
+    let folders = [{ id: 'b', title: 'b' }, { id: 'loose', title: 'Loose', url: 'https://loose.test/' }, { id: 'a', title: 'a' }];
+    chrome.bookmarks.getChildren = async id => id === 'root' ? structuredClone(folders) : [];
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'get' });
+    assert.deepEqual(store.spaces.map(s => s.id), ['b', 'a']);
+    assert.deepEqual(local.spaces.map(s => s.id), ['b', 'a']);
+    folders = [folders[2], folders[0], folders[1]];
+    const after = await store.dispatch({ action: 'get' });
+    assert.deepEqual(after.map(s => s.id), ['a', 'b']);
+    assert.deepEqual(local.spaces.map(s => s.id), ['a', 'b']);
+});
