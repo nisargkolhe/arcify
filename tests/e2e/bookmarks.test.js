@@ -469,6 +469,23 @@ describe('Bookmarks and Pinned Tabs', () => {
       }, id);
       expect(exists).toBe(true);
     });
+    test('folder rows show a pointer cursor', async () => {
+      const folderId = await sidebarPage.evaluate(async () => {
+        const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+        return (await chrome.bookmarks.create({ parentId: spaces[0].bookmarkFolderId, title: 'Cursor folder' })).id;
+      });
+      try {
+        await sidebarPage.reload();
+        await sidebarPage.waitForSelector('.space.active .folder-header');
+        const cursors = await sidebarPage.$eval('.space.active .folder-header', header => ({
+          header: getComputedStyle(header).cursor,
+          title: getComputedStyle(header.querySelector('.folder-title')).cursor,
+        }));
+        expect(cursors).toEqual({ header: 'pointer', title: 'pointer' });
+      } finally {
+        await sidebarPage.evaluate(id => chrome.bookmarks.removeTree(id), folderId);
+      }
+    });
   });
 
   describe('Bookmark Persistence', () => {

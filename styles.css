@@ -446,6 +446,8 @@ h3 {
     display: flex;
     align-items: center;
     padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
     /* background-color: rgba(255, 255, 255, 0.2); */
     /* border-bottom: 1px solid rgba(0, 0, 0, 0.1); */
 }
