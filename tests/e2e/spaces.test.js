@@ -964,7 +964,8 @@ describe('Space Management', () => {
     const dragChip = (page, from, to, edge) => page.evaluate(async (from, to, edge) => {
       const buttons = [...document.querySelectorAll('.space-switcher button')];
       const source = buttons.at(from);
-      const target = to === null ? document.getElementById('spaceSwitcher') : buttons.at(to);
+      const target = to === null ? buttons.at(-1) : buttons.at(to);
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       const rect = target.getBoundingClientRect();
       source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() }));
       await new Promise(resolve => setTimeout(resolve, 0));
