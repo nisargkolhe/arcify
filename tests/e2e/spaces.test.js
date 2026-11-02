@@ -385,6 +385,71 @@ describe('Space Management', () => {
   });
 
   describe('Space Switching', () => {
+    test('should switch spaces with mouse back and forward buttons', async () => {
+      try {
+        logTestStep('Creating a second space for mouse side-button switching...');
+
+        await sidebarPage.close();
+        sidebarPage = await createSpace(browser, extensionId, 'Mouse Button Target');
+
+        const spaceNames = await sidebarPage.evaluate(() =>
+          [...document.querySelectorAll('.space-switcher button')]
+            .map(button => button.textContent.trim())
+        );
+        expect(spaceNames.length).toBeGreaterThanOrEqual(2);
+
+        const firstSpaceName = spaceNames[0];
+        const lastSpaceName = spaceNames[spaceNames.length - 1];
+
+        await sidebarPage.evaluate((targetName) => {
+          const button = [...document.querySelectorAll('.space-switcher button')]
+            .find(candidate => candidate.textContent.trim() === targetName);
+          button?.click();
+        }, firstSpaceName);
+        await delay(1500);
+
+        const backDefaultPrevented = await sidebarPage.evaluate(() => {
+          const activeButton = document.querySelector('.space-switcher button.active');
+          const event = new MouseEvent('mouseup', {
+            bubbles: true,
+            cancelable: true,
+            button: 3,
+          });
+          activeButton.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+        await delay(1500);
+
+        const afterBackName = await sidebarPage.evaluate(() =>
+          document.querySelector('.space-switcher button.active')?.textContent.trim()
+        );
+        expect(backDefaultPrevented).toBe(true);
+        expect(afterBackName).toBe(lastSpaceName);
+
+        const forwardDefaultPrevented = await sidebarPage.evaluate(() => {
+          const activeButton = document.querySelector('.space-switcher button.active');
+          const event = new MouseEvent('mouseup', {
+            bubbles: true,
+            cancelable: true,
+            button: 4,
+          });
+          activeButton.dispatchEvent(event);
+          return event.defaultPrevented;
+        });
+        await delay(1500);
+
+        const afterForwardName = await sidebarPage.evaluate(() =>
+          document.querySelector('.space-switcher button.active')?.textContent.trim()
+        );
+        expect(forwardDefaultPrevented).toBe(true);
+        expect(afterForwardName).toBe(firstSpaceName);
+        logTestStep('✓ Mouse back and forward buttons switch spaces with wrap-around');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'mouse-side-button-switching-failure');
+        throw error;
+      }
+    }, 120000);
+
     test('should switch between spaces via space-switcher buttons', async () => {
       try {
         logTestStep('Creating a second space to switch between...');

@@ -78,6 +78,16 @@ let activeChromeTabId = null;
 const collapsedFolderShownTabs = new WeakMap();
 const bookmarkOrderBaselines = new Map();
 
+async function switchSpaceBy(delta) {
+    const currentIndex = spaces.findIndex(space => space.id === activeSpaceId);
+    if (currentIndex === -1 || spaces.length === 0) {
+        return;
+    }
+
+    const nextIndex = (currentIndex + delta + spaces.length) % spaces.length;
+    await setActiveSpace(spaces[nextIndex].id);
+}
+
 function disposeEditorsInElement(element) {
     if (!element) return;
     const dispose = node => {
@@ -593,10 +603,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // --- Space Switching with Trackpad Swipe ---
+    // --- Space Switching with Trackpad Swipe and Mouse Side Buttons ---
     let isSwiping = false;
     let swipeTimeout = null;
     const swipeThreshold = 25; // Min horizontal movement to trigger a swipe
+
+    spaceSwitcher.addEventListener('mouseup', async (event) => {
+        if (event.button !== MOUSE_BUTTON.BACK && event.button !== MOUSE_BUTTON.FORWARD) {
+            return;
+        }
+
+        event.preventDefault();
+        await switchSpaceBy(event.button === MOUSE_BUTTON.BACK ? -1 : 1);
+    });
 
     document.getElementById('sidebar-container').addEventListener('wheel', async (event) => {
         // Defense-in-depth: ignore wheel events that originate inside the
@@ -621,25 +640,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             isSwiping = true;
             event.preventDefault(); // Stop browser from navigating back/forward
 
-            const currentIndex = spaces.findIndex(s => s.id === activeSpaceId);
-            if (currentIndex === -1) {
-                isSwiping = false;
-                return;
-            }
-
-            let nextIndex;
-            // deltaX > 0 means swiping right (finger moves right, content moves left) -> previous space
-            if (event.deltaX < 0) {
-                nextIndex = (currentIndex - 1 + spaces.length) % spaces.length;
-            } else {
-                // deltaX < 0 means swiping left (finger moves left, content moves right) -> next space
-                nextIndex = (currentIndex + 1) % spaces.length;
-            }
-
-            const nextSpace = spaces[nextIndex];
-            if (nextSpace) {
-                await setActiveSpace(nextSpace.id);
-            }
+            // deltaX < 0 -> previous space, deltaX > 0 -> next space
+            await switchSpaceBy(event.deltaX < 0 ? -1 : 1);
 
             // Cooldown to prevent re-triggering during the same gesture
             clearTimeout(swipeTimeout);
