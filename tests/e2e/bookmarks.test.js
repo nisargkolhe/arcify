@@ -447,6 +447,28 @@ describe('Bookmarks and Pinned Tabs', () => {
         throw error;
       }
     });
+
+    test('middle-click on an unloaded favorite keeps its bookmark', async () => {
+      const id = await sidebarPage.evaluate(async () => {
+        const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+        const bookmark = await chrome.bookmarks.create({
+          parentId: spaces[0].bookmarkFolderId, url: 'about:blank#middle-click', title: 'Middle-click favorite',
+        });
+        return bookmark.id;
+      });
+      const selector = `.space .bookmark-only[data-bookmark-id="${id}"]`;
+      await sidebarPage.waitForSelector(selector);
+      await sidebarPage.$eval(selector, el => {
+        el.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 1 }));
+      });
+      await delay(500);
+      expect(await sidebarPage.$(selector)).not.toBeNull();
+      const exists = await sidebarPage.evaluate(async id => {
+        try { await chrome.bookmarks.get(id); return true; } catch { return false; }
+      }, id);
+      expect(exists).toBe(true);
+    });
   });
 
   describe('Bookmark Persistence', () => {
