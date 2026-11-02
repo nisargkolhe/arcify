@@ -1298,6 +1298,15 @@ describe('Drag and Drop', () => {
         await delay(500);
         expect((await bookmarkPosition(ids.c)).parentId).toBe(ids.b);
         expect((await bookmarkPosition(ids.b)).parentId).toBe(ids.parentId);
+
+        logTestStep('Moving folder C back out of folder B...');
+        await dragFolder(ids.c, '.space.active [data-tab-type="pinned"]');
+        await sidebarPage.waitForFunction(async ({ c, parentId }) => (await chrome.bookmarks.get(c))[0].parentId === parentId,
+          { polling: 100, timeout: 5000 }, ids);
+        await sidebarPage.waitForFunction(id => {
+          const placeholder = document.querySelector(`.space.active .folder[data-bookmark-id="${id}"] > .folder-content > .tab-placeholder`);
+          return placeholder && !placeholder.classList.contains('hidden');
+        }, { polling: 100, timeout: 5000 }, ids.b);
       } catch (error) {
         await takeScreenshotOnFailure(sidebarPage, 'folder-drag-failure');
         throw error;

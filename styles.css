@@ -107,16 +107,32 @@ h3 {
 }
 
 .context-menu-item {
+    display: block;
+    width: 100%;
     padding: 8px 12px;
     cursor: pointer;
     background-color: #fff;
+    border: 0;
     border-radius: 8px;
+    font: inherit;
+    text-align: left;
     transition: background-color 0.3s ease;
     color: #333;
 }
 
 .context-menu-item:hover {
     background-color: var(--tab-hover-bg, rgba(0, 0, 0, 0.05));
+}
+
+.context-menu-item:focus-visible {
+    outline: 2px solid var(--sidebar-text-color, #333);
+    outline-offset: -3px;
+}
+
+.context-menu-item:disabled {
+    color: var(--sidebar-text-color-light, #8a8a8a);
+    cursor: not-allowed;
+    background-color: #fff;
 }
 
 .context-menu-separator {
@@ -225,7 +241,7 @@ h3 {
 }
 
 .space-name-container:hover .space-name {
-    margin-left: 2px;
+    transform: translateX(2px);
 }
 
 .space-toggle-chevron:hover {
@@ -254,7 +270,7 @@ h3 {
     padding: 4px 0;
     border-radius: 4px;
     opacity: 0.95;
-    transition: margin-left 0.2s ease;
+    transition: transform 0.2s ease;
 }
 
 .space-name:focus {
@@ -848,6 +864,21 @@ h3 {
 
 .tab.bookmark-only .tab-title-display {
     color: rgba(51, 51, 51, 0.6);
+}
+
+.tab.multi-selected {
+    background-color: color-mix(in srgb, var(--space-bg-color-dark, #d9dfe3) 72%, #fff);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sidebar-text-color, #333) 52%, transparent);
+}
+
+.tab.active.multi-selected {
+    background-color: #ECEFF1;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sidebar-text-color, #333) 58%, transparent),
+        0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.tab.multi-dragging {
+    opacity: 0.46;
 }
 
 .tab-favicon {
@@ -1955,6 +1986,11 @@ h3 {
     .tab.active .tab-title-display,
     .tab.active .tab-title-input {
         color: #000000;
+    }
+
+    .tab.multi-selected:not(.active) {
+        background-color: #38343d;
+        box-shadow: inset 0 0 0 2px rgba(236, 239, 241, 0.7);
     }
 
     .tab.bookmark-only .tab-title-display {

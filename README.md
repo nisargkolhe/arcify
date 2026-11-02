@@ -275,3 +275,5 @@ Drag a folder by its header to reorder it among its siblings, move it to the spa
 
 Right-click a folder and choose **Move Up** or **Move Down** to swap it with the item shown above or below it within its space or parent folder. Each option is hidden when the folder has no neighbor in that direction.
 
+Select a range of open tabs by clicking one tab and Shift-clicking another. Right-click the selection to pin or unpin, move, archive, close, add it to Chrome favorites, or create a folder containing the selected tabs. You can also drag the selection together. Moving selected space favorites to another space keeps their bookmarks pinned; unpinning a selection offers Undo for the whole group.
+
