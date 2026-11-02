@@ -972,9 +972,21 @@ function createSpaceElement(space) {
         createNewFolder(spaceContainer);
     });
 
-    deleteSpaceBtn.addEventListener('click', () => {
-        if (confirm('Delete this space and close all its tabs?')) {
-            deleteSpace(space.id);
+    deleteSpaceBtn.addEventListener('click', async () => {
+        let message;
+        try {
+            const folder = await getSpaceBookmarkFolder(space);
+            const count = countBookmarks((await chrome.bookmarks.getSubTree(folder.id))[0]);
+            message = `Delete "${space.name}"? This deletes its bookmark folder (${count} ${count === 1 ? 'bookmark' : 'bookmarks'}) and closes its tabs.`;
+        } catch (error) {
+            message = `Delete "${space.name}"? Its bookmark folder could not be read. ${error.message}`;
+        }
+        if (confirm(message)) {
+            try {
+                await deleteSpace(space.id);
+            } catch (error) {
+                alert(error.message);
+            }
         }
     });
 
@@ -3445,6 +3457,11 @@ function handleTabActivated(activeInfo) {
         // Scroll to the activated tab's location
         scrollToTab(activeInfo.tabId, 0);
     });
+}
+
+function countBookmarks(node) {
+    if (node.url) return 1;
+    return (node.children || []).reduce((sum, child) => sum + countBookmarks(child), 0);
 }
 
 async function deleteSpace(spaceId) {

@@ -219,11 +219,33 @@ describe('Space Management', () => {
         });
         await delay(1000);
 
+        // Add known bookmark contents so the warning proves the full folder tree is counted.
+        await sidebarPage.evaluate(async () => {
+          const { spaces = [] } = await chrome.storage.local.get('spaces');
+          const space = spaces.find(item => item.name === 'Space to Delete');
+          const nestedFolder = await chrome.bookmarks.create({
+            parentId: space.bookmarkFolderId,
+            title: 'Nested folder',
+          });
+          await chrome.bookmarks.create({
+            parentId: space.bookmarkFolderId,
+            title: 'Direct bookmark',
+            url: 'https://example.com/direct',
+          });
+          await chrome.bookmarks.create({
+            parentId: nestedFolder.id,
+            title: 'Nested bookmark',
+            url: 'https://example.com/nested',
+          });
+        });
+
         // Force-show the dropdown and click delete
         await showSpaceOptionsDropdown(sidebarPage);
 
         // Register dialog handler to accept the confirm('Delete this space...')
+        let dialogMessage = '';
         sidebarPage.on('dialog', async dialog => {
+          dialogMessage = dialog.message();
           await dialog.accept();
         });
 
@@ -253,6 +275,7 @@ describe('Space Management', () => {
         const finalSpaces = await getSidebarSpaces(sidebarPage);
         logTestStep(`Spaces after delete: ${finalSpaces.map(s => s.name).join(', ')}`);
 
+        expect(dialogMessage).toBe('Delete "Space to Delete"? This deletes its bookmark folder (2 bookmarks) and closes its tabs.');
         expect(finalSpaces.length).toBe(initialCount - 1);
         expect(finalSpaces.find(s => s.name === 'Space to Delete')).toBeUndefined();
 
@@ -260,6 +283,62 @@ describe('Space Management', () => {
       } catch (error) {
         await takeScreenshotOnFailure(sidebarPage, 'delete-space-failure');
         throw error;
+      }
+    }, 120000);
+
+    test('should confirm and report when the space bookmark folder cannot be read', async () => {
+      let folderId;
+      let originalParentId;
+      try {
+        await sidebarPage.close();
+        sidebarPage = await createSpace(browser, extensionId, 'Unreadable Space');
+
+        await sidebarPage.evaluate(() => {
+          for (const btn of document.querySelectorAll('.space-switcher button')) {
+            if (btn.textContent.trim() === 'Unreadable Space') { btn.click(); break; }
+          }
+        });
+        await delay(1000);
+
+        ({ folderId, originalParentId } = await sidebarPage.evaluate(async () => {
+          const { spaces = [] } = await chrome.storage.local.get('spaces');
+          const space = spaces.find(item => item.name === 'Unreadable Space');
+          const [folder] = await chrome.bookmarks.get(space.bookmarkFolderId);
+          await chrome.bookmarks.move(folder.id, { parentId: '1' });
+          return { folderId: folder.id, originalParentId: folder.parentId };
+        }));
+        await sidebarPage.waitForSelector('.space.active .bookmark-association-error');
+
+        await showSpaceOptionsDropdown(sidebarPage);
+
+        const dialogs = [];
+        sidebarPage.on('dialog', async dialog => {
+          dialogs.push({ type: dialog.type(), message: dialog.message() });
+          await dialog.accept();
+        });
+
+        await sidebarPage.$eval('.space.active .delete-space-btn', btn => btn.click());
+        await delay(1500);
+
+        expect(dialogs).toEqual([
+          {
+            type: 'confirm',
+            message: 'Delete "Unreadable Space"? Its bookmark folder could not be read. The bookmark folder is no longer inside the Arcify folder.',
+          },
+          { type: 'alert', message: 'The bookmark folder is no longer inside the Arcify folder.' },
+        ]);
+        const remaining = await getSidebarSpaces(sidebarPage);
+        expect(remaining.find(s => s.name === 'Unreadable Space')).toBeDefined();
+        const [folder] = await sidebarPage.evaluate(id => chrome.bookmarks.get(id), folderId);
+        expect(folder.parentId).toBe('1');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'delete-unreadable-space-failure');
+        throw error;
+      } finally {
+        if (folderId && originalParentId) {
+          await sidebarPage.evaluate(({ id, parentId }) => chrome.bookmarks.move(id, { parentId }),
+            { id: folderId, parentId: originalParentId }).catch(() => {});
+        }
       }
     }, 120000);
   });
