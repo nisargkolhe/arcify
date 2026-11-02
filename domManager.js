@@ -183,7 +183,7 @@ export function activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher) {
     updateSpaceSwitcher();
 }
 
-export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive, onReplaceBookmarkUrlWithCurrent = null) {
+export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive, onReplaceBookmarkUrlWithCurrent = null, moveFavoriteToSpace = null) {
     // Remove any existing context menus
     const existingMenu = document.getElementById('tab-context-menu');
     if (existingMenu) {
@@ -240,8 +240,10 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         const separator = document.createElement('div');
         separator.className = 'context-menu-separator';
         contextMenu.appendChild(separator);
+    }
 
-        // 2. Move to Space
+    // Favorites must carry their saved bookmark so moving them does not silently unpin them.
+    if (!isBookmarkOnly || typeof moveFavoriteToSpace === 'function') {
         const moveToSpaceItem = document.createElement('div');
         moveToSpaceItem.className = 'context-menu-item with-submenu';
         moveToSpaceItem.textContent = 'Move to Space';
@@ -250,7 +252,9 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         submenu.className = 'context-menu submenu';
 
         // Add active spaces
-        const currentSpace = spaces.find(s => s.temporaryTabs.includes(tab.id) || s.spaceBookmarks.includes(tab.id));
+        const currentSpace = isBookmarkOnly
+            ? spaces.find(s => s.id === tabElement.closest('.space')?.dataset.spaceId)
+            : spaces.find(s => s.temporaryTabs.includes(tab.id) || s.spaceBookmarks.includes(tab.id));
         const otherActiveSpaces = spaces.filter(s => s.id !== currentSpace?.id);
         otherActiveSpaces.forEach(space => {
             const submenuItem = document.createElement('div');
@@ -260,18 +264,28 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
                 e.stopPropagation();
                 contextMenu.remove(); // Close menu immediately for better UX
 
-                await moveTabToSpace(tab.id, space.id, false);
+                if (isPinned && typeof moveFavoriteToSpace === 'function') {
+                    try {
+                        await moveFavoriteToSpace(tab, tabElement, space.id);
+                    } catch (error) {
+                        Logger.warn('[ContextMenu] Failed to move favorite to space:', error);
+                        return;
+                    }
+                } else {
+                    await moveTabToSpace(tab.id, space.id, false);
+                }
                 // Set the space as active, but prevent it from auto-activating a different tab
                 await setActiveSpace(space.id, false);
                 // Explicitly activate the tab that was just moved
-                await Utils.focusTab(tab.id);
+                if (!isBookmarkOnly) await Utils.focusTab(tab.id);
             });
             submenu.appendChild(submenuItem);
         });
 
         // Add inactive spaces
         const activeSpaceNames = new Set(spaces.map(s => s.name));
-        const inactiveSpaceFolders = allBookmarkSpaceFolders.filter(f => !f.url && !activeSpaceNames.has(f.title));
+        // Creating an inactive space needs a live tab, which unloaded favorites do not have.
+        const inactiveSpaceFolders = isBookmarkOnly ? [] : allBookmarkSpaceFolders.filter(f => !f.url && !activeSpaceNames.has(f.title));
 
         if (otherActiveSpaces.length > 0 && inactiveSpaceFolders.length > 0) {
             const separator = document.createElement('div');

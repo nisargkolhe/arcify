@@ -1335,9 +1335,21 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
             return;
         }
 
+        const oldSpace = spaces.find(s =>
+            s.temporaryTabs.includes(tabToMove.id) || s.spaceBookmarks.includes(tabToMove.id)
+        );
+        const isPinned = !!oldSpace?.spaceBookmarks.includes(tabToMove.id);
+        let movedTabIds = [tabToMove.id];
+        if (isPinned) {
+            const binding = await Utils.getPinnedTabState(tabToMove.id);
+            const bookmark = await getSpaceBookmarkById(oldSpace, binding?.bookmarkId);
+            if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
+            movedTabIds = await getTabsBoundToBookmark(oldSpace, bookmark.id);
+            await chrome.bookmarks.move(bookmark.id, { parentId: spaceFolder.id });
+        }
+
         const spaceColor = await Utils.getSpaceColor(spaceName);
 
-        const spaceBookmarks = [];
         const registryEntry = await LocalStorage.getOrCreateSpaceRegistryEntry(spaceFolder.id, {
             name: spaceName,
             color: spaceColor,
@@ -1350,18 +1362,15 @@ async function createSpaceFromInactive(spaceName, tabToMove) {
             uuid: registryEntry?.spaceUuid ?? Utils.generateUUID(),
             name: spaceName,
             color: spaceColor,
-            spaceBookmarks: spaceBookmarks,
-            temporaryTabs: [tabToMove.id],
+            spaceBookmarks: isPinned ? movedTabIds : [],
+            temporaryTabs: isPinned ? [] : [tabToMove.id],
             lastTab: tabToMove.id,
         };
 
         // Remove the moved tab from its old space
-        const oldSpace = spaces.find(s =>
-            s.temporaryTabs.includes(tabToMove.id) || s.spaceBookmarks.includes(tabToMove.id)
-        );
         if (oldSpace) {
-            oldSpace.temporaryTabs = oldSpace.temporaryTabs.filter(id => id !== tabToMove.id);
-            oldSpace.spaceBookmarks = oldSpace.spaceBookmarks.filter(id => id !== tabToMove.id);
+            oldSpace.temporaryTabs = oldSpace.temporaryTabs.filter(id => !movedTabIds.includes(id));
+            oldSpace.spaceBookmarks = oldSpace.spaceBookmarks.filter(id => !movedTabIds.includes(id));
         }
 
         // Remove the tab's DOM element from the old space's UI
@@ -3040,7 +3049,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             setActiveSpace,
             allBookmarkSpaceFolders,
             createSpaceFromInactive,
-            replaceBookmarkUrlWithCurrentUrl
+            replaceBookmarkUrlWithCurrentUrl,
+            moveFavoriteToSpace
         );
     });
 
@@ -3601,6 +3611,35 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
         // return or any throw above — otherwise future moves for this tab are ignored.
         processingTabMoves.delete(tabId);
     }
+}
+
+// The bookmark is the durable favorite, so move it before reassigning any live tab that uses it.
+async function moveFavoriteToSpace(tab, tabElement, spaceId) {
+    const target = spaces.find(s => s.id === spaceId);
+    const source = tab.id
+        ? ownerOf(spaces, tab.id)
+        : spaces.find(s => s.id === tabElement.closest('.space')?.dataset.spaceId);
+    if (!target || !source || source.id === target.id) return;
+    const binding = tab.id ? await Utils.getPinnedTabState(tab.id) : null;
+    const bookmark = await getSpaceBookmarkById(source, tabElement.dataset.bookmarkId || binding?.bookmarkId);
+    if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
+    const targetFolder = await getSpaceBookmarkFolder(target);
+    const boundTabIds = (await getTabsBoundToBookmark(source, bookmark.id)).filter(id => id !== tab.id);
+    await chrome.bookmarks.move(bookmark.id, { parentId: targetFolder.id });
+    if (tab.id) {
+        await moveTabToSpace(tab.id, target.id, true);
+    } else {
+        disposeEditorsInElement(tabElement);
+        tabElement.remove();
+    }
+    for (const id of boundTabIds) await moveTabToSpace(id, target.id, true);
+}
+
+// A favorite can be open in several windows, and each of those tabs follows its bookmark.
+async function getTabsBoundToBookmark(space, bookmarkId) {
+    const bindings = await Utils.getPinnedTabStates();
+    const liveTabIds = new Set((await chrome.tabs.query({})).map(t => t.id));
+    return space.spaceBookmarks.filter(id => liveTabIds.has(id) && String(bindings[id]?.bookmarkId) === String(bookmarkId));
 }
 
 // Tab navigation functions delegate to Utils to avoid code duplication

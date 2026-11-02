@@ -8,6 +8,7 @@ import {
   getSidebarSpaces,
   createSpace,
 } from './helpers/extension-helper.js';
+import { createServer } from 'node:http';
 import {
   delay,
   takeScreenshotOnFailure,
@@ -980,5 +981,231 @@ describe('Space Management', () => {
         throw error;
       }
     }, 120000);
+  });
+  describe('Move Favorite to Space', () => {
+    let server;
+    let url;
+    const targetName = 'Favorite Target';
+
+    beforeAll(async () => {
+      server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<title>Move fixture</title>'); });
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      url = `http://127.0.0.1:${server.address().port}/`;
+      const page = await createSpace(browser, extensionId, targetName);
+      await page.close();
+    });
+
+    afterAll(async () => {
+      if (!server) return;
+      const closed = new Promise(resolve => server.close(resolve));
+      server.closeAllConnections();
+      await closed;
+    });
+
+    async function moveRowToSpace(selector, spaceName) {
+      await sidebarPage.waitForSelector(selector);
+      await sidebarPage.$eval(selector, el => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })));
+      await sidebarPage.waitForSelector('#tab-context-menu');
+      await sidebarPage.evaluate(name => {
+        const item = [...document.querySelectorAll('#tab-context-menu .submenu .context-menu-item')]
+          .find(el => el.textContent === name);
+        if (!item) throw new Error(`Move to Space target missing: ${name}`);
+        item.click();
+      }, spaceName);
+    }
+
+    // Activates another space as the source so the target is offered in the submenu.
+    async function getFixtureSpaces() {
+      const fixture = await sidebarPage.evaluate(async name => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        const source = spaces.find(s => s.name !== name);
+        const { id: windowId } = await chrome.windows.getCurrent();
+        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'activate', windowId, spaceId: source.id });
+        await chrome.storage.session.set({ activeSpaces: { [windowId]: source.id } });
+        return { source, target: spaces.find(s => s.name === name) };
+      }, targetName);
+      await sidebarPage.reload();
+      await sidebarPage.waitForSelector(`.space.active[data-space-id="${fixture.source.id}"]`);
+      return fixture;
+    }
+
+    async function pinOpenTab(source, path) {
+      const tabId = await sidebarPage.evaluate(async ({ url, spaceId }) => {
+        const tab = await chrome.tabs.create({ url, active: false });
+        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
+        return tab.id;
+      }, { url: `${url}${path}`, spaceId: source.id });
+      await sidebarPage.reload();
+      const row = `.space.active .tab[data-tab-id="${tabId}"]`;
+      await sidebarPage.waitForSelector(row);
+      await sidebarPage.$eval(row, el => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })));
+      await sidebarPage.evaluate(() => {
+        [...document.querySelectorAll('.context-menu-item')].find(el => el.textContent === 'Pin Tab').click();
+      });
+      const pinnedRow = `.space.active [data-tab-type="pinned"] .tab[data-tab-id="${tabId}"][data-bookmark-id]`;
+      await sidebarPage.waitForSelector(pinnedRow);
+      return { tabId, pinnedRow, bookmarkId: await sidebarPage.$eval(pinnedRow, el => el.dataset.bookmarkId) };
+    }
+
+    // Favorites are space-wide, so another window can hold a second tab bound to the same bookmark.
+    async function openBoundTabInOtherWindow(source, bookmarkId, path) {
+      return sidebarPage.evaluate(async ({ url, spaceId, bookmarkId }) => {
+        const { tabs: [tab] } = await chrome.windows.create({ url, focused: false });
+        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId, pinned: true });
+        const { pinnedTabStatesById = {} } = await chrome.storage.local.get('pinnedTabStatesById');
+        pinnedTabStatesById[tab.id] = { bookmarkId, pinnedUrl: url };
+        await chrome.storage.local.set({ pinnedTabStatesById });
+        return tab.id;
+      }, { url: `${url}${path}`, spaceId: source.id, bookmarkId });
+    }
+
+    test('should move an open favorite with its bookmark and keep it bound', async () => {
+      const { source, target } = await getFixtureSpaces();
+      const { tabId, pinnedRow, bookmarkId } = await pinOpenTab(source, 'open');
+
+      await moveRowToSpace(pinnedRow, targetName);
+      await sidebarPage.waitForFunction(async ({ bookmarkId, folderId }) =>
+        (await chrome.bookmarks.get(bookmarkId))[0].parentId === folderId, { polling: 100 }, { bookmarkId, folderId: target.bookmarkFolderId });
+      await sidebarPage.waitForFunction(async ({ tabId, name }) => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        return spaces.find(s => s.name === name).spaceBookmarks.includes(tabId);
+      }, { polling: 100 }, { tabId, name: targetName });
+
+      const after = await sidebarPage.evaluate(async ({ tabId, sourceId, bookmarkId }) => {
+        const { spaces, pinnedTabStatesById = {} } = await chrome.storage.local.get(['spaces', 'pinnedTabStatesById']);
+        const source = spaces.find(s => s.id === sourceId);
+        return {
+          binding: pinnedTabStatesById[tabId]?.bookmarkId,
+          sourceOwns: [...source.spaceBookmarks, ...source.temporaryTabs].includes(tabId),
+          sourceBookmarks: (await chrome.bookmarks.getChildren(source.bookmarkFolderId)).map(node => node.id),
+          sourceRows: document.querySelectorAll(`.space[data-space-id="${sourceId}"] .tab[data-bookmark-id="${bookmarkId}"]`).length
+        };
+      }, { tabId, sourceId: source.id, bookmarkId });
+      expect(after.binding).toBe(bookmarkId);
+      expect(after.sourceOwns).toBe(false);
+      expect(after.sourceBookmarks).not.toContain(bookmarkId);
+      expect(after.sourceRows).toBe(0);
+    }, 60000);
+
+    test('should move an open favorite into an inactive space folder and keep it bound', async () => {
+      const inactiveName = 'Inactive Favorite Target';
+      const { source } = await getFixtureSpaces();
+      const { tabId, pinnedRow, bookmarkId } = await pinOpenTab(source, 'inactive');
+      const otherTabId = await openBoundTabInOtherWindow(source, bookmarkId, 'inactive');
+      await sidebarPage.reload();
+      await sidebarPage.waitForSelector(pinnedRow);
+
+      // The sidebar adopts new root folders on its next refresh, so pick the folder before that runs.
+      const { folderId, inactive } = await sidebarPage.evaluate(async ({ name, selector }) => {
+        const root = (await chrome.bookmarks.search({ title: 'Arcify' })).find(node => !node.url);
+        const folder = await chrome.bookmarks.create({ parentId: root.id, title: name });
+        document.querySelector(selector).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+        let item;
+        while (!(item = [...document.querySelectorAll('#tab-context-menu .submenu .context-menu-item')].find(el => el.textContent === name))) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        const separator = item.parentElement.querySelector('.context-menu-separator');
+        const inactive = Boolean(separator && separator.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING);
+        item.click();
+        return { folderId: folder.id, inactive };
+      }, { name: inactiveName, selector: pinnedRow });
+      expect(inactive).toBe(true);
+      await sidebarPage.waitForFunction(async ({ tabId, name }) => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        return spaces.find(s => s.name === name)?.spaceBookmarks.includes(tabId);
+      }, { polling: 100 }, { tabId, name: inactiveName });
+
+      const after = await sidebarPage.evaluate(async ({ tabIds, sourceId, bookmarkId, name }) => {
+        const { spaces, pinnedTabStatesById = {} } = await chrome.storage.local.get(['spaces', 'pinnedTabStatesById']);
+        const source = spaces.find(s => s.id === sourceId);
+        const created = spaces.find(s => s.name === name);
+        return {
+          parentId: (await chrome.bookmarks.get(bookmarkId))[0].parentId,
+          bindings: tabIds.map(id => pinnedTabStatesById[id]?.bookmarkId),
+          createdPinned: tabIds.map(id => created.spaceBookmarks.includes(id)),
+          sourceOwns: tabIds.some(id => [...source.spaceBookmarks, ...source.temporaryTabs].includes(id)),
+          sourceRows: document.querySelectorAll(`.space[data-space-id="${sourceId}"] .tab[data-bookmark-id="${bookmarkId}"]`).length
+        };
+      }, { tabIds: [tabId, otherTabId], sourceId: source.id, bookmarkId, name: inactiveName });
+      expect(after.parentId).toBe(folderId);
+      expect(after.bindings).toEqual([bookmarkId, bookmarkId]);
+      expect(after.createdPinned).toEqual([true, true]);
+      expect(after.sourceOwns).toBe(false);
+      expect(after.sourceRows).toBe(0);
+    }, 60000);
+
+    test('should move an unloaded favorite bookmark to another space', async () => {
+      const { source, target } = await getFixtureSpaces();
+      const bookmarkId = await sidebarPage.evaluate(async ({ url, folderId }) =>
+        (await chrome.bookmarks.create({ parentId: folderId, title: 'Unloaded favorite', url: `${url}unloaded` })).id,
+        { url, folderId: source.bookmarkFolderId });
+      await sidebarPage.reload();
+      const row = `.space.active .tab.bookmark-only[data-bookmark-id="${bookmarkId}"]`;
+
+      await moveRowToSpace(row, targetName);
+      await sidebarPage.waitForFunction(async ({ bookmarkId, folderId }) =>
+        (await chrome.bookmarks.get(bookmarkId))[0].parentId === folderId, { polling: 100 }, { bookmarkId, folderId: target.bookmarkFolderId });
+      await sidebarPage.waitForFunction(({ sourceId, bookmarkId }) =>
+        !document.querySelector(`.space[data-space-id="${sourceId}"] .tab[data-bookmark-id="${bookmarkId}"]`),
+        { polling: 100 }, { sourceId: source.id, bookmarkId });
+    }, 60000);
+
+    test('should move tabs in other windows bound to an unloaded favorite', async () => {
+      const { source, target } = await getFixtureSpaces();
+      const bookmarkId = await sidebarPage.evaluate(async ({ url, folderId }) =>
+        (await chrome.bookmarks.create({ parentId: folderId, title: 'Elsewhere favorite', url: `${url}elsewhere` })).id,
+        { url, folderId: source.bookmarkFolderId });
+      const otherTabId = await openBoundTabInOtherWindow(source, bookmarkId, 'elsewhere');
+      await sidebarPage.reload();
+      const row = `.space.active .tab.bookmark-only[data-bookmark-id="${bookmarkId}"]`;
+
+      await moveRowToSpace(row, targetName);
+      await sidebarPage.waitForFunction(async ({ tabId, targetId }) => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        return spaces.find(s => s.id === targetId).spaceBookmarks.includes(tabId);
+      }, { polling: 100 }, { tabId: otherTabId, targetId: target.id });
+
+      const after = await sidebarPage.evaluate(async ({ tabId, sourceId, bookmarkId }) => {
+        const { spaces, pinnedTabStatesById = {} } = await chrome.storage.local.get(['spaces', 'pinnedTabStatesById']);
+        const source = spaces.find(s => s.id === sourceId);
+        return {
+          parentId: (await chrome.bookmarks.get(bookmarkId))[0].parentId,
+          binding: pinnedTabStatesById[tabId]?.bookmarkId,
+          sourceOwns: [...source.spaceBookmarks, ...source.temporaryTabs].includes(tabId)
+        };
+      }, { tabId: otherTabId, sourceId: source.id, bookmarkId });
+      expect(after.parentId).toBe(target.bookmarkFolderId);
+      expect(after.binding).toBe(bookmarkId);
+      expect(after.sourceOwns).toBe(false);
+    }, 60000);
+
+    test('should move the clicked favorite when another bound tab has already closed', async () => {
+      const { source, target } = await getFixtureSpaces();
+      const { tabId, pinnedRow, bookmarkId } = await pinOpenTab(source, 'stale');
+      const closedTabId = await openBoundTabInOtherWindow(source, bookmarkId, 'stale');
+      await sidebarPage.reload();
+      await sidebarPage.waitForSelector(pinnedRow);
+
+      // Close the other tab and move before the sidebar refreshes its space ownership.
+      await sidebarPage.evaluate(async ({ closedTabId, bookmarkId, selector, name }) => {
+        await chrome.tabs.remove(closedTabId);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const { pinnedTabStatesById = {} } = await chrome.storage.local.get('pinnedTabStatesById');
+        pinnedTabStatesById[closedTabId] = { bookmarkId, pinnedUrl: null };
+        await chrome.storage.local.set({ pinnedTabStatesById });
+        document.querySelector(selector).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+        let item;
+        while (!(item = [...document.querySelectorAll('#tab-context-menu .submenu .context-menu-item')].find(el => el.textContent === name))) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        item.click();
+      }, { closedTabId, bookmarkId, selector: pinnedRow, name: targetName });
+      await sidebarPage.waitForFunction(async ({ tabId, targetId }) => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        return spaces.find(s => s.id === targetId).spaceBookmarks.includes(tabId);
+      }, { polling: 100 }, { tabId, targetId: target.id });
+      const parentId = await sidebarPage.evaluate(async id => (await chrome.bookmarks.get(id))[0].parentId, bookmarkId);
+      expect(parentId).toBe(target.bookmarkFolderId);
+    }, 60000);
   });
 });
