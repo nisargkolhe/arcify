@@ -1275,9 +1275,9 @@ describe('Drag and Drop', () => {
         const reorderedA = await bookmarkPosition(ids.a);
         const reorderedC = await bookmarkPosition(ids.c);
         expect(reorderedC.parentId).toBe(ids.parentId);
-        // Display order is the reverse of bookmark order when tab order is inverted.
-        expect(reorderedC.index).toBe(ids.inverted ? reorderedA.index + 1 : reorderedA.index - 1);
-        expect(reorderedA.index).toBe(ids.inverted ? before.index : before.index + 1);
+        // Favorites always display in bookmark order.
+        expect(reorderedC.index).toBe(reorderedA.index - 1);
+        expect(reorderedA.index).toBe(before.index + 1);
         await waitForSavedPinnedOrder([ids.tabC, ids.tabX]);
 
         await sidebarPage.reload({ waitUntil: 'domcontentloaded' });
