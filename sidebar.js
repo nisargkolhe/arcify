@@ -22,7 +22,7 @@ import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
 import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
-import { canCreateFolder, createFolder } from './folder-policy.js';
+import { canCreateFolder, canMoveFolder, createFolder } from './folder-policy.js';
 import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
 import { FOLDER_CLOSED_ICON, FOLDER_CLOSED_DOTS_ICON, FOLDER_OPEN_ICON } from './icons.js';
 import { LocalStorage } from './localstorage.js';
@@ -1218,6 +1218,42 @@ function setupTabDragHandlers(tabElement) {
     });
 }
 
+// Folders drag from their header and move as one bookmark.
+function setupFolderDragHandlers(folderElement) {
+    const folderHeader = folderElement.querySelector(':scope > .folder-header');
+    folderHeader.addEventListener('dragstart', event => {
+        if (event.target !== folderHeader) return;
+        if (folderHeader.querySelector('.folder-name') === document.activeElement) {
+            event.preventDefault();
+            return;
+        }
+        isDraggingTab = true;
+        event.dataTransfer.setData('text/plain', folderElement.dataset.bookmarkId || '');
+        event.dataTransfer.effectAllowed = 'move';
+        folderElement.classList.add('dragging');
+        dragSourceFolderElement = folderElement.parentElement.closest('.folder');
+    });
+
+    folderHeader.addEventListener('dragend', () => {
+        isDraggingTab = false;
+        folderElement.classList.remove('dragging');
+        dragSourceFolderElement = null;
+        refreshCoordinator.schedule();
+    });
+}
+
+// A tab dropped on a folder header goes inside it. A folder dropped there is placed
+// beside it instead, and goes inside only when dropped into an open folder's content.
+function getDropTargetFolderContent(target, draggingElement) {
+    if (draggingElement.classList.contains('folder')) return target.closest('.folder-content');
+    return target.closest('.folder')?.querySelector(':scope > .folder-content');
+}
+
+function isInvalidFolderDrop(draggingElement, container, targetContainer) {
+    return draggingElement.classList.contains('folder') &&
+        (container.dataset.tabType !== 'pinned' || draggingElement.contains(targetContainer));
+}
+
 // Variables for folder auto-open functionality
 let folderOpenTimer = null;
 let currentHoveredFolder = null;
@@ -1599,6 +1635,26 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
         return;
     }
 
+    if (draggingElement.classList.contains('folder')) {
+        const space = spaces.find(s => s.id === container.closest('.space')?.dataset.spaceId);
+        const spaceFolder = space && await getSpaceBookmarkFolder(space);
+        const folderId = draggingElement.dataset.bookmarkId;
+        if (!spaceFolder || !folderId) throw new Error('Folder creation is not complete.');
+        const parentId = bookmarkParentIdForContent(dropIntent.bookmarkTargetContent, spaceFolder.id);
+        if (!await canMoveFolder(spaceFolder.id, folderId, parentId)) {
+            throw new Error('A folder cannot move into itself, and nested folders require tab group sync to be off and support up to four folder levels.');
+        }
+        const result = await saveBookmarkOperation(makeBookmarkDropOperation({
+            sourceContent: dropIntent.bookmarkSourceContent,
+            targetContent: dropIntent.bookmarkTargetContent,
+            draggingElement,
+            rootId: spaceFolder.id,
+            inverted: dropIntent.inverted
+        }));
+        for (const [id, order] of Object.entries(result.orders || {})) bookmarkOrderBaselines.set(String(id), order.map(String));
+        return { orderHandled: true };
+    }
+
     // Handle tab being moved to pinned section or folder (both open tabs and bookmark-only tabs)
     if (container.dataset.tabType === 'pinned' && (draggingElement.dataset.tabId || draggingElement.dataset.url)) {
         // Handle favorite tab conversion
@@ -1855,8 +1911,8 @@ async function persistSpaceTabOrder(spaceId) {
  * Called after an Arcify drag+drop to update the space model (spaceBookmarks/temporaryTabs)
  * from the DOM and persist the extension order.
  */
-async function handleArcifyOrderChangeAfterDropByTabId(tabId, container) {
-    if (!tabId || !container) return;
+async function handleArcifyOrderChangeAfterDrop(container) {
+    if (!container) return;
     const spaceElement = container.closest('.space');
     if (!spaceElement) return;
     const spaceId = spaceElement.dataset.spaceId;
@@ -1880,7 +1936,7 @@ async function handleArcifyOrderChangeAfterDropByTabId(tabId, container) {
         return;
     }
 
-    await persistSpaceTabOrder(spaceId, { source: 'arcify', movedTabId: tabId });
+    await persistSpaceTabOrder(spaceId);
 }
 
 async function setupDragAndDrop(pinnedContainer, tempContainer) {
@@ -1890,12 +1946,18 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
             e.preventDefault();
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
-                const targetFolder = e.target.closest('.folder')?.querySelector(':scope > .folder-content');
+                const targetFolder = getDropTargetFolderContent(e.target, draggingElement);
                 const targetContainer = targetFolder || container;
+                if (isInvalidFolderDrop(draggingElement, container, targetContainer)) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                    hideAllDropIndicators();
+                    clearFolderOpenTimer();
+                    return;
+                }
 
                 // Check for collapsed folder auto-open functionality
                 const folderElement = e.target.closest('.folder');
-                if (folderElement && folderElement.classList.contains('collapsed')) {
+                if (folderElement && folderElement.classList.contains('collapsed') && !draggingElement.contains(folderElement)) {
                     // Start timer to auto-open collapsed folder if hovering over it
                     if (currentHoveredFolder !== folderElement) {
                         startFolderOpenTimer(folderElement);
@@ -1964,6 +2026,10 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                 if (container.dataset.tabType === 'pinned' && spaceElement?.dataset.bookmarkTreeUnavailable === 'true') {
                     throw new Error('Favorites are unavailable until this space bookmark folder is restored.');
                 }
+                // Resolve the folder content (if any) that receives this drop.
+                const targetFolder = getDropTargetFolderContent(e.target, draggingElement);
+                const targetFolderElement = targetFolder?.closest('.folder');
+                if (isInvalidFolderDrop(draggingElement, container, targetFolder || container)) return;
                 const originalContent = draggingElement.parentElement;
                 const sourceContent = dragSourceFolderElement?.querySelector(':scope > .folder-content');
                 const anchorKey = draggingElement.dataset.bookmarkId || draggingElement.dataset.tabId;
@@ -1973,9 +2039,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                     projectedTabAnchors.get(sourceContent).delete(anchorKey);
                 }
                 const droppedTabId = draggingElement.dataset.tabId ? parseInt(draggingElement.dataset.tabId) : null;
-                // If dropping on a folder header / collapsed folder area, treat it as dropping into that folder.
-                const targetFolderElement = e.target.closest('.folder');
-                const targetFolder = targetFolderElement?.querySelector(':scope > .folder-content');
+                const droppedFolder = draggingElement.classList.contains('folder');
                 if (targetFolderElement) openFolder(targetFolderElement);
 
                 const targetContainer = targetFolder || container;
@@ -2030,8 +2094,8 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
 
                 // Update the model from the DOM (Arcify is source of truth here), then reconcile Chrome.
                 // This is intentionally done after bookmark operations so section membership is correct.
-                if (droppedTabId && !operationResult?.orderHandled) {
-                    await handleArcifyOrderChangeAfterDropByTabId(droppedTabId, container);
+                if (droppedFolder || (droppedTabId && !operationResult?.orderHandled)) {
+                    await handleArcifyOrderChangeAfterDrop(container);
                 }
                 if (operationResult?.orderHandled) await refreshActiveSpaceUI({ force: true });
                 } catch (error) {
@@ -2141,6 +2205,7 @@ async function createNewFolder(spaceElement, parentFolderElement = null) {
     folderNameInput.style.display = 'inline-block';
     folderTitle.style.display = 'none';
 
+    setupFolderDragHandlers(folderElement);
     folderHeader.addEventListener('click', () => {
         // Clear the tracked shown tabs when user manually toggles the folder (Arc behavior).
         collapsedFolderShownTabs.delete(folderElement);
@@ -2285,6 +2350,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                         // Set up folder toggle functionality
                         // Add context menu for folder
                         setupFolderContextMenu(folderElement, space, item);
+                        setupFolderDragHandlers(folderElement);
 
                         folderHeader.addEventListener('click', () => {
                             // Clear the tracked shown tabs when user manually toggles the folder (Arc behavior).

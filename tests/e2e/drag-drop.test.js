@@ -1197,6 +1197,114 @@ describe('Drag and Drop', () => {
     });
   });
 
+  describe('Folder Dragging', () => {
+    // Drives the sidebar's own dragstart/dragover/drop/dragend handlers on a folder header.
+    async function dragFolder(folderId, targetSelector) {
+      await sidebarPage.evaluate(({ folderId, targetSelector }) => {
+        const header = document.querySelector(`.space.active .folder[data-bookmark-id="${folderId}"] > .folder-header`);
+        const target = document.querySelector(targetSelector);
+        const dataTransfer = new DataTransfer();
+        header.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
+        const rect = target.getBoundingClientRect();
+        const point = { clientX: rect.left + 5, clientY: rect.top + 1 };
+        target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer, ...point }));
+        target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer, ...point }));
+        header.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
+      }, { folderId, targetSelector });
+    }
+
+    // Pinned tab order in the saved space model, limited to the given tabs.
+    async function savedPinnedOrder(tabIds) {
+      return sidebarPage.evaluate(async tabIds => {
+        const { spaces = [] } = await chrome.storage.local.get('spaces');
+        return spaces[0].spaceBookmarks.filter(id => tabIds.includes(id));
+      }, tabIds);
+    }
+
+    async function waitForSavedPinnedOrder(expected) {
+      await sidebarPage.waitForFunction(async expected => {
+        const { spaces = [] } = await chrome.storage.local.get('spaces');
+        return JSON.stringify(spaces[0].spaceBookmarks.filter(id => expected.includes(id))) === JSON.stringify(expected);
+      }, { polling: 100, timeout: 5000 }, expected).catch(() => {});
+      expect(await savedPinnedOrder(expected)).toEqual(expected);
+    }
+
+    async function bookmarkPosition(id) {
+      return sidebarPage.evaluate(async id => {
+        const [node] = await chrome.bookmarks.get(id);
+        return { parentId: node.parentId, index: node.index };
+      }, id);
+    }
+
+    test('should reorder a folder above a sibling and nest it inside another folder', async () => {
+      try {
+        const ids = await sidebarPage.evaluate(async () => {
+          const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+          const parentId = spaces[0].bookmarkFolderId;
+          const make = async title => (await chrome.bookmarks.create({ parentId, title })).id;
+          const { invertTabOrder = true } = await chrome.storage.sync.get({ invertTabOrder: true });
+          const a = await make('Drag A'), b = await make('Drag B');
+          // Pin an open tab between B and C, and one inside C, so moving C changes the saved pinned order.
+          const pinIn = async (folderId, url) => {
+            const bookmark = await chrome.bookmarks.create({ parentId: folderId, title: url, url });
+            const tab = await chrome.tabs.create({ url, active: false });
+            await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', spaceId: spaces[0].id, tabId: tab.id, pinned: true });
+            const { pinnedTabStatesById = {} } = await chrome.storage.local.get('pinnedTabStatesById');
+            pinnedTabStatesById[tab.id] = { pinnedUrl: url, bookmarkId: bookmark.id };
+            await chrome.storage.local.set({ pinnedTabStatesById });
+            return tab.id;
+          };
+          const tabX = await pinIn(parentId, 'https://www.example.com/?drag-x');
+          const c = await make('Drag C');
+          const tabC = await pinIn(c, 'https://www.example.com/?drag-c');
+          return { parentId, inverted: invertTabOrder, a, b, c, tabX, tabC };
+        });
+        const folder = id => `.space.active .folder[data-bookmark-id="${id}"]`;
+        await sidebarPage.reload({ waitUntil: 'domcontentloaded' });
+        await sidebarPage.waitForSelector(folder(ids.c));
+        expect(await sidebarPage.$eval(`${folder(ids.c)} > .folder-header`, el => el.draggable)).toBe(true);
+        await waitForSavedPinnedOrder([ids.tabX, ids.tabC]);
+
+        logTestStep('Dragging folder C above sibling A...');
+        const before = await bookmarkPosition(ids.a);
+        await dragFolder(ids.c, `${folder(ids.a)} > .folder-header`);
+        await sidebarPage.waitForFunction(async ({ a, c }) => {
+          const [[nodeA], [nodeC]] = await Promise.all([chrome.bookmarks.get(a), chrome.bookmarks.get(c)]);
+          return Math.abs(nodeA.index - nodeC.index) === 1;
+        }, { polling: 100, timeout: 5000 }, ids);
+        const reorderedA = await bookmarkPosition(ids.a);
+        const reorderedC = await bookmarkPosition(ids.c);
+        expect(reorderedC.parentId).toBe(ids.parentId);
+        // Display order is the reverse of bookmark order when tab order is inverted.
+        expect(reorderedC.index).toBe(ids.inverted ? reorderedA.index + 1 : reorderedA.index - 1);
+        expect(reorderedA.index).toBe(ids.inverted ? before.index : before.index + 1);
+        await waitForSavedPinnedOrder([ids.tabC, ids.tabX]);
+
+        await sidebarPage.reload({ waitUntil: 'domcontentloaded' });
+        await sidebarPage.waitForSelector(folder(ids.c));
+        const displayed = await sidebarPage.$$eval('.space.active [data-tab-type="pinned"] > .folder', els => els.map(el => el.dataset.bookmarkId));
+        expect(displayed.indexOf(ids.c)).toBe(displayed.indexOf(ids.a) - 1);
+
+        logTestStep('Dragging folder C into folder B...');
+        await dragFolder(ids.c, `${folder(ids.b)} > .folder-content`);
+        await sidebarPage.waitForFunction(async ({ b, c }) => (await chrome.bookmarks.get(c))[0].parentId === b,
+          { polling: 100, timeout: 5000 }, ids);
+        expect(await bookmarkPosition(ids.c)).toEqual({ parentId: ids.b, index: 0 });
+        await sidebarPage.waitForSelector(`${folder(ids.b)} > .folder-content > .folder[data-bookmark-id="${ids.c}"]`);
+        await waitForSavedPinnedOrder([ids.tabC, ids.tabX]);
+
+        logTestStep('Rejecting a drop of folder B into its own child C...');
+        await dragFolder(ids.b, `${folder(ids.c)} > .folder-content`);
+        await delay(500);
+        expect((await bookmarkPosition(ids.c)).parentId).toBe(ids.b);
+        expect((await bookmarkPosition(ids.b)).parentId).toBe(ids.parentId);
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'folder-drag-failure');
+        throw error;
+      }
+    });
+  });
+
   describe('Space Switcher Drag', () => {
     test('should have space-switcher buttons accessible after drag operations', async () => {
       try {

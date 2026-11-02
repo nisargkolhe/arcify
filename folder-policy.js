@@ -22,3 +22,28 @@ export async function createFolder(spaceFolderId, parentId, title) {
     }
     return chrome.bookmarks.create({ parentId, title });
 }
+
+// True when targetId is the folder node itself or anywhere inside it.
+export function isDescendant(folderNode, targetId) {
+    return String(folderNode.id) === String(targetId)
+        || (folderNode.children || []).some(child => isDescendant(child, targetId));
+}
+
+// Reordering within the same parent remains allowed even for existing deeper trees.
+export async function canMoveFolder(spaceFolderId, folderId, parentId) {
+    const [folder] = await chrome.bookmarks.getSubTree(folderId);
+    if (!folder || folder.url || isDescendant(folder, parentId)) return false;
+    if (folder.parentId === parentId) return true;
+    if (parentId !== spaceFolderId && !await canCreateFolder(spaceFolderId, parentId)) return false;
+
+    let parentDepth = 0;
+    let current = parentId;
+    while (current !== spaceFolderId) {
+        const [node] = await chrome.bookmarks.get(current);
+        if (!node || node.url || ++parentDepth >= MAX_FOLDER_DEPTH) return false;
+        current = node.parentId;
+    }
+    const subtreeDepth = node => 1 + Math.max(0, ...(node.children || [])
+        .filter(child => !child.url).map(subtreeDepth));
+    return parentDepth + subtreeDepth(folder) <= MAX_FOLDER_DEPTH;
+}

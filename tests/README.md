@@ -78,6 +78,7 @@ tests/
 
 ### Drag and Drop (`drag-drop.test.js`)
 - Tab dragging and reordering
+- Folder reordering and nesting
 - Moving tabs between spaces
 - Space reordering
 - Visual feedback during drag
