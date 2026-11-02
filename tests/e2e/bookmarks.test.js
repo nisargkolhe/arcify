@@ -1489,4 +1489,97 @@ describe('Bookmarks and Pinned Tabs', () => {
       }
     });
   });
+
+  describe('Folder Context Menu', () => {
+    const folder = id => `.space.active .folder[data-bookmark-id="${id}"]`;
+
+    async function createFolders(titles) {
+      const ids = await sidebarPage.evaluate(async titles => {
+        const spaceId = document.querySelector('.space.active').dataset.spaceId;
+        const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+        const parentId = spaces.find(space => String(space.id) === spaceId).bookmarkFolderId;
+        const ids = [];
+        for (const title of titles) ids.push((await chrome.bookmarks.create({ parentId, title })).id);
+        return ids;
+      }, titles);
+      for (const id of ids) await sidebarPage.waitForSelector(folder(id));
+      return ids;
+    }
+
+    // Display order depends on the invert setting, so tests act on the folders' shown order.
+    const order = ids => sidebarPage.evaluate(async ids => {
+      const indexes = await Promise.all(ids.map(async id => (await chrome.bookmarks.get(id))[0].index));
+      const rows = ids.map(id => document.querySelector(`.space.active .folder[data-bookmark-id="${id}"]`));
+      const shown = rows.every(Boolean)
+        ? [...ids].sort((a, b) => (rows[ids.indexOf(a)].compareDocumentPosition(rows[ids.indexOf(b)]) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1)
+        : null;
+      return { indexes, shown };
+    }, ids);
+
+    async function openFolderMenu(id) {
+      await sidebarPage.$eval(`${folder(id)} > .folder-header`, el =>
+        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
+      await sidebarPage.waitForSelector('.context-menu-item');
+    }
+
+    const clickMenuItem = label => sidebarPage.evaluate(label => {
+      const item = [...document.querySelectorAll('.context-menu-item')].find(el => el.textContent === label);
+      if (!item) throw new Error(`${label} missing`);
+      item.click();
+    }, label);
+
+    test('Move Down and Move Up each swap a folder with its shown neighbor in Chrome bookmarks and the sidebar', async () => {
+      try {
+        const ids = await createFolders(['Move fixture A', 'Move fixture B']);
+        const before = await order(ids);
+        expect(Math.abs(before.indexes[0] - before.indexes[1])).toBe(1);
+        const [top, bottom] = before.shown;
+        const swapped = after => after.indexes[0] === before.indexes[1] && after.indexes[1] === before.indexes[0];
+        const restored = after => after.indexes[0] === before.indexes[0] && after.indexes[1] === before.indexes[1];
+
+        await openFolderMenu(top);
+        await clickMenuItem('Move Down');
+        await waitForCondition(async () => {
+          const after = await order(ids);
+          return swapped(after) && after.shown?.[0] === bottom && after.shown?.[1] === top;
+        }, 10000, 'Move Down did not swap the folders');
+
+        await openFolderMenu(top);
+        await clickMenuItem('Move Up');
+        await waitForCondition(async () => {
+          const after = await order(ids);
+          return restored(after) && after.shown?.[0] === top && after.shown?.[1] === bottom;
+        }, 10000, 'Move Up did not swap the folders back');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'folder-move-failure');
+        throw error;
+      }
+    });
+
+    test('Move Down uses the live sibling order when siblings change while the menu is open', async () => {
+      try {
+        const ids = await createFolders(['Stale fixture A', 'Stale fixture B']);
+        const [top, bottom] = (await order(ids)).shown;
+
+        await openFolderMenu(top);
+        const inserted = await sidebarPage.evaluate(async ids => {
+          const [a, b] = await Promise.all(ids.map(async id => (await chrome.bookmarks.get(id))[0]));
+          return (await chrome.bookmarks.create({ parentId: a.parentId, index: Math.max(a.index, b.index), title: 'Stale fixture C' })).id;
+        }, ids);
+        await sidebarPage.waitForSelector(folder(inserted));
+        const live = await order([top, inserted, bottom]);
+        expect(live.shown).toEqual([top, inserted, bottom]);
+
+        await clickMenuItem('Move Down');
+        await waitForCondition(async () => {
+          const after = await order([top, inserted, bottom]);
+          return after.indexes[0] === live.indexes[1] && after.indexes[1] === live.indexes[0] && after.indexes[2] === live.indexes[2]
+            && after.shown?.join() === [inserted, top, bottom].join();
+        }, 10000, 'Move Down did not swap the folder with its live neighbor');
+      } catch (error) {
+        await takeScreenshotOnFailure(sidebarPage, 'folder-move-stale-failure');
+        throw error;
+      }
+    });
+  });
 });

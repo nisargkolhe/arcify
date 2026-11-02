@@ -3702,6 +3702,34 @@ function setupFolderContextMenu(folderElement, space, item = null) {
             contextMenu.appendChild(newFolderOption);
         }
 
+        const parentId = String(folderElement.parentElement.closest('.folder')?.dataset.bookmarkId || spaceFolder.id);
+        // Chrome reads a same-parent move index before removing the node, so moving to
+        // index + 1 is a no-op; swap by moving the later sibling to the earlier index.
+        const findSwap = (siblings, offset) => {
+            const folderIndex = siblings.findIndex(sibling => String(sibling.id) === String(folderId));
+            const neighborIndex = folderIndex + offset;
+            if (folderIndex === -1 || neighborIndex < 0 || neighborIndex >= siblings.length) return null;
+            return { id: siblings[Math.max(folderIndex, neighborIndex)].id, index: Math.min(folderIndex, neighborIndex) };
+        };
+        const siblings = await chrome.bookmarks.getChildren(parentId);
+        for (const [label, offset] of [['Move Up', -1], ['Move Down', 1]]) {
+            if (!findSwap(siblings, offset)) continue;
+
+            const moveOption = document.createElement('div');
+            moveOption.classList.add('context-menu-item');
+            moveOption.textContent = label;
+            moveOption.addEventListener('click', async () => {
+                contextMenu.remove();
+                try {
+                    const swap = findSwap(await chrome.bookmarks.getChildren(parentId), offset);
+                    if (swap) await chrome.bookmarks.move(swap.id, { parentId, index: swap.index });
+                } catch (error) {
+                    Logger.error('Error moving folder:', error);
+                }
+            });
+            contextMenu.appendChild(moveOption);
+        }
+
         const deleteOption = document.createElement('div');
         deleteOption.classList.add('context-menu-item');
         deleteOption.textContent = 'Delete Folder';
