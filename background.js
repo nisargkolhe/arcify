@@ -132,6 +132,8 @@ chrome.commands.onCommand.addListener(async function (command) {
 async function updateTabLastActivity(tabId) {
     if (!tabId) return;
     try {
+        // Wait for store init so this read-modify-write cannot undo the new-session reset.
+        await spaceStore.run(() => {});
         const result = await chrome.storage.local.get(TAB_ACTIVITY_STORAGE_KEY);
         const activityData = result[TAB_ACTIVITY_STORAGE_KEY] || {};
         activityData[tabId] = Date.now();
@@ -146,6 +148,7 @@ async function updateTabLastActivity(tabId) {
 async function removeTabLastActivity(tabId) {
     if (!tabId) return;
     try {
+        await spaceStore.run(() => {});
         const result = await chrome.storage.local.get(TAB_ACTIVITY_STORAGE_KEY);
         const activityData = result[TAB_ACTIVITY_STORAGE_KEY] || {};
         delete activityData[tabId];
@@ -195,9 +198,6 @@ async function runAutoArchiveCheck() {
     const now = Date.now();
 
     try {
-        const activityResult = await chrome.storage.local.get(TAB_ACTIVITY_STORAGE_KEY);
-        const tabActivity = activityResult[TAB_ACTIVITY_STORAGE_KEY] || {};
-
         // --- Build the protected favorite set from the durable Arcify bookmark tree ---
         // NOTE: space.spaceBookmarks holds ephemeral tab-IDs (not URLs), so the old
         // check here was always empty and never protected favorites from archiving.
@@ -223,6 +223,9 @@ async function runAutoArchiveCheck() {
         }
 
         const currentSpaces = await spaceStore.dispatch({ action: 'get' });
+        // Read activity only after init, which clears previous-session records.
+        const activityResult = await chrome.storage.local.get(TAB_ACTIVITY_STORAGE_KEY);
+        const tabActivity = activityResult[TAB_ACTIVITY_STORAGE_KEY] || {};
         const protectedIds = new Set(currentSpaces.flatMap(space => space.spaceBookmarks));
         const bindings = await Utils.getPinnedTabStates();
 
@@ -247,9 +250,14 @@ async function runAutoArchiveCheck() {
 
             const lastActivity = tabActivity[tab.id];
 
-            // If we have no record, or it's older than the threshold, mark for archiving
-            // We assume tabs without a record haven't been active since tracking started or last check
-            if (!lastActivity || (now - lastActivity > idleThresholdMillis)) {
+            // Start tracking tabs with no record (opened in the background, or restored with a
+            // new id after restart) instead of treating them as idle.
+            if (!lastActivity) {
+                await updateTabLastActivity(tab.id);
+                continue;
+            }
+
+            if (now - lastActivity > idleThresholdMillis) {
                 // Check if tab still exists before archiving
                 try {
                     await chrome.tabs.get(tab.id); // Throws error if tab closed

@@ -99,7 +99,7 @@ export class SpaceStore {
             this.spaces.forEach(s => { s.spaceBookmarks = []; s.temporaryTabs = []; delete s.lastTab; });
             this.active = {};
             this.restoredRanks.clear();
-            await chrome.storage.local.set({ pinnedTabStatesById: {}, tabNameOverridesById: {} });
+            await chrome.storage.local.set({ pinnedTabStatesById: {}, tabNameOverridesById: {}, tabLastActivity: {} });
         } else {
             this.restoreQueue = session.spaceRestoreQueue || [];
         }
