@@ -1668,7 +1668,6 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 targetContent: dropIntent.bookmarkTargetContent,
                 draggingElement,
                 rootId: spaceFolder.id,
-                inverted: dropIntent.inverted,
                 tab
             });
             const result = await saveBookmarkOperation(operation);
@@ -1802,7 +1801,7 @@ function bookmarkParentIdForContent(content, rootId) {
     return String(content.closest('.folder')?.dataset.bookmarkId || rootId);
 }
 
-function makeBookmarkDropOperation({ sourceContent, targetContent, draggingElement, rootId, inverted, tab }) {
+function makeBookmarkDropOperation({ sourceContent, targetContent, draggingElement, rootId, tab }) {
     const bookmarkId = draggingElement.dataset.bookmarkId || null;
     const sourceParentId = bookmarkId ? bookmarkParentIdForContent(sourceContent, rootId) : null;
     const targetParentId = bookmarkParentIdForContent(targetContent, rootId);
@@ -1810,7 +1809,7 @@ function makeBookmarkDropOperation({ sourceContent, targetContent, draggingEleme
     const parents = parentIds.map(parentId => {
         const content = parentId === targetParentId ? targetContent : sourceContent;
         const displayIds = orderedBookmarkKeys(content, draggingElement);
-        const desiredCanonicalIds = canonicalOrderFromDisplay(displayIds, inverted);
+        const desiredCanonicalIds = canonicalOrderFromDisplay(displayIds, false);
         const expectedCanonicalIds = bookmarkOrderBaselines.get(parentId);
         if (!expectedCanonicalIds) throw new Error('The bookmark order baseline is unavailable. Refresh and retry.');
         return { parentId, expectedCanonicalIds: [...expectedCanonicalIds], desiredCanonicalIds };
@@ -1875,8 +1874,8 @@ async function handleArcifyOrderChangeAfterDropByTabId(tabId, container) {
     } else if (tabType === 'pinned') {
         // DOM order is display order. Canonical storage is extension order.
         const pinnedIdsDisplayOrder = getFlattenedPinnedSectionTabIds(spaceElement);
-        const pinnedIdsChromeOrder = invertTabOrder ? [...pinnedIdsDisplayOrder].reverse() : pinnedIdsDisplayOrder;
-        space.spaceBookmarks = mergeVisibleOrder(space.spaceBookmarks ?? [], pinnedIdsChromeOrder);
+        // Favorites always render in bookmark order; invertTabOrder applies to temporary tabs only.
+        space.spaceBookmarks = mergeVisibleOrder(space.spaceBookmarks ?? [], pinnedIdsDisplayOrder);
     } else {
         return;
     }
@@ -2015,8 +2014,7 @@ async function setupDragAndDrop(pinnedContainer, tempContainer) {
                     ? { temporaryDisplayOrder: getTempSectionTabIds(spaceElement), inverted: dropInverted }
                     : {
                         bookmarkSourceContent: draggingElement.dataset.bookmarkId ? (sourceContent || originalContent) : targetContainer,
-                        bookmarkTargetContent: targetContainer,
-                        inverted: dropInverted
+                        bookmarkTargetContent: targetContainer
                     };
 
                 // Capture order before bookmark/storage awaits can emit a refresh notification.
@@ -2268,8 +2266,8 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                 bookmarkOrderBaselines.set(String(node.id), bookmarks.map(item => String(item.id)));
                 Logger.log('Processing bookmarks:', bookmarks);
 
-                const itemsToRender = invertTabOrder ? [...bookmarks].reverse() : bookmarks;
-                for (const item of itemsToRender) {
+                // Favorites follow bookmark order; invertTabOrder applies to temporary tabs only.
+                for (const item of bookmarks) {
                     if (!item.url) {
                         // This is a folder
                         const folderTemplate = document.getElementById('folderTemplate');
@@ -2420,11 +2418,12 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     }
 
     const tempFragment = document.createDocumentFragment();
-    let tabsToLoad = [...new Set([
-        ...space.temporaryTabs,
-        ...space.spaceBookmarks.filter(id => !representedPinnedTabIds.has(id))
-    ])];
-    if (invertTabOrder) tabsToLoad.reverse();
+    const unrepresentedBookmarkIds = space.spaceBookmarks.filter(id => !representedPinnedTabIds.has(id));
+    const fallbackFavoriteIds = treeAvailable ? [] : unrepresentedBookmarkIds;
+    const temporaryTabIds = [...new Set([...space.temporaryTabs, ...unrepresentedBookmarkIds])]
+        .filter(id => !fallbackFavoriteIds.includes(id));
+    if (invertTabOrder) temporaryTabIds.reverse();
+    const tabsToLoad = [...new Set([...fallbackFavoriteIds, ...temporaryTabIds])];
     for (const tabId of tabsToLoad) {
         const tab = tabs.find(t => t.id === tabId);
         if (!tab || representedPinnedTabIds.has(tabId)) continue;
@@ -3497,7 +3496,7 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
 
                         // Filter to only include tabs in the temporary container (including the new one)
                         const tabsInContainer = ownedTabs.filter(t => {
-                            return container.querySelector(`[data-tab-id="${t.id}"]`);
+                            return container.querySelector(`[data-tab-id="${t.id}"]:not(.favorite-fallback)`);
                         });
 
                         // Apply invert order if enabled

@@ -226,6 +226,40 @@ test('moving the associated folder out of Arcify keeps live tabs visible and rec
     await page.waitForSelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${favorite}"][data-bookmark-id="${bookmarkId}"]`);
 });
 
+test('degraded rendering keeps fallback favorites in bookmark order above inverted temporary tabs', async () => {
+    const [f1, f2, t1, t2] = await page.evaluate(async ({ url, spaceId }) => {
+        const ids = [];
+        for (const suffix of ['degraded-f1', 'degraded-f2', 'degraded-t1', 'degraded-t2']) {
+            const tab = await chrome.tabs.create({ url: `${url}${suffix}`, active: false });
+            await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId });
+            ids.push(tab.id);
+        }
+        return ids;
+    }, { url, spaceId: fixture.spaceId });
+    for (const id of [f1, f2, t1, t2]) await page.waitForSelector(row(id));
+    for (const id of [f1, f2]) {
+        await toggle(id);
+        await page.waitForFunction(id => document.querySelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${id}"][data-bookmark-id]`),
+            { polling: 100 }, id);
+    }
+    const space = (await state()).spaces.find(s => s.id === fixture.spaceId);
+    expect(space.spaceBookmarks.filter(id => id === f1 || id === f2)).toEqual([f1, f2]);
+    expect(space.temporaryTabs.filter(id => id === t1 || id === t2)).toEqual([t1, t2]);
+
+    const originalParent = await page.evaluate(async id => (await chrome.bookmarks.get(id))[0].parentId, fixture.folderId);
+    await page.evaluate(id => chrome.bookmarks.move(id, { parentId: '1' }), fixture.folderId);
+    await page.waitForSelector('.space.active .bookmark-association-error');
+    for (const id of [f1, f2]) await page.waitForSelector(`${row(id)}.favorite-fallback`);
+    const order = await page.$$eval('.space.active [data-tab-type="temporary"] .tab', (els, ids) =>
+        els.map(el => Number(el.dataset.tabId)).filter(id => ids.includes(id)), [f1, f2, t1, t2]);
+    expect(order).toEqual([f1, f2, t2, t1]);
+
+    await page.evaluate(({ id, parentId }) => chrome.bookmarks.move(id, { parentId }), { id: fixture.folderId, parentId: originalParent });
+    await page.$eval('.space.active .bookmark-association-error button', el => el.click());
+    await page.waitForFunction(() => !document.querySelector('.space.active .bookmark-association-error'), { polling: 100 });
+    await page.waitForSelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${f1}"][data-bookmark-id]`);
+});
+
 test('service-worker ordering matches real Chrome move semantics and rejects partial views', async () => {
     const ordered = await page.evaluate(async folderId => {
         const folder = await chrome.bookmarks.create({ parentId: folderId, title: 'Order fixture' });

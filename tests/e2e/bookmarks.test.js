@@ -72,6 +72,35 @@ describe('Bookmarks and Pinned Tabs', () => {
     } catch (e) { /* browser closing */ }
   });
 
+  describe('Favorite Order', () => {
+    test('should render favorites in bookmark order with default settings', async () => {
+      const folderId = await sidebarPage.evaluate(async () => {
+        const { spaces } = await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'get' });
+        const parentId = spaces[0].bookmarkFolderId;
+        for (const n of [1, 2, 3]) {
+          await chrome.bookmarks.create({ parentId, title: `Favorite ${n}`, url: `http://127.0.0.1:9/fav-${n}` });
+        }
+        await chrome.bookmarks.create({ parentId, title: 'Folder A' });
+        return parentId;
+      });
+      await sidebarPage.reload();
+      await waitForCondition(async () => (await sidebarPage.evaluate(() => {
+        const pinned = document.querySelector('.space.active [data-tab-type="pinned"]');
+        return pinned ? [...pinned.children].filter(el => el.dataset.bookmarkId).length : 0;
+      })) >= 4, 15000, 'Favorites did not render');
+
+      const { expected, actual } = await sidebarPage.evaluate(async parentId => {
+        const children = await chrome.bookmarks.getChildren(parentId);
+        const pinned = document.querySelector('.space.active [data-tab-type="pinned"]');
+        return {
+          expected: children.map(c => String(c.id)),
+          actual: [...pinned.children].map(el => el.dataset.bookmarkId).filter(Boolean),
+        };
+      }, folderId);
+      expect(actual).toEqual(expected);
+    });
+  });
+
   describe('Tab Pinning', () => {
     test('should pin a tab via context menu', async () => {
       try {
