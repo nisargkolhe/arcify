@@ -15,6 +15,7 @@ registerTourMessages();
 
 import { SpaceStore, ownerOf } from './space-store.js';
 import { isProtectedFavorite } from './favorite-safety.js';
+import { visibleSplitIds } from './split-view.js';
 import { registerBookmarkListeners } from './bookmark-events.js';
 import { enqueueBookmarkOperation } from './bookmark-writer.js';
 
@@ -231,11 +232,13 @@ async function runAutoArchiveCheck() {
 
         // Get all non-pinned tabs across all windows
         const tabs = await chrome.tabs.query({ pinned: false });
+        // The unfocused half of a split on screen is not active, but it is in view.
+        const onScreenSplits = visibleSplitIds(tabs);
         const tabsToArchive = [];
 
         for (const tab of tabs) {
             // Skip audible, active, or recently active tabs
-            if (tab.audible || tab.active) {
+            if (tab.audible || tab.active || onScreenSplits.has(tab.splitViewId)) {
                 await updateTabLastActivity(tab.id); // Update activity for active/audible tabs
                 continue;
             }
