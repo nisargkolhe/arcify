@@ -294,3 +294,24 @@ test('a split renamed as a whole shows one row, keeps its name when pinned, and 
     await page.waitForFunction(id => !document.querySelector(`.space.active .tab[data-tab-id="${id}"]`)?.classList.contains('split-named'), { polling: 100 }, left);
     expect(await folderTitle()).toBe('⧉ Page /name-left | Page /name-right');
 });
+
+test('the Rename shortcut edits the active tab, or its whole split', async () => {
+    const [single, left, right] = await openTabs('/rename-single', '/rename-left', '/rename-right');
+    await page.evaluate(ids => chrome.tabs.createSplit(ids), [left, right]);
+    await page.waitForSelector(`${row(left)}.split-left`);
+    const worker = await (await browser.waitForTarget(target => target.type() === 'service_worker')).worker();
+    const shortcut = async tabId => {
+        await page.evaluate(id => chrome.tabs.update(id, { active: true }), tabId);
+        await worker.evaluate(() => chrome.runtime.sendMessage({ command: 'renameTab' }));
+    };
+    const escape = selector => page.$eval(selector, el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+
+    await shortcut(single);
+    await page.waitForFunction(id => document.querySelector(`.space.active .tab[data-tab-id="${id}"] .tab-title-input`)?.style.display === 'inline-block', { polling: 100 }, single);
+    await escape(`${row(single)} .tab-title-input`);
+
+    await shortcut(right);
+    await page.waitForSelector(`${row(left)}.split-renaming .split-name-input`);
+    await escape('.split-name-input');
+    await page.waitForFunction(() => !document.querySelector('.split-name-input'), { polling: 100 });
+});
