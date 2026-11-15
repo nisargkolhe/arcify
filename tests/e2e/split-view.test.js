@@ -315,3 +315,63 @@ test('the Rename shortcut edits the active tab, or its whole split', async () =>
     await escape('.split-name-input');
     await page.waitForFunction(() => !document.querySelector('.split-name-input'), { polling: 100 });
 });
+
+test('single-tab split opens a searchable picker in the other half', async () => {
+    const [left, right] = await openTabs('/picker-source', '/picker-target');
+    await menu(left, 'Add Tab to New Split View');
+    const target = await browser.waitForTarget(t => t.type() === 'page' && t.url().includes('split-picker.html'));
+    const pickerPage = await target.page();
+    await pickerPage.waitForSelector(`#tabs button[data-tab-id="${right}"]`);
+    const pickerId = await page.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url).id, pickerPage.url());
+    expect(isPaired(await splitIds([left, pickerId]))).toBe(true);
+    await pickerPage.type('#search', 'picker-target');
+    await pickerPage.waitForFunction(id => document.querySelectorAll('#tabs button').length === 1 &&
+        document.querySelector('#tabs button').dataset.tabId === String(id), {}, right);
+    await pickerPage.click(`#tabs button[data-tab-id="${right}"]`);
+    await page.waitForFunction(async ids => {
+        const tabs = await Promise.all(ids.map(id => chrome.tabs.get(id)));
+        return tabs[0].splitViewId !== -1 && tabs[0].splitViewId === tabs[1].splitViewId;
+    }, { polling: 100 }, [left, right]);
+    await page.waitForFunction(async id => !(await chrome.tabs.get(id).catch(() => null)), {}, pickerId);
+});
+
+test('cancelling the split picker leaves the original tab open and unsplit', async () => {
+    const [source] = await openTabs('/picker-cancel');
+    await menu(source, 'Add Tab to New Split View');
+    const target = await browser.waitForTarget(t => t.type() === 'page' && t.url().includes('split-picker.html'));
+    const pickerPage = await target.page();
+    await pickerPage.waitForSelector('#cancel');
+    const pickerId = await page.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url).id, pickerPage.url());
+    await pickerPage.click('#cancel');
+    await page.waitForFunction(async id => !(await chrome.tabs.get(id).catch(() => null)), {}, pickerId);
+    expect((await page.evaluate(id => chrome.tabs.get(id), source)).splitViewId).toBe(-1);
+});
+
+test('the picker can split a favorite and retain both favorites', async () => {
+    const [favorite, other] = await openTabs('/picker-favorite', '/picker-other');
+    await menu(favorite, 'Pin Tab');
+    await page.waitForSelector(`.space.active [data-tab-type="pinned"] .tab[data-tab-id="${favorite}"][data-bookmark-id]`);
+    await menu(favorite, 'Add Tab to New Split View');
+    const target = await browser.waitForTarget(t => t.type() === 'page' && t.url().includes('split-picker.html'));
+    const pickerPage = await target.page();
+    await pickerPage.waitForSelector(`#tabs button[data-tab-id="${other}"]`);
+    await pickerPage.click(`#tabs button[data-tab-id="${other}"]`);
+    await page.waitForSelector(`.space.active .split-folder .tab[data-tab-id="${favorite}"]`);
+    await page.waitForSelector(`.space.active .split-folder .tab[data-tab-id="${other}"]`);
+    expect(isPaired(await splitIds([favorite, other]))).toBe(true);
+});
+
+
+test('picker shows persistent instructions when Arcify cannot respond', async () => {
+    const url = await page.evaluate(() => chrome.runtime.getURL('split-picker.html?token=missing-session'));
+    const pickerPage = await browser.newPage();
+    await pickerPage.evaluateOnNewDocument(() => {
+        window.BroadcastChannel = class { postMessage() {} addEventListener() {} };
+    });
+    await pickerPage.goto(url);
+    await pickerPage.waitForSelector('#recovery:not([hidden])', { timeout: 8000 });
+    expect(await pickerPage.$eval('#recovery', el => el.textContent)).toContain('Click the Arcify icon');
+    await pickerPage.type('#search', 'test');
+    expect(await pickerPage.$eval('#recovery', el => el.hidden)).toBe(false);
+    await pickerPage.close();
+});

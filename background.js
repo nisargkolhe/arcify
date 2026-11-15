@@ -364,6 +364,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 // Clean up timestamp when a tab is closed
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+    const joining = (await chrome.storage.session.get(SPLIT_JOIN_KEY))[SPLIT_JOIN_KEY];
+    if (joining?.includes(tabId)) await chrome.storage.session.remove(SPLIT_JOIN_KEY);
     await removeTabLastActivity(tabId);
 
     // Clean up tab name override for closed tab

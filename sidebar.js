@@ -1673,6 +1673,10 @@ async function unsplitRow(tabElement) {
 async function splitSelectedTabs(tabIds) {
     const ordered = getOrderedTabElementsById(tabIds).map(element => Number(element.dataset.tabId));
     if (ordered.length !== 2) return;
+    await splitTabs(ordered);
+}
+
+async function splitTabs(ordered, onJoined = null) {
     const space = spaces.find(s => s.id === activeSpaceId);
     const bindings = await Utils.getPinnedTabStates();
     for (const id of ordered) {
@@ -1685,6 +1689,7 @@ async function splitSelectedTabs(tabIds) {
     if (pinsFavorite) await chrome.storage.session.set({ [SPLIT_JOIN_KEY]: ordered });
     try {
         await ensureSplit(ordered[0], ordered[1]);
+        if (onJoined) await onJoined();
         if (pinsFavorite) {
             await pinSplit(space, await chrome.tabs.get(ordered[0]));
             await persistSpaceTabOrder(space.id);
@@ -1695,6 +1700,87 @@ async function splitSelectedTabs(tabIds) {
     }
     await refreshActiveSpaceUI();
 }
+
+// Create a temporary second half while the user chooses a tab.
+async function openSplitPicker(sourceId) {
+    const source = await chrome.tabs.get(sourceId);
+    const space = ownerOf(spaces, sourceId);
+    if (!space || isInSplit(source)) throw new Error('This tab is no longer available for a new split.');
+    const token = crypto.randomUUID();
+    const url = new URL(chrome.runtime.getURL('split-picker.html'));
+    url.searchParams.set('token', token);
+    url.searchParams.set('source', String(sourceId));
+    url.searchParams.set('space', space.id);
+    const picker = await chrome.tabs.create({ windowId: source.windowId, url: url.href, active: false });
+    splitPickerSessions.set(token, { sourceId, pickerId: picker.id, spaceId: space.id });
+    try {
+        await spaceRequest('assign', { tabId: picker.id, spaceId: space.id });
+        await chrome.storage.session.set({ [SPLIT_JOIN_KEY]: [sourceId, picker.id] });
+        await ensureSplit(sourceId, picker.id);
+        await chrome.tabs.update(picker.id, { active: true });
+    } catch (error) {
+        splitPickerSessions.delete(token);
+        await chrome.tabs.remove(picker.id).catch(() => {});
+        await chrome.storage.session.remove(SPLIT_JOIN_KEY);
+        throw error;
+    }
+}
+
+const splitPickerSessions = new Map();
+const splitPickerChannel = new BroadcastChannel('arcify-split-picker');
+chrome.tabs.onRemoved.addListener(tabId => {
+    for (const [token, session] of splitPickerSessions) {
+        if (session.pickerId === tabId || session.sourceId === tabId) splitPickerSessions.delete(token);
+    }
+});
+splitPickerChannel.addEventListener('message', async ({ data: message }) => {
+    if (!message?.token) return;
+    let session = splitPickerSessions.get(message.token);
+    if (!session) {
+        const tabs = await chrome.tabs.query({ windowId: currentWindow?.id });
+        const picker = tabs.find(tab => {
+            try {
+                const url = new URL(tab.url);
+                return url.origin === new URL(chrome.runtime.getURL('/')).origin &&
+                    url.pathname === '/split-picker.html' && url.searchParams.get('token') === message.token;
+            } catch { return false; }
+        });
+        if (!picker) return;
+        const params = new URL(picker.url).searchParams;
+        session = { pickerId: picker.id, sourceId: Number(params.get('source')), spaceId: params.get('space') };
+        splitPickerSessions.set(message.token, session);
+    }
+    const reply = data => splitPickerChannel.postMessage({ token: message.token, ...data });
+    try {
+        const [picker, source] = await Promise.all([chrome.tabs.get(session.pickerId), chrome.tabs.get(session.sourceId)]);
+        const sourceSpace = ownerOf(spaces, source.id);
+        if (!sourceSpace || sourceSpace.id !== session.spaceId) throw new Error('The original tab is no longer in this space.');
+        if (message.action === 'ready') {
+            const ids = new Set([...sourceSpace.temporaryTabs, ...sourceSpace.spaceBookmarks]);
+            const tabs = (await chrome.tabs.query({ windowId: source.windowId })).filter(tab =>
+                ids.has(tab.id) && tab.id !== source.id && tab.id !== picker.id && !isInSplit(tab) &&
+                tab.pinned === source.pinned && tab.groupId === source.groupId);
+            reply({ action: 'tabs', tabs });
+        } else if (message.action === 'cancel') {
+            splitPickerSessions.delete(message.token);
+            await chrome.tabs.remove(picker.id);
+        } else if (message.action === 'choose') {
+            const target = await chrome.tabs.get(message.targetId);
+            if (sourceSpace.id !== activeSpaceId || ownerOf(spaces, target.id)?.id !== sourceSpace.id ||
+                target.id === source.id || target.id === picker.id || isInSplit(target) ||
+                !isInSplit(source) || source.splitViewId !== picker.splitViewId || target.windowId !== source.windowId) {
+                throw new Error('That tab is no longer available. Choose another tab.');
+            }
+            await splitTabs([source.id, target.id], async () => {
+                splitPickerSessions.delete(message.token);
+                await chrome.tabs.remove(picker.id);
+            });
+            await chrome.tabs.update(target.id, { active: true });
+        }
+    } catch (error) {
+        reply({ action: 'error', error: error.message || 'Could not open the split. Try again.' });
+    }
+});
 
 // Opens whichever halves are closed, pairs them as a split and focuses the clicked half.
 async function openPinnedSplit(clickedRow) {
@@ -3775,7 +3861,9 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             onUnsplit: tabElement.dataset.splitFolderId || tabElement.dataset.splitViewId ? () => unsplitRow(tabElement) : null,
             onRename: splitLeftRow ? () => renameSplit(splitLeftRow) : null,
             selectedCount: tabIds.length,
-            onSplitSelected: tabIds.length === 2 ? () => splitSelectedTabs(tabIds) : null
+            onSplitSelected: tabIds.length === 2 ? () => splitSelectedTabs(tabIds) : null,
+            onNewSplit: !isBookmarkOnly && tabIds.length === 1 && !tabElement.dataset.splitViewId && !tabElement.dataset.splitFolderId
+                ? () => openSplitPicker(tab.id) : null
         } : null;
         const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
         const allBookmarkSpaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);

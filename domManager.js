@@ -218,6 +218,15 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
             alert(error.message);
         }
     };
+    if (splitActions?.onNewSplit) {
+        const splitOption = document.createElement('button');
+        splitOption.type = 'button';
+        splitOption.className = 'context-menu-item';
+        splitOption.setAttribute('role', 'menuitem');
+        splitOption.textContent = 'Add Tab to New Split View';
+        splitOption.addEventListener('click', runSplitAction(splitActions.onNewSplit));
+        contextMenu.appendChild(splitOption);
+    }
     if (splitActions?.selectedCount >= 2) {
         const splitOption = document.createElement('div');
         splitOption.className = 'context-menu-item';

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose a tab to split</title>
+  <link rel="stylesheet" href="./split-picker.css">
+  <script type="module" src="./split-picker.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Choose a tab</h1>
+      <p>Select a tab to show alongside this one.</p>
+    </header>
+    <div id="recovery" class="recovery" role="alert" hidden>
+      <strong>Reopen the Arcify sidebar</strong>
+      <p>Click the Arcify icon in Chrome’s toolbar to reopen the sidebar, then select the tab again.</p>
+    </div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 4.5 4.5"></path></svg>
+      <input id="search" type="search" placeholder="Search tabs" aria-label="Search tabs" autocomplete="off" autofocus>
+    </label>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <div id="tabs" class="tabs" aria-label="Available tabs"></div>
+    <button id="cancel" class="cancel" type="button">Cancel</button>
+  </main>
+</body>
+</html>
