@@ -14,6 +14,11 @@ export const TOUR_STEPS = [
       caption: 'Drag a tab above the divider. Its bookmark stays, even after you close the tab.',
       detail: 'Click tabs to switch, drag to reorder, or right-click → Move to Space. New Tab opens in your active space. Double-click a pinned title to rename it. The tab menu can replace its saved URL after navigation; Unpin Tab returns it to the temporary list. Tabs in a Chrome split view sit side by side and pin, move and close as a pair.',
       target: '.space .pinned-tabs' },
+    { id: 'split', label: 'Split view', title: 'See two tabs side by side',
+      tip: 'Right-click “Practice: start a split” → Add Tab to New Split View, then choose “Practice: join the split” from the picker.',
+      caption: 'Put two tabs side by side in a split view.',
+      detail: 'You can search the picker for an open tab in this space. Right-click a split tab → Unsplit to separate it. Split view requires Chrome 155 or later.',
+      target: '.space .temporary-tabs' },
     { id: 'folders', label: 'Folders', title: 'Keep a project together',
       tip: 'Open Options → New Folder and give it a name. We added “Practice: file this tab” for you to drag inside.',
       caption: 'Drop related tabs into a folder. Collapse it when you need a little more room.',
@@ -42,15 +47,17 @@ export const TOUR_STEPS = [
 ];
 
 export function normalizeTour(state) {
-    if (!state || state.version === 3) return state;
-    const oldIds = ['spaces', 'pins', 'folders', 'favorites', 'archive', 'settings'];
-    return { ...state, version: 3, step: Math.max(0, TOUR_STEPS.findIndex(step => step.id === oldIds[state.step])) };
+    if (!state || state.version === 4) return state;
+    const oldIds = state.version === 3
+        ? ['spaces', 'color', 'pins', 'folders', 'favorites', 'archive', 'settings', 'done']
+        : ['spaces', 'pins', 'folders', 'favorites', 'archive', 'settings'];
+    return { ...state, version: 4, step: Math.max(0, TOUR_STEPS.findIndex(step => step.id === oldIds[state.step])) };
 }
 
 export function reduceTour(previous, action) {
     previous = normalizeTour(previous);
     if (action.action === 'start') return {
-        version: 3, status: 'active', step: Math.max(0, Math.min(TOUR_STEPS.length - 1, Math.trunc(Number(action.step) || 0))),
+        version: 4, status: 'active', step: Math.max(0, Math.min(TOUR_STEPS.length - 1, Math.trunc(Number(action.step) || 0))),
         windowId: action.windowId, runId: action.runId, completed: []
     };
     if (!previous || previous.runId !== action.runId || previous.status !== 'active') return previous;
@@ -71,33 +78,65 @@ export function reduceTour(previous, action) {
 
 export function registerTourMessages() {
     let queue = Promise.resolve();
+    const practiceOperations = new Map();
+    const enqueue = operation => {
+        const result = queue.catch(() => {}).then(operation);
+        queue = result;
+        return result;
+    };
+    const readState = async () => normalizeTour((await chrome.storage.local.get(TOUR_KEY))[TOUR_KEY]);
+    const saveState = async state => {
+        if (state) {
+            await chrome.storage.local.set({ [TOUR_KEY]: state });
+            if (state.status !== 'active') await chrome.storage.sync.set({
+                onboardingCompleted: true,
+                onboardingVersion: chrome.runtime.getManifest().version
+            });
+        }
+        return state;
+    };
+    const prepare = message => {
+        const key = `${message.runId}:${message.step}`;
+        if (practiceOperations.has(key)) return practiceOperations.get(key);
+        const operation = (async () => {
+            const previous = await enqueue(readState);
+            const prepared = await preparePractice(previous, message, TOUR_STEPS);
+            if (prepared === previous) return previous;
+            return enqueue(async () => {
+                const current = await readState();
+                if (current?.runId !== previous.runId || current.status !== 'active') {
+                    // A finished or restarted tour must not leave late-created practice tabs behind.
+                    const originalIds = new Set(Object.values(previous.practiceTabs || {}));
+                    const newTabs = Object.fromEntries(Object.entries(prepared.practiceTabs || {})
+                        .filter(([, id]) => !originalIds.has(id)));
+                    await cleanupPracticeTabs({ windowId: previous.windowId, practiceTabs: newTabs });
+                    return current;
+                }
+                // Keep the latest step, even if the user navigated while Chrome created the tabs.
+                const additions = Object.fromEntries(Object.entries(prepared.practiceTabs || {})
+                    .filter(([lesson, id]) => previous.practiceTabs?.[lesson] !== id));
+                return saveState({ ...current, practiceTabs: { ...current.practiceTabs, ...additions } });
+            });
+        })();
+        practiceOperations.set(key, operation);
+        operation.finally(() => practiceOperations.delete(key)).catch(() => {});
+        return operation;
+    };
     chrome.runtime.onMessage.addListener((message, sender, reply) => {
         if (message.type !== 'sidebarTour') return;
-        const operation = queue.catch(() => {}).then(async () => {
-            const previous = normalizeTour((await chrome.storage.local.get(TOUR_KEY))[TOUR_KEY]);
-            let state;
-            if (message.action === 'practice') {
-                state = await preparePractice(previous, message, TOUR_STEPS);
-            } else if (message.action === 'finish') {
-                state = reduceTour(previous, message);
-                if (state !== previous && state.status === 'completed') await cleanupPracticeTabs(previous);
-            } else {
-                state = reduceTour(previous, message);
+        const operation = message.action === 'practice' ? prepare(message) : enqueue(async () => {
+            const previous = await readState();
+            const state = reduceTour(previous, message);
+            if (message.action === 'finish' && state !== previous && state.status === 'completed') {
+                await cleanupPracticeTabs(previous);
             }
-            if (state) {
-                await chrome.storage.local.set({ [TOUR_KEY]: state });
-                if (state.status !== 'active') await chrome.storage.sync.set({
-                    onboardingCompleted: true,
-                    onboardingVersion: chrome.runtime.getManifest().version
-                });
-            }
-            return state;
+            return saveState(state);
         });
-        queue = operation;
         operation.then(state => reply({ success: true, state }), error => reply({ success: false, error: error.message }));
         return true;
     });
 }
+
 export async function tourAction(action) {
     const response = await chrome.runtime.sendMessage({ type: 'sidebarTour', ...action });
     if (!response?.success) throw new Error(response?.error || 'Tour could not be saved');

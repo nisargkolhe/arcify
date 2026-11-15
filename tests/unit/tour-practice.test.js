@@ -6,12 +6,13 @@ const base = 'chrome-extension://arcify/';
 function mockTabs() {
     const tabs = [], created = [];
     globalThis.chrome = { runtime: { getURL: path => base + path }, tabs: {
+        async createSplit() {},
         async query({ windowId }) { return tabs.filter(tab => tab.windowId === windowId); },
         async create(options) { created.push(options); const tab = { ...options, id: tabs.length + 1 }; tabs.push(tab); return tab; }
     } };
     return { tabs, created };
 }
-const state = step => ({ version: 3, status: 'active', runId: 'test', windowId: 7, step });
+const state = step => ({ version: 4, status: 'active', runId: 'test', windowId: 7, step });
 test('practice tabs are inactive, per lesson, and reused across panel reopen', async () => {
     const { created } = mockTabs();
     for (const step of TOUR_STEPS.map((step, index) => ['pins', 'folders', 'favorites', 'archive'].includes(step.id) ? index : -1).filter(index => index >= 0)) {
@@ -63,4 +64,51 @@ test('finishing cleanup closes only untouched practice tabs', async () => {
     const closed = await cleanupPracticeTabs({ windowId: 7, practiceTabs: { pins: 9, folders: 10, favorites: 11 } });
     assert.deepEqual(closed, [9]);
     assert.deepEqual(removed, [9]);
+});
+
+
+test('split practice creates and reuses two distinct tabs, and cleanup closes both', async () => {
+    const { created, tabs } = mockTabs();
+    const step = TOUR_STEPS.findIndex(item => item.id === 'split');
+    const first = await preparePractice(state(step), { runId: 'test', step }, TOUR_STEPS);
+    const reopened = await preparePractice(first, { runId: 'test', step }, TOUR_STEPS);
+    assert.equal(created.length, 2);
+    assert.notEqual(first.practiceTabs.split, first.practiceTabs['split-companion']);
+    assert.deepEqual(reopened.practiceTabs, first.practiceTabs);
+    const removed = [];
+    chrome.tabs.remove = async id => removed.push(id);
+    await cleanupPracticeTabs(first);
+    assert.deepEqual(removed.sort(), tabs.map(tab => tab.id).sort());
+});
+
+test('split practice does not create tabs on older Chrome', async () => {
+    const { created } = mockTabs();
+    delete chrome.tabs.createSplit;
+    const step = TOUR_STEPS.findIndex(item => item.id === 'split');
+    const original = state(step);
+    assert.equal(await preparePractice(original, { runId: 'test', step }, TOUR_STEPS), original);
+    assert.equal(created.length, 0);
+});
+
+test('a failed split setup removes newly created practice tabs but preserves reused tabs', async () => {
+    const { tabs } = mockTabs();
+    const step = TOUR_STEPS.findIndex(item => item.id === 'split');
+    const removed = [];
+    chrome.tabs.remove = async id => removed.push(id);
+    let calls = 0;
+    chrome.tabs.create = async options => {
+        if (++calls === 2) throw new Error('creation failed');
+        const tab = { ...options, id: 42 };
+        tabs.push(tab);
+        return tab;
+    };
+    await assert.rejects(preparePractice(state(step), { runId: 'test', step }, TOUR_STEPS), /creation failed/);
+    assert.deepEqual(removed, [42]);
+
+    tabs.length = 0;
+    tabs.push({ id: 50, windowId: 7, url: practiceUrl('test', 'split') });
+    removed.length = 0;
+    chrome.tabs.create = async () => { throw new Error('creation failed'); };
+    await assert.rejects(preparePractice(state(step), { runId: 'test', step }, TOUR_STEPS), /creation failed/);
+    assert.deepEqual(removed, []);
 });

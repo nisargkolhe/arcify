@@ -375,3 +375,75 @@ test('picker shows persistent instructions when Arcify cannot respond', async ()
     expect(await pickerPage.$eval('#recovery', el => el.hidden)).toBe(false);
     await pickerPage.close();
 });
+
+test('the split-view tour creates practice tabs and advances after joining them', async () => {
+    const runId = `split-tour-${Date.now()}`;
+    await page.evaluate(async runId => {
+        const { id: windowId } = await chrome.windows.getCurrent();
+        const response = await chrome.runtime.sendMessage({ type: 'sidebarTour', action: 'start', windowId, runId, step: 3 });
+        if (!response.success) throw new Error(response.error);
+    }, runId);
+    await page.waitForFunction(() => document.querySelector('#coach-title')?.textContent === 'See two tabs side by side');
+    const practice = await page.waitForFunction(async runId => {
+        const state = (await chrome.storage.local.get('sidebarTourV2')).sidebarTourV2;
+        return state?.runId === runId && state.practiceTabs?.split && state.practiceTabs?.['split-companion'] ? state.practiceTabs : false;
+    }, { polling: 100 }, runId).then(handle => handle.jsonValue());
+    const source = practice.split, other = practice['split-companion'];
+    await page.waitForSelector(row(source));
+    await page.waitForSelector(row(other));
+    await menu(source, 'Add Tab to New Split View');
+    const target = await browser.waitForTarget(t => t.type() === 'page' && t.url().includes('split-picker.html'));
+    const pickerPage = await target.page();
+    await pickerPage.waitForSelector(`#tabs button[data-tab-id="${other}"]`);
+    await pickerPage.click(`#tabs button[data-tab-id="${other}"]`);
+    await page.waitForFunction(async runId => {
+        const state = (await chrome.storage.local.get('sidebarTourV2')).sidebarTourV2;
+        return state?.runId === runId && state.completed.includes('split') && state.step === 4;
+    }, { polling: 100, timeout: 10000 }, runId);
+    await page.evaluate(async runId => {
+        await chrome.runtime.sendMessage({ type: 'sidebarTour', action: 'go', runId, step: 8 });
+        await chrome.runtime.sendMessage({ type: 'sidebarTour', action: 'finish', runId, step: 8 });
+    }, runId);
+    await page.waitForFunction(async ids => (await Promise.all(ids.map(id => chrome.tabs.get(id).catch(() => null)))).every(tab => !tab), {}, [source, other]);
+});
+
+test('tour navigation skips unfinished exercises and prepares each lesson in both directions', async () => {
+    const runId = `navigation-${Date.now()}`;
+    await page.evaluate(async runId => {
+        const { id: windowId } = await chrome.windows.getCurrent();
+        await chrome.runtime.sendMessage({ type: 'sidebarTour', action: 'start', windowId, runId, step: 0 });
+    }, runId);
+    await page.bringToFront();
+    await page.waitForSelector('#coach-content');
+    await page.evaluate(() => {
+        const content = document.querySelector('#coach-content');
+        content.animate = () => ({ finished: new Promise(() => {}), playState: 'running', cancel() {}, finish() {} });
+    });
+    const expected = ['Make room for a new space', 'Give your space a color', 'Drag it up. Keep it close.',
+        'See two tabs side by side', 'Keep a project together', 'Your everyday sites, everywhere',
+        'A fresh space, a way back', 'Make Arcify feel like you', 'You’re all set.'];
+    for (let index = 0; index < expected.length; index++) {
+        await page.waitForFunction(title => document.querySelector('#coach-title')?.textContent === title &&
+            !document.querySelector('#coach-next')?.disabled, { timeout: 10000 }, expected[index]);
+        if (index < expected.length - 1) await page.click('#coach-next');
+    }
+    for (let index = expected.length - 2; index >= 0; index--) {
+        await page.click('#coach-back');
+        await page.waitForFunction(title => document.querySelector('#coach-title')?.textContent === title &&
+            !document.querySelector('#coach-next')?.disabled, { timeout: 10000 }, expected[index]);
+    }
+    const state = await page.waitForFunction(async () => {
+        const state = (await chrome.storage.local.get('sidebarTourV2')).sidebarTourV2;
+        return ['pins', 'split', 'split-companion', 'folders', 'favorites', 'archive']
+            .every(id => state?.practiceTabs?.[id]) ? state : false;
+    }, { polling: 100, timeout: 10000 }).then(handle => handle.jsonValue());
+    expect(state.completed).toEqual([]);
+    for (const id of ['pins', 'split', 'split-companion', 'folders', 'favorites', 'archive']) {
+        expect(state.practiceTabs[id]).toBeDefined();
+        expect(await page.evaluate(id => chrome.tabs.get(id).then(() => true, () => false), state.practiceTabs[id])).toBe(true);
+    }
+    await page.evaluate(async runId => {
+        await chrome.runtime.sendMessage({ type: 'sidebarTour', action: 'go', runId, step: 8 });
+        await chrome.runtime.sendMessage({ type: 'sidebarTour', action: 'finish', runId, step: 8 });
+    }, runId);
+});

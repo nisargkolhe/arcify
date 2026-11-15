@@ -4,7 +4,7 @@ import { TOUR_KEY, TOUR_STEPS, tourAction, normalizeTour } from './tour-state.js
 export async function initSidebarTour() {
     const { id: windowId } = await chrome.windows.getCurrent();
     let state, latestState, baseline, frame, timer, observedTarget, lastStep;
-    let transition, transitioning = false, revision = 0;
+    let transition, transitioning = false;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     const panel = document.createElement('section');
     panel.id = 'arcify-tour'; panel.hidden = true;
@@ -32,6 +32,15 @@ export async function initSidebarTour() {
             const collapsed = !pins?.getBoundingClientRect().height;
             el('coach-copy').textContent = collapsed ? `Expand the pinned section with the highlighted arrow. ${step.tip}` : step.tip;
             if (collapsed) return activeSpace()?.querySelector('.space-toggle-chevron');
+        }
+        if (step.id === 'split') {
+            if (typeof chrome.tabs.createSplit !== 'function') {
+                el('coach-copy').textContent = 'Split view requires Chrome 155 or later. Update Chrome to try it, or continue to the next tip.';
+                return null;
+            }
+            const tabId = state.practiceTabs?.split;
+            const tab = tabId && activeSpace()?.querySelector(`.tab[data-tab-id="${tabId}"]`);
+            if (tab) return tab;
         }
         if (step.id === 'folders') {
             const folder = activeSpace()?.querySelector('.folder');
@@ -82,7 +91,6 @@ export async function initSidebarTour() {
             return;
         }
         lastStep = key;
-        const token = ++revision;
         const focusedControl = panel.contains(document.activeElement) ? document.activeElement.id : null;
         clearTimeout(timer); timer = null;
         transition?.cancel();
@@ -92,15 +100,6 @@ export async function initSidebarTour() {
         el('coach-back').disabled = el('coach-next').disabled = true;
         ring.hidden = true;
         const content = el('coach-content');
-        if (animate) {
-            transition = content.animate([
-                { opacity: 1, transform: 'translateX(0)' },
-                { opacity: 0, transform: 'translateX(-22px)' }
-            ], { duration: 150, easing: 'ease-in', fill: 'forwards' });
-            await transition.finished.catch(() => {});
-            if (token !== revision) return;
-        }
-        transition?.cancel();
         state = latestState;
         panel.hidden = !active();
         document.getElementById('sidebar-container').dataset.tourStep = active() ? TOUR_STEPS[state.step].id : '';
@@ -116,13 +115,11 @@ export async function initSidebarTour() {
         // Resolve contextual copy before fading in, then keep it stable during motion.
         locate();
         if (animate && !reducedMotion.matches && !document.hidden) {
+            // Animation is decorative; navigation must never wait for it to finish.
             transition = content.animate([
                 { opacity: 0, transform: 'translateX(22px)' },
                 { opacity: 1, transform: 'translateX(0)' }
-            ], { duration: 210, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' });
-            await transition.finished.catch(() => {});
-            if (token !== revision) return;
-            transition.cancel();
+            ], { duration: 210, easing: 'cubic-bezier(.2,.7,.3,1)' });
         }
         state = latestState;
         transitioning = false;
@@ -172,11 +169,28 @@ export async function initSidebarTour() {
         if (id === 'settings' && event.target.closest('.settings-btn')) achieved('Settings opened. Make yourself at home.');
         schedule();
     }, true);
+    async function checkSplitProgress() {
+        if (!active() || transitioning || TOUR_STEPS[state.step]?.id !== 'split') return;
+        const { runId, step, practiceTabs } = state;
+        const ids = [practiceTabs?.split, practiceTabs?.['split-companion']];
+        if (!ids.every(Number.isInteger)) return;
+        const tabs = await Promise.all(ids.map(id => chrome.tabs.get(id).catch(() => null)));
+        if (active() && state.runId === runId && state.step === step &&
+            Number.isInteger(tabs[0]?.splitViewId) && tabs[0].splitViewId !== -1 &&
+            tabs[0].splitViewId === tabs[1]?.splitViewId) {
+            achieved('Split view is ready. Your two tabs are side by side.');
+        }
+    }
+    const onTabUpdated = (_tabId, changeInfo) => {
+        if (changeInfo.splitViewId !== undefined) checkSplitProgress();
+    };
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
     function checkProgress() {
         if (!active() || transitioning || !baseline) return;
         const id = TOUR_STEPS[state.step].id;
         const tabId = state.practiceTabs?.[id];
         const tab = tabId ? document.querySelector(`.tab[data-tab-id="${tabId}"]`) : null;
+        if (id === 'split') checkSplitProgress();
         if (id === 'spaces' && measure().spaces > baseline.spaces) achieved('Space created. Let’s make it yours.');
         if (id === 'pins' && tab?.closest('.pinned-tabs')) achieved('Pinned. This bookmark will stay.');
         if (id === 'folders' && tab?.closest('.folder')) achieved('Filed away. Click the folder to collapse it.');
@@ -212,5 +226,5 @@ export async function initSidebarTour() {
     updateMotion();
     chrome.storage.onChanged.addListener(onStorage);
     render((await chrome.storage.local.get(TOUR_KEY))[TOUR_KEY]);
-    window.addEventListener('pagehide', () => { ++revision; transition?.cancel(); clearTimeout(timer); cancelAnimationFrame(frame); observer.disconnect(); resizeObserver.disconnect(); chrome.storage.onChanged.removeListener(onStorage); }, { once: true });
+    window.addEventListener('pagehide', () => { transition?.cancel(); clearTimeout(timer); cancelAnimationFrame(frame); observer.disconnect(); resizeObserver.disconnect(); chrome.storage.onChanged.removeListener(onStorage); chrome.tabs.onUpdated.removeListener(onTabUpdated); }, { once: true });
 }
