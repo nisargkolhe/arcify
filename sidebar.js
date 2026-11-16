@@ -22,6 +22,7 @@ import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
 import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation, tabUrl } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
+import { SPLIT_JOIN_KEY } from './split-from-favorite.js';
 import {
     isInSplit, pairSplits, splitRowRoles, canCreateSplit, isSplitFolder, splitFolderTitle, ensureSplit
 } from './split-view.js';
@@ -124,6 +125,18 @@ function selectTabRange(targetTabId) {
     selectedTabIds.clear();
     range.forEach(id => selectedTabIds.add(id));
     if (selectionAnchorTabId == null) selectionAnchorTabId = anchorTabId || targetTabId;
+    syncTabSelectionUI();
+}
+
+// ⌘-click on macOS, Ctrl-click elsewhere; on macOS Ctrl-click opens the context menu.
+const IS_MAC = /mac/i.test(navigator.userAgentData?.platform ?? navigator.platform);
+const isSelectionToggle = event => (IS_MAC ? event.metaKey : event.ctrlKey);
+
+// Adds or removes one tab, as in Chrome's tab strip; the selection starts from the current tab.
+function toggleTabSelection(tabId) {
+    if (selectedTabIds.has(tabId) && selectedTabIds.size > 1) selectedTabIds.delete(tabId);
+    else selectedTabIds.add(tabId);
+    selectionAnchorTabId = tabId;
     syncTabSelectionUI();
 }
 
@@ -635,6 +648,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSidebarTour().catch(error => Logger.error("Tour initialization failed:", error));
 
     // Add Chrome tab event listeners
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && selectedTabIds.size > 1) clearTabSelection();
+    });
     chrome.tabs.onCreated.addListener(handleTabCreated);
     chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         handleTabUpdate(tabId, changeInfo, tab);
@@ -1550,8 +1566,13 @@ async function pinSplit(space, tab) {
     const halves = await getSplitHalves(tab, space);
     const spaceFolder = await getSpaceBookmarkFolder(space);
     const bindings = await Utils.getPinnedTabStates();
+    // A half that is already a favorite keeps its place: the split goes where that bookmark was.
+    const existingId = halves.map(half => bindings[half.id]?.bookmarkId).find(Boolean);
+    const [anchor] = existingId ? await chrome.bookmarks.get(String(existingId)).catch(() => []) : [];
     const folder = await chrome.bookmarks.create({
-        parentId: spaceFolder.id, title: splitFolderTitle(halves[0].title, halves[1].title)
+        parentId: anchor?.parentId ?? spaceFolder.id,
+        ...(anchor ? { index: anchor.index } : {}),
+        title: splitFolderTitle(halves[0].title, halves[1].title)
     });
     for (const [index, half] of halves.entries()) {
         const binding = bindings[half.id];
@@ -1608,6 +1629,49 @@ async function unpinSplit(space, folder, { temporaryDisplayOrder = null, inverte
         scheduleBookmarkRefresh();
     });
     await persistSpaceTabOrder(space.id);
+    await refreshActiveSpaceUI();
+}
+
+// Separates a split. A pinned split becomes two favorites where the split was.
+async function unsplitRow(tabElement) {
+    const splitElement = tabElement.closest('.split-folder');
+    if (splitElement) {
+        const [folder] = await chrome.bookmarks.getSubTree(splitElement.dataset.bookmarkId);
+        for (const [offset, child] of folder.children.entries()) {
+            await chrome.bookmarks.move(child.id, { parentId: folder.parentId, index: folder.index + offset });
+        }
+        await chrome.bookmarks.remove(folder.id);
+    }
+    const tab = tabElement.dataset.tabId ? await chrome.tabs.get(Number(tabElement.dataset.tabId)).catch(() => null) : null;
+    if (isInSplit(tab)) await chrome.tabs.unsplit(tab.splitViewId);
+    scheduleBookmarkRefresh();
+    await refreshActiveSpaceUI();
+}
+
+// Joins the two selected tabs, upper one on the left. Chrome splits hold exactly two tabs.
+async function splitSelectedTabs(tabIds) {
+    const ordered = getOrderedTabElementsById(tabIds).map(element => Number(element.dataset.tabId));
+    if (ordered.length !== 2) return;
+    const space = spaces.find(s => s.id === activeSpaceId);
+    const bindings = await Utils.getPinnedTabStates();
+    for (const id of ordered) {
+        if (await getSplitFolderOf(bindings[id]?.bookmarkId)) throw new Error('Unsplit the pinned split first.');
+    }
+    clearTabSelection();
+    // Splits pin whole: if either side is a favorite, the new split is pinned.
+    const pinsFavorite = Boolean(space) && ordered.some(id => space.spaceBookmarks.includes(id));
+    // Stops the background moving this split off the favorite before it is pinned (split-from-favorite.js).
+    if (pinsFavorite) await chrome.storage.session.set({ [SPLIT_JOIN_KEY]: ordered });
+    try {
+        await ensureSplit(ordered[0], ordered[1]);
+        if (pinsFavorite) {
+            await pinSplit(space, await chrome.tabs.get(ordered[0]));
+            await persistSpaceTabOrder(space.id);
+            scheduleBookmarkRefresh();
+        }
+    } finally {
+        if (pinsFavorite) await chrome.storage.session.remove(SPLIT_JOIN_KEY);
+    }
     await refreshActiveSpaceUI();
 }
 
@@ -3091,6 +3155,12 @@ async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = fals
         if (space && folder) await unpinSplit(space, folder);
         return;
     }
+    const liveTab = isBookmarkOnly ? null : await chrome.tabs.get(tab.id).catch(() => null);
+    if (isInSplit(liveTab)) {
+        const halves = (await chrome.tabs.query({ windowId: liveTab.windowId })).filter(t => t.splitViewId === liveTab.splitViewId);
+        await chrome.tabs.remove(halves.map(t => t.id));
+        return;
+    }
 
     if (isBookmarkOnly) {
         const space = spaces.find(s => s.id === tabElement.closest('.space')?.dataset.spaceId);
@@ -3378,6 +3448,11 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 selectTabRange(tab.id);
                 return;
             }
+            if (!isBookmarkOnly && isSelectionToggle(event)) {
+                event.preventDefault();
+                toggleTabSelection(tab.id);
+                return;
+            }
 
             if (!isBookmarkOnly) {
                 selectOnlyTab(tab.id);
@@ -3565,6 +3640,12 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         const currentlyPinned = currentSpace
             ? currentSpace.spaceBookmarks.includes(tab.id)
             : isPinned;
+        // Rows carry their split state from the last render; no extra lookup, so the menu opens as fast as before.
+        const splitActions = canCreateSplit() ? {
+            onUnsplit: tabElement.dataset.splitFolderId || tabElement.dataset.splitViewId ? () => unsplitRow(tabElement) : null,
+            selectedCount: tabIds.length,
+            onSplitSelected: tabIds.length === 2 ? () => splitSelectedTabs(tabIds) : null
+        } : null;
         const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
         const allBookmarkSpaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
         showTabContextMenu(
@@ -3595,7 +3676,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 },
                 close: closeSelectedTabs,
                 clearSelection: clearTabSelection
-            } : null
+            } : null,
+            splitActions
         );
     });
 
@@ -4165,6 +4247,16 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
         }
     }
 
+    // Both halves of a split belong to one space.
+    const movedTab = await chrome.tabs.get(tabId).catch(() => null);
+    if (isInSplit(movedTab)) {
+        const partner = (await chrome.tabs.query({ windowId: movedTab.windowId }))
+            .find(t => t.splitViewId === movedTab.splitViewId && t.id !== tabId);
+        if (partner && !processingTabMoves.has(partner.id) && ownerOf(spaces, partner.id)?.id !== spaceId) {
+            await moveTabToSpace(partner.id, spaceId, pinned);
+        }
+    }
+
     // 5. Save the updated spaces to storage
     saveSpaces();
     } finally {
@@ -4185,6 +4277,16 @@ async function moveFavoriteToSpace(tab, tabElement, spaceId) {
     const bookmark = await getSpaceBookmarkById(source, tabElement.dataset.bookmarkId || binding?.bookmarkId);
     if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
     const targetFolder = await getSpaceBookmarkFolder(target);
+    const splitFolder = await getSplitFolderOf(bookmark.id);
+    if (splitFolder) {
+        // A pinned split moves whole, with every open tab of either half.
+        const boundIds = [];
+        for (const child of splitFolder.children) boundIds.push(...await getTabsBoundToBookmark(source, child.id));
+        await chrome.bookmarks.move(splitFolder.id, { parentId: targetFolder.id });
+        for (const id of boundIds) await moveTabToSpace(id, target.id, true);
+        scheduleBookmarkRefresh();
+        return;
+    }
     const boundTabIds = (await getTabsBoundToBookmark(source, bookmark.id)).filter(id => id !== tab.id);
     await chrome.bookmarks.move(bookmark.id, { parentId: targetFolder.id });
     if (tab.id) {

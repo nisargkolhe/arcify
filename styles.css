@@ -895,6 +895,12 @@ h3 {
     min-height: 0;
 }
 
+.context-menu-item.disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+}
+
 /* Marks a split half shown without its partner beside it */
 .tab-split-indicator {
     display: inline-flex;
