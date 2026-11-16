@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     isInSplit, visibleSplitIds, pairSplits, splitRowRoles,
-    SPLIT_FOLDER_PREFIX, canCreateSplit, isSplitFolder, splitFolderTitle, ensureSplit
+    SPLIT_FOLDER_PREFIX, canCreateSplit, isSplitFolder, splitFolderTitle, ensureSplit,
+    splitFolderName, namedSplitFolderTitle, getLiveSplitNames, setLiveSplitName
 } from '../../split-view.js';
 
 const tabs = list => new Map(list.map(tab => [tab.id, tab]));
@@ -103,4 +104,24 @@ test('ensureSplit leaves an existing pairing alone and releases other splits fir
     const elsewhere = fakeTabs([{ id: 1, index: 0, splitViewId: 5 }, { id: 3, index: 1, splitViewId: 5 }, { id: 2, index: 4 }]);
     await ensureSplit(1, 2, elsewhere);
     assert.deepEqual(elsewhere.calls.map(call => call[0]), ['unsplit', 'move', 'createSplit']);
+});
+
+test('a split folder has a name only once its title stops repeating its halves', () => {
+    const halves = [{ title: 'Gmail', url: 'https://mail.test/' }, { title: 'Calendar', url: 'https://cal.test/' }];
+    assert.equal(splitFolderName({ title: splitFolderTitle('Gmail', 'Calendar'), children: halves }), '');
+    assert.equal(splitFolderName({ title: `${SPLIT_FOLDER_PREFIX}Inbox + Cal`, children: halves }), 'Inbox + Cal');
+    assert.equal(namedSplitFolderTitle('Inbox + Cal', 'Gmail', 'Calendar'), `${SPLIT_FOLDER_PREFIX}Inbox + Cal`);
+    assert.equal(namedSplitFolderTitle('', 'Gmail', 'Calendar'), splitFolderTitle('Gmail', 'Calendar'));
+});
+
+test('unpinned split names are kept per split and cleared with an empty name', async () => {
+    const data = {};
+    const storage = {
+        get: async key => ({ [key]: data[key] }),
+        set: async values => Object.assign(data, values)
+    };
+    await setLiveSplitName(4, 'Inbox + Cal', storage);
+    await setLiveSplitName(9, 'Docs', storage);
+    await setLiveSplitName(4, '', storage);
+    assert.deepEqual(await getLiveSplitNames(storage), { 9: 'Docs' });
 });

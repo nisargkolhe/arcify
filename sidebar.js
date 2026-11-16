@@ -24,7 +24,8 @@ import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, 
 import { ownerOf } from './space-store.js';
 import { SPLIT_JOIN_KEY } from './split-from-favorite.js';
 import {
-    isInSplit, pairSplits, splitRowRoles, canCreateSplit, isSplitFolder, splitFolderTitle, ensureSplit
+    isInSplit, pairSplits, splitRowRoles, canCreateSplit, isSplitFolder, splitFolderTitle, ensureSplit,
+    splitFolderName, namedSplitFolderTitle, getLiveSplitNames, setLiveSplitName
 } from './split-view.js';
 import { canCreateFolder, canMoveFolder, createFolder } from './folder-policy.js';
 import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
@@ -188,7 +189,16 @@ async function updateBookmarkForTab(tab, bookmarkTitle) {
     const space = ownerOf(spaces, tab.id);
     const bookmark = space && await getSpaceBookmarkById(space, binding.bookmarkId);
     if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
-    await chrome.bookmarks.update(bookmark.id, { title: bookmarkTitle });
+    await updateFavoriteBookmark(bookmark.id, { title: bookmarkTitle });
+}
+
+// An unnamed split folder's title repeats its halves' titles, so it follows them; a stale copy would read as a name.
+async function updateFavoriteBookmark(bookmarkId, changes) {
+    const split = changes.title === undefined ? null : await getSplitFolderOf(bookmarkId);
+    await chrome.bookmarks.update(bookmarkId, changes);
+    if (!split || splitFolderName(split)) return;
+    const [left, right] = await chrome.bookmarks.getChildren(split.id);
+    await chrome.bookmarks.update(split.id, { title: splitFolderTitle(left.title, right.title) });
 }
 
 
@@ -232,7 +242,7 @@ async function replaceBookmarkUrlWithCurrentUrl(tab, tabElement) {
         const updatePayload = { url: newUrl };
         // Keep bookmark title in sync with the new pinned page for clarity.
         if (newTitle) updatePayload.title = newTitle;
-        await chrome.bookmarks.update(bookmark.id, updatePayload);
+        await updateFavoriteBookmark(bookmark.id, updatePayload);
     } catch (e) {
         console.error('[Arcify] chrome.bookmarks.update failed', { bookmarkId: resolvedBookmarkId, newUrl, error: e });
         return;
@@ -1575,11 +1585,13 @@ async function pinSplit(space, tab) {
     // A half that is already a favorite keeps its place: the split goes where that bookmark was.
     const existingId = halves.map(half => bindings[half.id]?.bookmarkId).find(Boolean);
     const [anchor] = existingId ? await chrome.bookmarks.get(String(existingId)).catch(() => []) : [];
+    const name = (await getLiveSplitNames())[tab.splitViewId] || '';
     const folder = await chrome.bookmarks.create({
         parentId: anchor?.parentId ?? spaceFolder.id,
         ...(anchor ? { index: anchor.index } : {}),
-        title: splitFolderTitle(halves[0].title, halves[1].title)
+        title: namedSplitFolderTitle(name, halves[0].title, halves[1].title)
     });
+    if (name) await setLiveSplitName(tab.splitViewId, '');
     for (const [index, half] of halves.entries()) {
         const binding = bindings[half.id];
         // A half that was already a favorite keeps its bookmark and original URL.
@@ -1614,6 +1626,10 @@ async function unpinSplit(space, folder, { temporaryDisplayOrder = null, inverte
         }
     }
     await chrome.bookmarks.removeTree(folder.id);
+    const name = splitFolderName(folder);
+    const halfId = Object.values(halfTabs)[0]?.tabId;
+    const liveHalf = name && halfId !== undefined && await chrome.tabs.get(halfId).catch(() => null);
+    if (isInSplit(liveHalf)) await setLiveSplitName(liveHalf.splitViewId, name);
     for (const { tabId } of Object.values(halfTabs)) {
         space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
         if (!space.temporaryTabs.includes(tabId)) space.temporaryTabs.push(tabId);
@@ -2834,7 +2850,7 @@ const SPLIT_ROW_LABELS = { left: 'Split view, left side', right: 'Split view, ri
 
 // Adjacent halves of a split share one line; a half shown without its partner gets an icon.
 // Favorites are never reordered for this, so pinned halves only pair when already adjacent.
-function markSplitRows(root) {
+function markSplitRows(root, liveSplitNames = {}) {
     for (const container of [root, ...root.querySelectorAll('.folder-content')]) {
         const rows = [...container.children];
         const roles = splitRowRoles(rows.map(row => {
@@ -2846,10 +2862,13 @@ function markSplitRows(root) {
             const role = roles[i];
             if (!role) return;
             row.classList.add(`split-${role}`);
+            const name = role === 'left'
+                && (row.closest('.split-folder')?.dataset.splitName || liveSplitNames[row.dataset.splitViewId]);
             const label = document.createElement('span');
             label.className = 'visually-hidden';
-            label.textContent = SPLIT_ROW_LABELS[role];
+            label.textContent = name ? 'Split view' : SPLIT_ROW_LABELS[role];
             row.querySelector('.tab-details')?.appendChild(label);
+            if (name) showSplitName(row, name);
             if (role === 'alone') {
                 const icon = document.createElement('span');
                 icon.className = 'tab-split-indicator';
@@ -2859,6 +2878,81 @@ function markSplitRows(root) {
             }
         });
     }
+}
+
+// A named split is one row: the left half's icon, then the name.
+function showSplitName(row, name) {
+    row.classList.add('split-named');
+    row.dataset.splitName = name;
+    const nameElement = document.createElement('span');
+    nameElement.className = 'tab-split-name';
+    nameElement.textContent = name;
+    row.querySelector('.tab-details')?.prepend(nameElement);
+    // Capture beats the title's own double-click, which would rename just this half.
+    row.addEventListener('dblclick', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        renameSplit(row);
+    }, { capture: true });
+}
+
+// Names a split as a whole; an empty name goes back to showing both halves.
+function renameSplit(row) {
+    const folderId = row.closest('.split-folder')?.dataset.bookmarkId;
+    const current = row.dataset.splitName || '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tab-title-input split-name-input';
+    input.value = current;
+    input.placeholder = 'Split view name';
+    input.setAttribute('aria-label', 'Split view name');
+    input.spellcheck = false;
+    row.classList.add('split-renaming');
+    // A draggable row swallows text selection in the field.
+    const wasDraggable = row.draggable;
+    row.draggable = false;
+    row.querySelector('.tab-details').appendChild(input);
+    const session = editorSessions.begin('split', folderId ?? row.dataset.splitViewId);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    const finish = async save => {
+        if (finished) return;
+        finished = true;
+        const name = input.value.trim();
+        input.remove();
+        row.classList.remove('split-renaming');
+        row.draggable = wasDraggable;
+        try {
+            await editorSessions.complete(session, async () => {
+                if (!save || name === current) return;
+                if (folderId) {
+                    const [left, right] = await chrome.bookmarks.getChildren(folderId);
+                    await chrome.bookmarks.update(folderId, { title: namedSplitFolderTitle(name, left.title, right.title) });
+                } else {
+                    await setLiveSplitName(Number(row.dataset.splitViewId), name);
+                }
+            });
+        } catch (error) {
+            Logger.error('Error renaming split view:', error);
+            alert(error.message);
+        }
+        await refreshActiveSpaceUI();
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+        event.stopPropagation();
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            finish(true);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            finish(false);
+        }
+    });
+    // Clicks in the field would otherwise open the split.
+    input.addEventListener('click', event => event.stopPropagation());
 }
 
 async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
@@ -2890,6 +2984,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
                         splitElement.classList.remove('collapsed');
                         splitElement.classList.add('split-folder');
                         splitElement.dataset.bookmarkId = item.id;
+                        splitElement.dataset.splitName = splitFolderName(item);
                         const splitContent = splitElement.querySelector('.folder-content');
                         splitContent.classList.remove('collapsed');
                         container.appendChild(splitElement);
@@ -3084,6 +3179,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         tempFragment.appendChild(tabElement);
     }
 
+    const liveSplitNames = await getLiveSplitNames();
     if (editorSessions.isActive()) {
         refreshCoordinator.invalidateSpaces();
         return false;
@@ -3097,8 +3193,8 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         disposeEditorsInElement(el);
         el.remove();
     });
-    markSplitRows(pinnedFragment);
-    markSplitRows(tempFragment);
+    markSplitRows(pinnedFragment, liveSplitNames);
+    markSplitRows(tempFragment, liveSplitNames);
     pinnedContainer.appendChild(pinnedFragment);
     tempContainer.appendChild(tempFragment);
     const spaceElement = pinnedContainer.closest('.space');
@@ -3657,8 +3753,11 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
             ? currentSpace.spaceBookmarks.includes(tab.id)
             : isPinned;
         // Split state comes from the last render, to keep the menu open synchronous.
+        const splitLeftRow = tabElement.classList.contains('split-right') ? tabElement.previousElementSibling
+            : tabElement.classList.contains('split-left') ? tabElement : null;
         const splitActions = canCreateSplit() ? {
             onUnsplit: tabElement.dataset.splitFolderId || tabElement.dataset.splitViewId ? () => unsplitRow(tabElement) : null,
+            onRename: splitLeftRow ? () => renameSplit(splitLeftRow) : null,
             selectedCount: tabIds.length,
             onSplitSelected: tabIds.length === 2 ? () => splitSelectedTabs(tabIds) : null
         } : null;
