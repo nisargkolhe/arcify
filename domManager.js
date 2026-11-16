@@ -15,7 +15,6 @@ import { firstUnusedColor } from './space-colors.js';
 
 import { Utils } from './utils.js';
 import { RESTORE_ICON } from './icons.js';
-import { isInSplit, SPLIT_PIN_BLOCKED_MESSAGE } from './split-view.js';
 import { Logger } from './logger.js';
 
 // DOM Elements
@@ -618,12 +617,13 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
                     );
 
                     if (spaceWithTempTab) {
-                        if (isInSplit(tabToToggle)) {
-                            alert(SPLIT_PIN_BLOCKED_MESSAGE);
-                            return;
-                        }
                         Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
-                        await moveTabToPinned(spaceWithTempTab, tabToToggle);
+                        try {
+                            await moveTabToPinned(spaceWithTempTab, tabToToggle);
+                        } catch (error) {
+                            Logger.error('[QuickPin] Pin failed:', error);
+                            alert(error.message);
+                        }
                     } else {
                         const spaceWithBookmark = spaces.find(space =>
                             space.spaceBookmarks.includes(tabToToggle.id)

@@ -11,6 +11,8 @@ export class BookmarkOrderError extends Error {
 }
 
 const ids = nodes => nodes.map(node => String(node.id));
+// createSplit makes a pinned split: a folder holding two bookmarks, created in one queued step.
+const isCreate = relocation => relocation.kind === 'create' || relocation.kind === 'createSplit';
 const equal = (a, b) => a.length === b.length && a.every((id, index) => id === b[index]);
 const sameSet = (a, b) => a.length === b.length && a.every(id => b.includes(id));
 
@@ -34,7 +36,7 @@ function predictRelocationOrders(parents, relocation, createdId = null) {
     const predicted = Object.fromEntries(parents.map(parent => [parent.parentId, [...parent.expected]]));
     const targetParentId = String(relocation.parentId);
     const target = parents.find(parent => parent.parentId === targetParentId);
-    const relocatedId = relocation.kind === 'create' ? String(createdId) : String(relocation.bookmarkId);
+    const relocatedId = isCreate(relocation) ? String(createdId) : String(relocation.bookmarkId);
 
     if (relocation.kind === 'move') {
         for (const order of Object.values(predicted)) {
@@ -43,7 +45,7 @@ function predictRelocationOrders(parents, relocation, createdId = null) {
         }
     }
 
-    const desiredToken = relocation.kind === 'create' ? '$new' : relocatedId;
+    const desiredToken = isCreate(relocation) ? '$new' : relocatedId;
     const destinationIndex = target.desired.indexOf(desiredToken);
     predicted[targetParentId].splice(destinationIndex, 0, relocatedId);
     return predicted;
@@ -105,6 +107,7 @@ async function applyOperation(request = {}) {
 
     const relocation = request.relocation || null;
     let createdId = null;
+    const createdChildIds = [];
     if (!relocation) {
         for (const parent of parents) {
             if (!sameSet(parent.expected, parent.desired)) {
@@ -113,7 +116,10 @@ async function applyOperation(request = {}) {
                 });
             }
         }
-    } else if (relocation.kind === 'create') {
+    } else if (isCreate(relocation)) {
+        if (relocation.kind === 'createSplit' && (relocation.children?.length !== 2 || !relocation.children.every(child => child?.url))) {
+            throw new BookmarkOrderError('A pinned split needs exactly two bookmarks.', { code: 'invalid_request', observedOrders, moved: false });
+        }
         for (const parent of parents) {
             const desiredWithoutNew = parent.desired.filter(id => id !== '$new');
             const expectedNewCount = parent.parentId === String(relocation.parentId) ? 1 : 0;
@@ -154,16 +160,23 @@ async function applyOperation(request = {}) {
             }
         }
         let predictedAfterRelocation;
-        if (relocation.kind === 'create') {
+        if (isCreate(relocation)) {
             const target = parents.find(parent => parent.parentId === String(relocation.parentId));
             if (!target || target.desired.filter(id => id === '$new').length !== 1) {
                 throw new BookmarkOrderError('New bookmark position is invalid.', { code: 'invalid_request', observedOrders: fresh });
             }
             const index = target.desired.indexOf('$new');
             const created = await chrome.bookmarks.create({
-                parentId: target.parentId, index, title: relocation.title, url: relocation.url
+                parentId: target.parentId, index, title: relocation.title,
+                ...(relocation.kind === 'create' ? { url: relocation.url } : {})
             });
             createdId = String(created.id);
+            if (relocation.kind === 'createSplit') {
+                for (const [childIndex, child] of relocation.children.entries()) {
+                    const node = await chrome.bookmarks.create({ parentId: createdId, index: childIndex, title: child.title, url: child.url });
+                    createdChildIds.push(String(node.id));
+                }
+            }
             predictedAfterRelocation = predictRelocationOrders(parents, relocation, createdId);
             for (const parent of parents) parent.desired = parent.desired.map(id => id === '$new' ? createdId : id);
         } else if (relocation.kind === 'move') {
@@ -198,7 +211,7 @@ async function applyOperation(request = {}) {
     for (const parent of parents) {
         observedOrders[parent.parentId] = await reorderParent(parent.parentId, parent.desired, observedOrders[parent.parentId], observedOrders);
     }
-    return { orders: observedOrders, createdId };
+    return { orders: observedOrders, createdId, createdChildIds };
 }
 
 export function enqueueBookmarkOperation(request) {

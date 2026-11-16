@@ -871,6 +871,30 @@ h3 {
     margin-right: 4px;
 }
 
+/* Folders are a flex column, which would stack split halves; flow layout lets them share a line */
+.folder-content:has(> .tab.split-left) {
+    display: block;
+}
+
+/* A pinned split is a bookmark folder drawn as a single row: no header, no indent */
+.folder.split-folder {
+    margin: 0;
+    background: none;
+    border-radius: 0;
+    overflow: visible;
+}
+
+.folder.split-folder > .folder-header,
+.folder.split-folder > .folder-collapsed-tabs,
+.folder.split-folder .tab-placeholder {
+    display: none;
+}
+
+.folder.split-folder > .folder-content {
+    padding: 0;
+    min-height: 0;
+}
+
 /* Marks a split half shown without its partner beside it */
 .tab-split-indicator {
     display: inline-flex;

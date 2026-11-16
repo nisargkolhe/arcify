@@ -2,9 +2,6 @@
 // leave it undefined, which every helper here treats as "not split".
 export const SPLIT_VIEW_ID_NONE = -1;
 
-// A split is pinned whole or not at all, as in Arc.
-export const SPLIT_PIN_BLOCKED_MESSAGE = 'Tabs in a split view can\'t be pinned one at a time. Unsplit them to pin this tab.';
-
 export function isInSplit(tab) {
     return Number.isInteger(tab?.splitViewId) && tab.splitViewId !== SPLIT_VIEW_ID_NONE;
 }
@@ -59,4 +56,43 @@ export function splitRowRoles(splitViewIds) {
         }
     }
     return roles;
+}
+
+// A pinned split is a bookmark folder with this title prefix holding exactly two
+// bookmarks, left then right. The folder syncs with Chrome bookmarks and survives
+// undo, which recreates bookmarks with new ids.
+export const SPLIT_FOLDER_PREFIX = '⧉ ';
+
+// Chrome 155+ can create splits; older versions show pinned splits as plain folders.
+export function canCreateSplit(tabsApi = globalThis.chrome?.tabs) {
+    return typeof tabsApi?.createSplit === 'function';
+}
+
+export function isSplitFolder(node) {
+    return Boolean(node) && !node.url && typeof node.title === 'string'
+        && node.title.startsWith(SPLIT_FOLDER_PREFIX)
+        && node.children?.length === 2 && node.children.every(child => child.url);
+}
+
+export function splitFolderTitle(leftTitle, rightTitle) {
+    return `${SPLIT_FOLDER_PREFIX}${leftTitle} | ${rightTitle}`;
+}
+
+/**
+ * Splits two tabs with leftId on the left, moving the right tab beside it and
+ * first releasing either tab from any other split.
+ *
+ * @return {Promise<void>}
+ */
+export async function ensureSplit(leftId, rightId, tabsApi = globalThis.chrome.tabs) {
+    let [left, right] = await Promise.all([tabsApi.get(leftId), tabsApi.get(rightId)]);
+    if (isInSplit(left) && left.splitViewId === right.splitViewId) return;
+    for (const splitViewId of new Set([left, right].filter(isInSplit).map(tab => tab.splitViewId))) {
+        await tabsApi.unsplit(splitViewId);
+    }
+    [left, right] = await Promise.all([tabsApi.get(leftId), tabsApi.get(rightId)]);
+    // tabs.move takes the final index, which shifts down by one when the tab comes from the left.
+    const index = right.windowId === left.windowId && right.index < left.index ? left.index : left.index + 1;
+    await tabsApi.move(right.id, { windowId: left.windowId, index });
+    await tabsApi.createSplit([left.id, right.id]);
 }
