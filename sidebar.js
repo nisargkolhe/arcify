@@ -3656,7 +3656,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         const currentlyPinned = currentSpace
             ? currentSpace.spaceBookmarks.includes(tab.id)
             : isPinned;
-        // Rows carry their split state from the last render; no extra lookup, so the menu opens as fast as before.
+        // Split state comes from the last render, to keep the menu open synchronous.
         const splitActions = canCreateSplit() ? {
             onUnsplit: tabElement.dataset.splitFolderId || tabElement.dataset.splitViewId ? () => unsplitRow(tabElement) : null,
             selectedCount: tabIds.length,

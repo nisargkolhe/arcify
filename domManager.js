@@ -221,6 +221,7 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     if (splitActions?.selectedCount >= 2) {
         const splitOption = document.createElement('div');
         splitOption.className = 'context-menu-item';
+        splitOption.setAttribute('role', 'menuitem');
         if (splitActions.onSplitSelected) {
             splitOption.textContent = 'Split View';
             splitOption.addEventListener('click', runSplitAction(splitActions.onSplitSelected));
@@ -234,6 +235,7 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     if (splitActions?.onUnsplit) {
         const unsplitOption = document.createElement('div');
         unsplitOption.className = 'context-menu-item';
+        unsplitOption.setAttribute('role', 'menuitem');
         unsplitOption.textContent = 'Unsplit';
         unsplitOption.addEventListener('click', runSplitAction(splitActions.onUnsplit));
         contextMenu.appendChild(unsplitOption);

@@ -64,9 +64,7 @@ export function splitRowRoles(splitViewIds) {
     return roles;
 }
 
-// A pinned split is a bookmark folder with this title prefix holding exactly two
-// bookmarks, left then right. The folder syncs with Chrome bookmarks and survives
-// undo, which recreates bookmarks with new ids.
+// A pinned split: a folder with this title prefix holding exactly two bookmarks, left then right.
 export const SPLIT_FOLDER_PREFIX = '⧉ ';
 
 // Chrome 155+ can create splits; older versions show pinned splits as plain folders.
