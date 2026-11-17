@@ -1513,11 +1513,14 @@ function saveSpaces() {
     return run;
 }
 
+// Pinned splits need Chrome 155+ to reopen as splits; before that each half pins on its own.
+const pinsAsSplit = tab => isInSplit(tab) && canCreateSplit();
+
 async function moveTabToPinned(space, tab, refresh = true) {
     space = spaces.find(s => s.id === space.id);
     if (!space) return;
     const liveTab = await chrome.tabs.get(tab.id).catch(() => tab);
-    if (isInSplit(liveTab)) {
+    if (pinsAsSplit(liveTab)) {
         await pinSplit(space, liveTab);
     } else {
         const spaceFolder = await getSpaceBookmarkFolder(space);
@@ -2186,7 +2189,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 return;
             }
             let splitHalves = null;
-            if (!draggingElement.dataset.bookmarkId && isInSplit(tab)) {
+            if (!draggingElement.dataset.bookmarkId && pinsAsSplit(tab)) {
                 splitHalves = await getSplitHalves(tab, space);
                 const bindings = await Utils.getPinnedTabStates();
                 // The other half is already a favorite; pinSplit moves its bookmark in instead of duplicating it.

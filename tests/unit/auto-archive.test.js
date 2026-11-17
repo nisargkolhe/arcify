@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { SpaceStore, ownerOf } from '../../space-store.js';
 import { isProtectedFavorite } from '../../favorite-safety.js';
-import { visibleSplitIds } from '../../split-view.js';
+import { visibleSplitIds, canCreateSplit } from '../../split-view.js';
 import { moveSplitOffFavorite, SPLIT_JOIN_KEY } from '../../split-from-favorite.js';
 import { Utils } from '../../utils.js';
 import { Logger } from '../../logger.js';
@@ -45,7 +45,7 @@ function startBackground() {
         chrome, console, setTimeout, clearTimeout,
         registerTourMessages() {}, registerBookmarkListeners() {},
         enqueueBookmarkOperation: async () => ({}), copyCurrentTabUrlWithFallback: async () => {},
-        SpaceStore, ownerOf, isProtectedFavorite, visibleSplitIds, moveSplitOffFavorite, SPLIT_JOIN_KEY, Utils, Logger
+        SpaceStore, ownerOf, isProtectedFavorite, visibleSplitIds, canCreateSplit, moveSplitOffFavorite, SPLIT_JOIN_KEY, Utils, Logger
     });
     return () => Promise.all(chrome.alarms.onAlarm.listeners.map(fn => fn({ name: 'autoArchiveTabsAlarm' })));
 }

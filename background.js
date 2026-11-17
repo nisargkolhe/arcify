@@ -15,7 +15,7 @@ registerTourMessages();
 
 import { SpaceStore, ownerOf } from './space-store.js';
 import { isProtectedFavorite } from './favorite-safety.js';
-import { visibleSplitIds } from './split-view.js';
+import { visibleSplitIds, canCreateSplit } from './split-view.js';
 import { moveSplitOffFavorite, SPLIT_JOIN_KEY } from './split-from-favorite.js';
 import { registerBookmarkListeners } from './bookmark-events.js';
 import { enqueueBookmarkOperation } from './bookmark-writer.js';
@@ -345,7 +345,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 const splitsBeingMoved = new Set();
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     const { splitViewId } = changeInfo;
-    if (!(splitViewId > -1) || splitsBeingMoved.has(splitViewId)) return;
+    if (!(splitViewId > -1) || !canCreateSplit() || splitsBeingMoved.has(splitViewId)) return;
     splitsBeingMoved.add(splitViewId);
     moveSplitOffFavorite(splitViewId, {
         dispatch: message => spaceStore.dispatch(message),
