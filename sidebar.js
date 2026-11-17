@@ -1569,6 +1569,9 @@ async function pinSplit(space, tab) {
     const halves = await getSplitHalves(tab, space);
     const spaceFolder = await getSpaceBookmarkFolder(space);
     const bindings = await Utils.getPinnedTabStates();
+    // Already pinned together, e.g. by its partner earlier in the same multi-tab drop.
+    const [leftFolder, rightFolder] = await Promise.all(halves.map(half => getSplitFolderOf(bindings[half.id]?.bookmarkId)));
+    if (leftFolder && leftFolder.id === rightFolder?.id) return;
     // A half that is already a favorite keeps its place: the split goes where that bookmark was.
     const existingId = halves.map(half => bindings[half.id]?.bookmarkId).find(Boolean);
     const [anchor] = existingId ? await chrome.bookmarks.get(String(existingId)).catch(() => []) : [];
@@ -1881,7 +1884,17 @@ async function createFolderWithTabs(tabIds) {
             selected.push({ tabId, tab, stored, bookmarkId });
         }
         const folder = await createFolder(spaceFolder.id, spaceFolder.id, 'New Folder');
+        const movedSplits = new Set();
         for (const item of selected) {
+            // A split goes in whole, as one favorite, even when only one half is selected.
+            if (pinsAsSplit(item.tab)) {
+                if (movedSplits.has(item.tab.splitViewId)) continue;
+                movedSplits.add(item.tab.splitViewId);
+                await pinSplit(space, item.tab);
+                const splitFolder = await getSplitFolderOf((await Utils.getPinnedTabState(item.tabId))?.bookmarkId);
+                await chrome.bookmarks.move(splitFolder.id, { parentId: folder.id });
+                continue;
+            }
             let { bookmarkId } = item;
             if (bookmarkId) {
                 await chrome.bookmarks.move(bookmarkId, { parentId: folder.id });

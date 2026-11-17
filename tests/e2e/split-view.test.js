@@ -34,6 +34,30 @@ async function menu(id, label) {
     }, label);
 }
 
+// ⌘/Ctrl-clicks to select exactly these rows.
+async function selectOnly(ids) {
+    const toggle = id => page.$eval(row(id), el => el.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, button: 0, metaKey: true, ctrlKey: true })));
+    for (const id of ids) await toggle(id);
+    // The selection starts from the active tab; drop it.
+    const extra = await page.evaluate(ids => [...document.querySelectorAll('.space.active .tab.multi-selected')]
+        .map(el => Number(el.dataset.tabId)).filter(id => !ids.includes(id)), ids);
+    for (const id of extra) await toggle(id);
+    await page.waitForFunction(count => document.querySelectorAll('.space.active .tab.multi-selected').length === count, { polling: 100 }, ids.length);
+}
+
+// The titles of the folders above path's bookmark, nearest first, and how many bookmarks its own folder holds.
+const bookmarkFolders = path => page.evaluate(async path => {
+    const [bookmark] = (await chrome.bookmarks.search({ query: path })).filter(node => node.url);
+    const titles = [];
+    for (let id = bookmark.parentId; id; ) {
+        const [node] = await chrome.bookmarks.get(id);
+        titles.push(node.title);
+        id = node.parentId;
+    }
+    return { titles, siblings: (await chrome.bookmarks.getChildren(bookmark.parentId)).length };
+}, path);
+
 const splitIds = ids => page.evaluate(async ids => Promise.all(ids.map(async id => (await chrome.tabs.get(id)).splitViewId)), ids);
 const isPaired = ([a, b]) => a === b && a !== -1;
 
@@ -148,17 +172,7 @@ test('Pin and Unpin N Tabs act on a selected split whole, once', async () => {
     const [plain, left, right] = await openTabs('/multi-plain', '/multi-left', '/multi-right');
     await page.evaluate(ids => chrome.tabs.createSplit(ids), [left, right]);
     await page.waitForSelector(`${row(left)}.split-left`);
-    const ids = [plain, left, right];
-    const select = id => page.$eval(row(id), el => el.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, button: 0, metaKey: true, ctrlKey: true })));
-    const selectAll = async () => {
-        for (const id of ids) await select(id);
-        // The selection also holds the active tab; drop it.
-        const extra = await page.evaluate(ids => [...document.querySelectorAll('.space.active .tab.multi-selected')]
-            .map(el => Number(el.dataset.tabId)).filter(id => !ids.includes(id)), ids);
-        for (const id of extra) await select(id);
-        await page.waitForFunction(() => document.querySelectorAll('.space.active .tab.multi-selected').length === 3, { polling: 100 });
-    };
+    const selectAll = () => selectOnly([plain, left, right]);
 
     await selectAll();
     await menu(plain, 'Pin 3 Tabs');
@@ -196,4 +210,51 @@ test('choosing Split View for a favorite and an unpinned tab pins them as a pair
     await page.waitForSelector(`.space.active .split-folder .tab[data-tab-id="${other}"]`);
     const [a, b] = await splitIds([favorite, other]);
     expect(isPaired([a, b])).toBe(true);
+});
+
+test('dragging both selected halves into Pinned pins the split once', async () => {
+    const [left, right] = await openTabs('/drag-left', '/drag-right');
+    await page.evaluate(ids => chrome.tabs.createSplit(ids), [left, right]);
+    await page.waitForSelector(`${row(left)}.split-left`);
+    await selectOnly([left, right]);
+    await page.$eval(row(left), el => el.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() })));
+    await page.waitForFunction(() => document.querySelectorAll('.tab.multi-dragging').length === 2, { polling: 100 });
+    await page.$eval('.space.active [data-tab-type="pinned"]', target => {
+        const dataTransfer = new DataTransfer();
+        target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer }));
+        target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+    });
+    await page.waitForSelector(`.space.active [data-tab-type="pinned"] .split-folder .tab[data-tab-id="${right}"]`);
+    await page.$eval(row(left), el => el.dispatchEvent(new DragEvent('dragend', { bubbles: true })));
+
+    const { titles, siblings } = await bookmarkFolders('/drag-left');
+    expect(titles[0].startsWith('⧉ ')).toBe(true);
+    expect(titles[1].startsWith('⧉ ')).toBe(false);
+    expect(siblings).toBe(2);
+    expect(isPaired(await splitIds([left, right]))).toBe(true);
+});
+
+test('New Folder with one half of a pinned split moves the whole split in', async () => {
+    const [plain, left, right] = await openTabs('/folder-plain', '/folder-left', '/folder-right');
+    await page.evaluate(ids => chrome.tabs.createSplit(ids), [left, right]);
+    await page.waitForSelector(`${row(left)}.split-left`);
+    await menu(left, 'Pin Tab');
+    await page.waitForSelector(`.space.active [data-tab-type="pinned"] .split-folder .tab[data-tab-id="${left}"]`);
+    await selectOnly([plain, left]);
+    await menu(plain, 'New Folder with 2 Items');
+    await page.waitForFunction(async () => {
+        const [plain] = (await chrome.bookmarks.search({ query: '/folder-plain' })).filter(node => node.url);
+        const [bookmark] = (await chrome.bookmarks.search({ query: '/folder-left' })).filter(node => node.url);
+        if (!plain || !bookmark) return false;
+        const [split] = await chrome.bookmarks.get(bookmark.parentId);
+        return split.parentId === plain.parentId;
+    }, { polling: 100 });
+
+    for (const path of ['/folder-left', '/folder-right']) {
+        const { titles, siblings } = await bookmarkFolders(path);
+        expect(titles[0].startsWith('⧉ ')).toBe(true);
+        expect(titles[1]).toBe('New Folder');
+        expect(siblings).toBe(2);
+    }
+    expect(isPaired(await splitIds([left, right]))).toBe(true);
 });
