@@ -20,7 +20,7 @@ import { SpacePatchQueue } from './space-patch-queue.js';
 import { RefreshCoordinator } from './refresh-coordinator.js';
 import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
-import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation } from './sidebar-tabs.js';
+import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation, tabUrl } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
 import { canCreateFolder, canMoveFolder, createFolder } from './folder-policy.js';
 import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
@@ -1493,12 +1493,12 @@ async function moveTabToPinned(space, tab, refresh = true) {
     if (!space) return;
     const spaceFolder = await getSpaceBookmarkFolder(space);
     const created = await chrome.bookmarks.create({
-        parentId: spaceFolder.id, title: tab.title, url: tab.url
+        parentId: spaceFolder.id, title: tab.title || tabUrl(tab), url: tabUrl(tab)
     });
     const bookmarkIdToStore = created.id;
 
     // Track the original pinned URL for Arc-like "Back to Pinned URL" behavior.
-    await Utils.setPinnedTabState(tab.id, { pinnedUrl: tab.url, bookmarkId: bookmarkIdToStore });
+    await Utils.setPinnedTabState(tab.id, { pinnedUrl: tabUrl(tab), bookmarkId: bookmarkIdToStore });
 
     space.temporaryTabs = space.temporaryTabs.filter(id => id !== tab.id);
     if (!space.spaceBookmarks.includes(tab.id)) {
@@ -1683,12 +1683,12 @@ async function createFolderWithTabs(tabIds) {
                 await chrome.bookmarks.move(bookmarkId, { parentId: folder.id });
             } else {
                 bookmarkId = (await chrome.bookmarks.create({
-                    parentId: folder.id, title: item.tab.title, url: item.tab.url
+                    parentId: folder.id, title: item.tab.title || tabUrl(item.tab), url: tabUrl(item.tab)
                 })).id;
             }
             space.temporaryTabs = space.temporaryTabs.filter(id => id !== item.tabId);
             if (!space.spaceBookmarks.includes(item.tabId)) space.spaceBookmarks.push(item.tabId);
-            await Utils.setPinnedTabState(item.tabId, { bookmarkId, pinnedUrl: item.stored?.pinnedUrl || item.tab.url });
+            await Utils.setPinnedTabState(item.tabId, { bookmarkId, pinnedUrl: item.stored?.pinnedUrl || tabUrl(item.tab) });
         }
         clearTabSelection();
         await saveSpaces();
@@ -1982,7 +1982,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             const spaceFolder = await getSpaceBookmarkFolder(space);
             if (targetFolderElement && !targetFolderElement.dataset.bookmarkId) throw new Error('Folder creation is not complete.');
             let bookmarkId = draggingElement.dataset.bookmarkId;
-            const pinnedUrl = draggingElement.dataset.pinnedUrl || tab.url;
+            const pinnedUrl = draggingElement.dataset.pinnedUrl || tabUrl(tab);
             if (!dropIntent?.bookmarkSourceContent || !dropIntent?.bookmarkTargetContent) {
                 throw new Error('Bookmark drop context is unavailable. Refresh and retry.');
             }
@@ -2141,7 +2141,7 @@ function makeBookmarkDropOperation({ sourceContent, targetContent, draggingEleme
     });
     let relocation = null;
     if (!bookmarkId) {
-        relocation = { kind: 'create', parentId: targetParentId, title: tab.title, url: draggingElement.dataset.pinnedUrl || tab.url };
+        relocation = { kind: 'create', parentId: targetParentId, title: tab.title || tabUrl(tab), url: draggingElement.dataset.pinnedUrl || tabUrl(tab) };
     } else if (sourceParentId !== targetParentId) {
         relocation = { kind: 'move', bookmarkId, parentId: targetParentId };
     }

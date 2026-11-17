@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, saveBookmarkOrder } from '../../sidebar-tabs.js';
+import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, saveBookmarkOrder, tabUrl } from '../../sidebar-tabs.js';
 
 test('window-scoped space tabs retain extension order despite native order and duplicate URLs', () => {
     const space = { spaceBookmarks: [3, 2], temporaryTabs: [4, 1, 5] };
@@ -28,4 +28,10 @@ test('bookmark order requests send the rendered baseline and canonical destinati
     } } };
     const response = await saveBookmarkOrder('folder', ['a', 'b', 'c'], ['c', 'a', 'b']);
     assert.deepEqual(response.orders.folder, ['c', 'a', 'b']);
+});
+
+test('a tab still on its first navigation is bookmarked by its pending url', () => {
+    assert.equal(tabUrl({ url: 'https://a.test/', pendingUrl: 'https://b.test/' }), 'https://a.test/');
+    assert.equal(tabUrl({ url: '', pendingUrl: 'https://b.test/' }), 'https://b.test/');
+    assert.equal(tabUrl({ url: '' }), '');
 });
