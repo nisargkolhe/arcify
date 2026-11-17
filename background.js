@@ -15,7 +15,7 @@ registerTourMessages();
 
 import { SpaceStore, ownerOf } from './space-store.js';
 import { isProtectedFavorite } from './favorite-safety.js';
-import { visibleSplitIds, canCreateSplit } from './split-view.js';
+import { visibleSplitIds, splitLastActivity, canCreateSplit } from './split-view.js';
 import { moveSplitOffFavorite, SPLIT_JOIN_KEY } from './split-from-favorite.js';
 import { registerBookmarkListeners } from './bookmark-events.js';
 import { enqueueBookmarkOperation } from './bookmark-writer.js';
@@ -252,7 +252,7 @@ async function runAutoArchiveCheck() {
                 continue;
             }
 
-            const lastActivity = tabActivity[tab.id];
+            const lastActivity = splitLastActivity(tab, tabs, tabActivity);
 
             // Start tracking tabs with no record (opened in the background, or restored with a
             // new id after restart) instead of treating them as idle.

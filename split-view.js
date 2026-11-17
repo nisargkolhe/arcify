@@ -11,6 +11,12 @@ export function visibleSplitIds(tabs) {
     return new Set(tabs.filter(tab => tab.active && isInSplit(tab)).map(tab => tab.splitViewId));
 }
 
+// A split is as recent as its newer half, so auto-archive closes both halves in the same run.
+export function splitLastActivity(tab, tabs, activity) {
+    if (!isInSplit(tab) || !activity[tab.id]) return activity[tab.id];
+    return Math.max(...tabs.filter(other => other.splitViewId === tab.splitViewId).map(other => activity[other.id] || 0));
+}
+
 /**
  * Reorders tab ids so the halves of each split sit together, left half first,
  * where the first of them appeared. Other ids keep their order.
