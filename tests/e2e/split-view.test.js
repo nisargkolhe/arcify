@@ -242,6 +242,9 @@ test('New Folder with one half of a pinned split moves the whole split in', asyn
     await page.waitForSelector(`.space.active [data-tab-type="pinned"] .split-folder .tab[data-tab-id="${left}"]`);
     await selectOnly([plain, left]);
     await menu(plain, 'New Folder with 2 Items');
+    // New Folder opens its name for editing, which holds back sidebar refreshes until it's done.
+    await page.waitForFunction(() => document.activeElement?.classList.contains('folder-name'), { polling: 100 });
+    await page.keyboard.press('Enter');
     await page.waitForFunction(async () => {
         const [plain] = (await chrome.bookmarks.search({ query: '/folder-plain' })).filter(node => node.url);
         const [bookmark] = (await chrome.bookmarks.search({ query: '/folder-left' })).filter(node => node.url);
