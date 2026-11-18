@@ -1034,6 +1034,32 @@ describe('Drag and Drop', () => {
     });
   });
 
+  describe('Drag Handlers', () => {
+    test('starting and ending a drag on a tab or folder raises no sidebar errors', async () => {
+      const errors = [];
+      sidebarPage.on('pageerror', error => errors.push(error.message));
+      const { tabId, folderId } = await sidebarPage.evaluate(async () => {
+        const { spaces } = await chrome.storage.local.get('spaces');
+        const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
+        await chrome.runtime.sendMessage({ type: 'spaceStore', action: 'assign', tabId: tab.id, spaceId: spaces[0].id });
+        const folder = await chrome.bookmarks.create({ parentId: spaces[0].bookmarkFolderId, title: 'Drag Handlers' });
+        return { tabId: tab.id, folderId: folder.id };
+      });
+      await sidebarPage.reload({ waitUntil: 'domcontentloaded' });
+
+      for (const selector of [`.tab[data-tab-id="${tabId}"]`, `.folder[data-bookmark-id="${folderId}"] > .folder-header`]) {
+        await sidebarPage.waitForSelector(selector);
+        await sidebarPage.$eval(selector, element => {
+          const dataTransfer = new DataTransfer();
+          element.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }));
+          element.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
+        });
+      }
+      await delay(250);
+      expect(errors).toEqual([]);
+    });
+  });
+
   describe('Multiple Tab Drag Scenarios', () => {
     test('should only apply dragging class to the dragged tab when many tabs are present', async () => {
       try {
