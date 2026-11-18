@@ -1292,14 +1292,12 @@ function setupTabDragHandlers(tabElement) {
             .filter(Boolean);
         draggingElements.forEach(element => element.classList.add('multi-dragging'));
         tabElement.classList.add('dragging');
-        dragSourceFolderElement = tabElement.closest('.folder');
     });
 
     tabElement.addEventListener('dragend', () => {
         isDraggingTab = false;
         document.querySelectorAll('.dragging, .multi-dragging').forEach(element => element.classList.remove('dragging', 'multi-dragging'));
         draggingTabIds = [];
-        dragSourceFolderElement = null;
         refreshCoordinator.schedule();
     });
 }
@@ -1317,13 +1315,11 @@ function setupFolderDragHandlers(folderElement) {
         event.dataTransfer.setData('text/plain', folderElement.dataset.bookmarkId || '');
         event.dataTransfer.effectAllowed = 'move';
         folderElement.classList.add('dragging');
-        dragSourceFolderElement = folderElement.parentElement.closest('.folder');
     });
 
     folderHeader.addEventListener('dragend', () => {
         isDraggingTab = false;
         folderElement.classList.remove('dragging');
-        dragSourceFolderElement = null;
         refreshCoordinator.schedule();
     });
 }
