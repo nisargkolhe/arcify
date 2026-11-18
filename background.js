@@ -15,6 +15,8 @@ registerTourMessages();
 
 import { SpaceStore, ownerOf } from './space-store.js';
 import { isProtectedFavorite } from './favorite-safety.js';
+import { visibleSplitIds, splitLastActivity, canCreateSplit } from './split-view.js';
+import { moveSplitOffFavorite, SPLIT_JOIN_KEY } from './split-from-favorite.js';
 import { registerBookmarkListeners } from './bookmark-events.js';
 import { enqueueBookmarkOperation } from './bookmark-writer.js';
 
@@ -231,11 +233,13 @@ async function runAutoArchiveCheck() {
 
         // Get all non-pinned tabs across all windows
         const tabs = await chrome.tabs.query({ pinned: false });
+        // The unfocused half of a split on screen is not active, but it is in view.
+        const onScreenSplits = visibleSplitIds(tabs);
         const tabsToArchive = [];
 
         for (const tab of tabs) {
             // Skip audible, active, or recently active tabs
-            if (tab.audible || tab.active) {
+            if (tab.audible || tab.active || onScreenSplits.has(tab.splitViewId)) {
                 await updateTabLastActivity(tab.id); // Update activity for active/audible tabs
                 continue;
             }
@@ -248,7 +252,7 @@ async function runAutoArchiveCheck() {
                 continue;
             }
 
-            const lastActivity = tabActivity[tab.id];
+            const lastActivity = splitLastActivity(tab, tabs, tabActivity);
 
             // Start tracking tabs with no record (opened in the background, or restored with a
             // new id after restart) instead of treating them as idle.
@@ -334,6 +338,25 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
             await updateTabLastActivity(tabId);
         }
     }
+});
+
+// Splitting a favorite with an unpinned tab leaves the favorite alone; see split-from-favorite.js.
+// Both halves report the new split, so each split is handled once.
+const splitsBeingMoved = new Set();
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    const { splitViewId } = changeInfo;
+    if (!(splitViewId > -1) || !canCreateSplit() || splitsBeingMoved.has(splitViewId)) return;
+    splitsBeingMoved.add(splitViewId);
+    moveSplitOffFavorite(splitViewId, {
+        dispatch: message => spaceStore.dispatch(message),
+        getBindings: () => Utils.getPinnedTabStates(),
+        isInverted: () => Utils.getInvertTabOrder(),
+        isJoining: async ids => {
+            const joining = (await chrome.storage.session.get(SPLIT_JOIN_KEY))[SPLIT_JOIN_KEY] || [];
+            return ids.every(id => joining.includes(id));
+        }
+    }).catch(error => Logger.error('Could not move a split off a favorite:', error))
+        .finally(() => splitsBeingMoved.delete(splitViewId));
 });
 
 // Clean up timestamp when a tab is closed

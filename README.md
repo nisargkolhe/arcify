@@ -10,9 +10,22 @@ A Chrome extension that replicates Arc browser's tab management system, providin
 
 - Vertical tab management
 - Tab grouping functionality
+- Chrome split view support
 - Keyboard shortcuts for quick access
 - Bookmark integration
 - Clean, minimal interface
+
+### Split View
+
+Tabs in a Chrome split view appear side by side on one row and act as a pair. Creating, pinning and restoring splits needs Chrome 155 or later; on earlier versions Arcify shows existing splits but cannot create them.
+
+- **Join:** ⌘-click (Ctrl-click on Windows and Linux) or Shift-click to select two open tabs, then right-click → **Split View**. A selection starts from the active tab.
+- **Unsplit:** right-click either side → **Unsplit**. A pinned split becomes two pinned tabs in its place.
+- **Pin:** **Pin Tab**, Alt+D, or dragging either side into the pinned section pins both. Clicking a pinned split reopens both sides as a split.
+- **Splitting from a pinned tab:** opening a link beside a pinned tab leaves the pinned tab alone; a copy of it and the link open as a new split at the top of your temporary tabs.
+- **Close, archive and move:** closing, archiving or moving either side to another space acts on both.
+
+A pinned split is saved as a bookmark folder whose name starts with `⧉ ` and holds the two bookmarks, left then right. It syncs with your Chrome bookmarks; renaming the folder without the `⧉ ` prefix turns it back into an ordinary folder.
 
 ## Development Setup
 

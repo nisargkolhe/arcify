@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { SpaceStore, ownerOf } from '../../space-store.js';
 import { isProtectedFavorite } from '../../favorite-safety.js';
+import { visibleSplitIds, splitLastActivity, canCreateSplit } from '../../split-view.js';
+import { moveSplitOffFavorite, SPLIT_JOIN_KEY } from '../../split-from-favorite.js';
 import { Utils } from '../../utils.js';
 import { Logger } from '../../logger.js';
 
@@ -43,7 +45,7 @@ function startBackground() {
         chrome, console, setTimeout, clearTimeout,
         registerTourMessages() {}, registerBookmarkListeners() {},
         enqueueBookmarkOperation: async () => ({}), copyCurrentTabUrlWithFallback: async () => {},
-        SpaceStore, ownerOf, isProtectedFavorite, Utils, Logger
+        SpaceStore, ownerOf, isProtectedFavorite, visibleSplitIds, splitLastActivity, canCreateSplit, moveSplitOffFavorite, SPLIT_JOIN_KEY, Utils, Logger
     });
     return () => Promise.all(chrome.alarms.onAlarm.listeners.map(fn => fn({ name: 'autoArchiveTabsAlarm' })));
 }
@@ -92,4 +94,28 @@ test('an activation write in flight during the new-session clear does not restor
     await fireAlarm();
     assert.deepEqual(removed, []);
     assert.ok(Date.now() - local.tabLastActivity[42] < threshold);
+});
+
+test('the unfocused half of an on-screen split is not archived', async () => {
+    local.spaces = [space('a', [1, 2, 3])];
+    const idle = Date.now() - threshold - 1000;
+    local.tabLastActivity = { 2: idle, 3: idle };
+    tabs = [{ id: 1, windowId: 1, url: 'https://left.test/', groupId: -1, active: true, splitViewId: 5 },
+        { id: 2, windowId: 1, url: 'https://right.test/', groupId: -1, active: false, splitViewId: 5 },
+        { id: 3, windowId: 1, url: 'https://other.test/', groupId: -1, active: false, splitViewId: -1 }];
+    await startBackground()();
+    assert.deepEqual(removed, [3]);
+    assert.ok(Date.now() - local.tabLastActivity[2] < threshold);
+});
+test('an off-screen split is archived when its newer half goes idle, not one half at a time', async () => {
+    local.spaces = [space('a', [1, 2])];
+    const idle = Date.now() - threshold - 1000;
+    local.tabLastActivity = { 1: idle, 2: Date.now() - 60 * 1000 };
+    tabs = [{ id: 1, windowId: 1, url: 'https://left.test/', groupId: -1, active: false, splitViewId: 5 },
+        { id: 2, windowId: 1, url: 'https://right.test/', groupId: -1, active: false, splitViewId: 5 }];
+    await startBackground()();
+    assert.deepEqual(removed, []);
+    local.tabLastActivity = { 1: idle, 2: idle };
+    await startBackground()();
+    assert.deepEqual(removed.sort(), [1, 2]);
 });

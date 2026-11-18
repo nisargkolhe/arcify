@@ -248,7 +248,7 @@ export class SpaceStore {
                     if (target) {
                         this.provisional.delete(message.tabId);
                         for (const space of this.spaces) for (const key of sections) space[key] = space[key].filter(id => id !== message.tabId);
-                        target[message.pinned ? 'spaceBookmarks' : 'temporaryTabs'].push(message.tabId);
+                        target[message.pinned ? 'spaceBookmarks' : 'temporaryTabs'][message.atStart ? 'unshift' : 'push'](message.tabId);
                     }
                     break;
                 }

@@ -1,3 +1,5 @@
+import { isSplitFolder } from './split-view.js';
+
 // The space's bookmark root is level zero; user folders may occupy levels 1 to MAX_FOLDER_DEPTH.
 export const MAX_FOLDER_DEPTH = 4;
 
@@ -34,6 +36,8 @@ export async function canMoveFolder(spaceFolderId, folderId, parentId) {
     const [folder] = await chrome.bookmarks.getSubTree(folderId);
     if (!folder || folder.url || isDescendant(folder, parentId)) return false;
     if (folder.parentId === parentId) return true;
+    // A pinned split behaves like a single favorite, so folder depth and sync limits don't apply.
+    if (isSplitFolder(folder)) return true;
     if (parentId !== spaceFolderId && !await canCreateFolder(spaceFolderId, parentId)) return false;
 
     let parentDepth = 0;
@@ -44,6 +48,6 @@ export async function canMoveFolder(spaceFolderId, folderId, parentId) {
         current = node.parentId;
     }
     const subtreeDepth = node => 1 + Math.max(0, ...(node.children || [])
-        .filter(child => !child.url).map(subtreeDepth));
+        .filter(child => !child.url && !isSplitFolder(child)).map(subtreeDepth));
     return parentDepth + subtreeDepth(folder) <= MAX_FOLDER_DEPTH;
 }
