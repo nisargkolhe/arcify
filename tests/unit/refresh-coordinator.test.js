@@ -149,3 +149,23 @@ test('persistent failures use bounded backoff and explicit retry retains dirty w
     await scheduled.shift()();
     assert.equal(coordinator.handledBookmarkGeneration, 1);
 });
+
+test('view invalidation renders without data changes and survives a busy drain', async () => {
+    let busy = true;
+    let renders = 0;
+    const coordinator = new RefreshCoordinator({
+        readSpaces: async () => [], adoptSpaces: async () => false,
+        render: async () => { renders++; },
+        isBusy: () => busy, schedule: immediate, cancel
+    });
+    coordinator.invalidateView();
+    await flush();
+    assert.equal(renders, 0);
+    busy = false;
+    coordinator.retry();
+    await flush();
+    assert.equal(renders, 1);
+    coordinator.retry();
+    await flush();
+    assert.equal(renders, 1);
+});

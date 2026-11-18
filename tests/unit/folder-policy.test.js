@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { canCreateFolder, canMoveFolder, createFolder, isDescendant } from '../../folder-policy.js';
 
 let syncTabGroups, created;
+const splitTree = (id, parentId) => ({ id, parentId, title: '⧉ A | B', children: [
+    { id: `${id}-a`, url: 'https://a.test/' }, { id: `${id}-b`, url: 'https://b.test/' }
+] });
 beforeEach(() => {
     syncTabGroups = false;
     created = [];
@@ -22,7 +25,9 @@ beforeEach(() => {
         child: { id: 'child', parentId: 'parent', children: [{ id: 'leaf', url: 'https://leaf.test/' }] },
         deep: { id: 'deep', parentId: 'child', children: [] },
         sibling: { id: 'sibling', parentId: 'space', children: [{ id: 'tab', url: 'https://tab.test/' }] },
-        bookmark: nodes.bookmark
+        bookmark: nodes.bookmark,
+        split: splitTree('split', 'space'),
+        withSplit: { id: 'withSplit', parentId: 'space', children: [splitTree('inner', 'withSplit')] }
     };
     globalThis.chrome = {
         storage: { sync: { get: async () => ({ syncTabGroups }) } },
@@ -94,4 +99,13 @@ test('nested folders reorder within their current parent whatever the sync setti
     syncTabGroups = false;
     assert.equal(await canMoveFolder('space', 'deep', 'child'), true);
     assert.equal(await canMoveFolder('space', 'sibling', 'child'), true);
+});
+
+test('a pinned split moves like a favorite, ignoring folder depth and sync limits', async () => {
+    syncTabGroups = true;
+    assert.equal(await canMoveFolder('space', 'split', 'level4'), true);
+    assert.equal(await canMoveFolder('space', 'split', 'split'), false);
+});
+test('a pinned split inside a folder does not count as a folder level', async () => {
+    assert.equal(await canMoveFolder('space', 'withSplit', 'grandchild'), true);
 });

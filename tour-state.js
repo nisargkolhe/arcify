@@ -12,7 +12,7 @@ export const TOUR_STEPS = [
     { id: 'pins', label: 'Pinned tabs', title: 'Drag it up. Keep it close.',
       tip: 'We added “Practice: pin this tab” below. Drag it above the divider, or right-click it → Pin Tab.',
       caption: 'Drag a tab above the divider. Its bookmark stays, even after you close the tab.',
-      detail: 'Click tabs to switch, drag to reorder, or right-click → Move to Space. New Tab opens in your active space. Double-click a pinned title to rename it. The tab menu can replace its saved URL after navigation; Unpin Tab returns it to the temporary list.',
+      detail: 'Click tabs to switch, drag to reorder, or right-click → Move to Space. New Tab opens in your active space. Double-click a pinned title to rename it. The tab menu can replace its saved URL after navigation; Unpin Tab returns it to the temporary list. Tabs in a Chrome split view sit side by side and pin, move and close as a pair.',
       target: '.space .pinned-tabs' },
     { id: 'folders', label: 'Folders', title: 'Keep a project together',
       tip: 'Open Options → New Folder and give it a name. We added “Practice: file this tab” for you to drag inside.',

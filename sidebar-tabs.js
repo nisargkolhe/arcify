@@ -12,6 +12,11 @@ export function mergeVisibleOrder(allIds, visibleIds) {
     return [...result, ...visibleIds.slice(index)];
 }
 
+// A tab still on its first navigation has an empty url until the page commits; a bookmark without one is a folder.
+export function tabUrl(tab) {
+    return tab.url || tab.pendingUrl || '';
+}
+
 export function canonicalOrderFromDisplay(displayIds, inverted) {
     return inverted ? [...displayIds].reverse() : [...displayIds];
 }

@@ -20,11 +20,16 @@ import { SpacePatchQueue } from './space-patch-queue.js';
 import { RefreshCoordinator } from './refresh-coordinator.js';
 import { EditSessionRegistry } from './edit-sessions.js';
 import { isProtectedFavorite } from './favorite-safety.js';
-import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation } from './sidebar-tabs.js';
+import { selectWindowSpaceTabs, mergeVisibleOrder, mergeCapturedTemporaryOrder, canonicalOrderFromDisplay, saveBookmarkOperation, tabUrl } from './sidebar-tabs.js';
 import { ownerOf } from './space-store.js';
+import { SPLIT_JOIN_KEY } from './split-from-favorite.js';
+import {
+    isInSplit, pairSplits, splitRowRoles, canCreateSplit, isSplitFolder, splitFolderTitle, ensureSplit,
+    splitFolderName, namedSplitFolderTitle, getLiveSplitNames, setLiveSplitName
+} from './split-view.js';
 import { canCreateFolder, canMoveFolder, createFolder } from './folder-policy.js';
 import { loadFolderCollapsed, saveFolderCollapsed } from './folder-state.js';
-import { FOLDER_CLOSED_ICON, FOLDER_CLOSED_DOTS_ICON, FOLDER_OPEN_ICON } from './icons.js';
+import { FOLDER_CLOSED_ICON, FOLDER_CLOSED_DOTS_ICON, FOLDER_OPEN_ICON, SPLIT_VIEW_ICON } from './icons.js';
 import { getContextTabIds, getTabSelectionRange } from './tab-selection.js';
 import { LocalStorage } from './localstorage.js';
 import { Utils } from './utils.js';
@@ -124,6 +129,18 @@ function selectTabRange(targetTabId) {
     syncTabSelectionUI();
 }
 
+// ⌘-click on macOS, Ctrl-click elsewhere; on macOS Ctrl-click opens the context menu.
+const IS_MAC = /mac/i.test(navigator.userAgentData?.platform ?? navigator.platform);
+const isSelectionToggle = event => (IS_MAC ? event.metaKey : event.ctrlKey);
+
+// Adds or removes one tab, as in Chrome's tab strip; the selection starts from the current tab.
+function toggleTabSelection(tabId) {
+    if (selectedTabIds.has(tabId) && selectedTabIds.size > 1) selectedTabIds.delete(tabId);
+    else selectedTabIds.add(tabId);
+    selectionAnchorTabId = tabId;
+    syncTabSelectionUI();
+}
+
 function getOrderedTabElementsById(tabIds) {
     const ids = new Set(tabIds);
     return getSelectableTabElements().filter(element => ids.has(Number(element.dataset.tabId)));
@@ -172,7 +189,16 @@ async function updateBookmarkForTab(tab, bookmarkTitle) {
     const space = ownerOf(spaces, tab.id);
     const bookmark = space && await getSpaceBookmarkById(space, binding.bookmarkId);
     if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
-    await chrome.bookmarks.update(bookmark.id, { title: bookmarkTitle });
+    await updateFavoriteBookmark(bookmark.id, { title: bookmarkTitle });
+}
+
+// An unnamed split folder's title repeats its halves' titles, so it follows them; a stale copy would read as a name.
+async function updateFavoriteBookmark(bookmarkId, changes) {
+    const split = changes.title === undefined ? null : await getSplitFolderOf(bookmarkId);
+    await chrome.bookmarks.update(bookmarkId, changes);
+    if (!split || splitFolderName(split)) return;
+    const [left, right] = await chrome.bookmarks.getChildren(split.id);
+    await chrome.bookmarks.update(split.id, { title: splitFolderTitle(left.title, right.title) });
 }
 
 
@@ -216,7 +242,7 @@ async function replaceBookmarkUrlWithCurrentUrl(tab, tabElement) {
         const updatePayload = { url: newUrl };
         // Keep bookmark title in sync with the new pinned page for clarity.
         if (newTitle) updatePayload.title = newTitle;
-        await chrome.bookmarks.update(bookmark.id, updatePayload);
+        await updateFavoriteBookmark(bookmark.id, updatePayload);
     } catch (e) {
         console.error('[Arcify] chrome.bookmarks.update failed', { bookmarkId: resolvedBookmarkId, newUrl, error: e });
         return;
@@ -632,10 +658,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSidebarTour().catch(error => Logger.error("Tour initialization failed:", error));
 
     // Add Chrome tab event listeners
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && selectedTabIds.size > 1) clearTabSelection();
+    });
     chrome.tabs.onCreated.addListener(handleTabCreated);
     chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         handleTabUpdate(tabId, changeInfo, tab);
         if (tab.pinned) updatePinnedFavicons(); // Update favicons when a tab is pinned/unpinned
+        // Split rows are paired at render time, so a split or unsplit needs a re-render.
+        if (changeInfo.splitViewId !== undefined) refreshCoordinator.invalidateView();
     });
     chrome.tabs.onRemoved.addListener(handleTabRemove);
     const refreshWindowTabs = async (_tabId, info) => {
@@ -650,6 +681,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (info.windowId === currentWindow?.id) updatePinnedFavicons();
     });
     chrome.tabs.onActivated.addListener(handleTabActivated);
+    chrome.runtime.onMessage.addListener(message => {
+        if (message?.command === 'renameTab') renameActiveRow();
+    });
     // Setup Quick Pin listener
     setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabToTemp, activeSpaceId, setActiveSpace, activatePinnedTabByURL);
 
@@ -1305,11 +1339,11 @@ function setupTabDragHandlers(tabElement) {
 }
 
 // Folders drag from their header and move as one bookmark.
-function setupFolderDragHandlers(folderElement) {
-    const folderHeader = folderElement.querySelector(':scope > .folder-header');
-    folderHeader.addEventListener('dragstart', event => {
-        if (event.target !== folderHeader) return;
-        if (folderHeader.querySelector('.folder-name') === document.activeElement) {
+// The handle is the folder header, or a pinned split's whole row.
+function setupFolderDragHandlers(folderElement, handle = folderElement.querySelector(':scope > .folder-header')) {
+    handle.addEventListener('dragstart', event => {
+        if (event.target !== handle) return;
+        if (handle.querySelector('.folder-name') === document.activeElement) {
             event.preventDefault();
             return;
         }
@@ -1320,7 +1354,7 @@ function setupFolderDragHandlers(folderElement) {
         dragSourceFolderElement = folderElement.parentElement.closest('.folder');
     });
 
-    folderHeader.addEventListener('dragend', () => {
+    handle.addEventListener('dragend', () => {
         isDraggingTab = false;
         folderElement.classList.remove('dragging');
         dragSourceFolderElement = null;
@@ -1331,11 +1365,15 @@ function setupFolderDragHandlers(folderElement) {
 // A tab dropped on a folder header goes inside it. A folder dropped there is placed
 // beside it instead, and goes inside only when dropped into an open folder's content.
 function getDropTargetFolderContent(target, draggingElement) {
-    if (draggingElement.classList.contains('folder')) return target.closest('.folder-content');
-    return target.closest('.folder')?.querySelector(':scope > .folder-content');
+    // A pinned split is one row, so a drop on it lands beside it, never inside.
+    const anchor = target.closest('.split-folder')?.parentElement || target;
+    if (draggingElement.classList.contains('folder')) return anchor.closest('.folder-content');
+    return anchor.closest('.folder')?.querySelector(':scope > .folder-content');
 }
 
 function isInvalidFolderDrop(draggingElement, container, targetContainer) {
+    // A pinned split dropped among unpinned tabs unpins it, as in Arc.
+    if (draggingElement.classList.contains('split-folder') && container.dataset.tabType === 'temporary') return false;
     return draggingElement.classList.contains('folder') &&
         (container.dataset.tabType !== 'pinned' || draggingElement.contains(targetContainer));
 }
@@ -1488,21 +1526,29 @@ function saveSpaces() {
     return run;
 }
 
+// Pinned splits need Chrome 155+ to reopen as splits; before that each half pins on its own.
+const pinsAsSplit = tab => isInSplit(tab) && canCreateSplit();
+
 async function moveTabToPinned(space, tab, refresh = true) {
     space = spaces.find(s => s.id === space.id);
     if (!space) return;
-    const spaceFolder = await getSpaceBookmarkFolder(space);
-    const created = await chrome.bookmarks.create({
-        parentId: spaceFolder.id, title: tab.title, url: tab.url
-    });
-    const bookmarkIdToStore = created.id;
+    const liveTab = await chrome.tabs.get(tab.id).catch(() => tab);
+    if (pinsAsSplit(liveTab)) {
+        await pinSplit(space, liveTab);
+    } else {
+        const spaceFolder = await getSpaceBookmarkFolder(space);
+        const created = await chrome.bookmarks.create({
+            parentId: spaceFolder.id, title: tab.title || tabUrl(tab), url: tabUrl(tab)
+        });
+        const bookmarkIdToStore = created.id;
 
-    // Track the original pinned URL for Arc-like "Back to Pinned URL" behavior.
-    await Utils.setPinnedTabState(tab.id, { pinnedUrl: tab.url, bookmarkId: bookmarkIdToStore });
+        // Track the original pinned URL for Arc-like "Back to Pinned URL" behavior.
+        await Utils.setPinnedTabState(tab.id, { pinnedUrl: tabUrl(tab), bookmarkId: bookmarkIdToStore });
 
-    space.temporaryTabs = space.temporaryTabs.filter(id => id !== tab.id);
-    if (!space.spaceBookmarks.includes(tab.id)) {
-        space.spaceBookmarks.push(tab.id);
+        space.temporaryTabs = space.temporaryTabs.filter(id => id !== tab.id);
+        if (!space.spaceBookmarks.includes(tab.id)) {
+            space.spaceBookmarks.push(tab.id);
+        }
     }
 
     // Update chevron state after moving tab to pinned
@@ -1518,6 +1564,181 @@ async function moveTabToPinned(space, tab, refresh = true) {
     // Persist extension ordering after membership changes.
     await persistSpaceTabOrder(space.id, { source: 'arcify', movedTabId: tab.id });
     if (refresh) await refreshActiveSpaceUI();
+}
+
+// The two tabs of tab's split, left first; both must belong to space.
+async function getSplitHalves(tab, space) {
+    const halves = (await chrome.tabs.query({ windowId: tab.windowId }))
+        .filter(t => t.splitViewId === tab.splitViewId)
+        .sort((a, b) => a.index - b.index);
+    if (halves.length !== 2 || halves.some(half => ownerOf(spaces, half.id)?.id !== space.id)) {
+        throw new Error('Both sides of a split view must be in this space to pin it.');
+    }
+    return halves;
+}
+
+// A split is pinned whole, as in Arc: both halves go into one split folder.
+async function pinSplit(space, tab) {
+    const halves = await getSplitHalves(tab, space);
+    const spaceFolder = await getSpaceBookmarkFolder(space);
+    const bindings = await Utils.getPinnedTabStates();
+    // Already pinned together, e.g. by its partner earlier in the same multi-tab drop.
+    const [leftFolder, rightFolder] = await Promise.all(halves.map(half => getSplitFolderOf(bindings[half.id]?.bookmarkId)));
+    if (leftFolder && leftFolder.id === rightFolder?.id) return;
+    // A half that is already a favorite keeps its place: the split goes where that bookmark was.
+    const existingId = halves.map(half => bindings[half.id]?.bookmarkId).find(Boolean);
+    const [anchor] = existingId ? await chrome.bookmarks.get(String(existingId)).catch(() => []) : [];
+    const name = (await getLiveSplitNames())[tab.splitViewId] || '';
+    const folder = await chrome.bookmarks.create({
+        parentId: anchor?.parentId ?? spaceFolder.id,
+        ...(anchor ? { index: anchor.index } : {}),
+        title: namedSplitFolderTitle(name, halves[0].title, halves[1].title)
+    });
+    if (name) await setLiveSplitName(tab.splitViewId, '');
+    for (const [index, half] of halves.entries()) {
+        const binding = bindings[half.id];
+        // A half that was already a favorite keeps its bookmark and original URL.
+        const bookmark = binding?.bookmarkId
+            ? await chrome.bookmarks.move(binding.bookmarkId, { parentId: folder.id, index })
+            : await chrome.bookmarks.create({ parentId: folder.id, index, title: half.title || tabUrl(half), url: tabUrl(half) });
+        await Utils.setPinnedTabState(half.id, { pinnedUrl: binding?.pinnedUrl || tabUrl(half), bookmarkId: bookmark.id });
+        space.temporaryTabs = space.temporaryTabs.filter(id => id !== half.id);
+        if (!space.spaceBookmarks.includes(half.id)) space.spaceBookmarks.push(half.id);
+    }
+}
+
+// The split folder holding bookmarkId, or null when it is an ordinary favorite.
+async function getSplitFolderOf(bookmarkId) {
+    if (!bookmarkId) return null;
+    const [bookmark] = await chrome.bookmarks.get(String(bookmarkId)).catch(() => []);
+    if (!bookmark?.parentId) return null;
+    const [parent] = await chrome.bookmarks.getSubTree(bookmark.parentId).catch(() => []);
+    return isSplitFolder(parent) ? parent : null;
+}
+
+// Unpinning either half unpins the split: the folder goes and live halves become temporary.
+async function unpinSplit(space, folder, { temporaryDisplayOrder = null, inverted = false } = {}) {
+    space = spaces.find(s => s.id === space.id);
+    if (!space) return;
+    const bindings = await Utils.getPinnedTabStates();
+    const halfTabs = {};
+    for (const [tabId, binding] of Object.entries(bindings)) {
+        const id = Number(tabId);
+        if (space.spaceBookmarks.includes(id) && folder.children.some(child => String(child.id) === String(binding?.bookmarkId))) {
+            halfTabs[binding.bookmarkId] = { tabId: id, index: space.spaceBookmarks.indexOf(id) };
+        }
+    }
+    await chrome.bookmarks.removeTree(folder.id);
+    const name = splitFolderName(folder);
+    const halfId = Object.values(halfTabs)[0]?.tabId;
+    const liveHalf = name && halfId !== undefined && await chrome.tabs.get(halfId).catch(() => null);
+    if (isInSplit(liveHalf)) await setLiveSplitName(liveHalf.splitViewId, name);
+    for (const { tabId } of Object.values(halfTabs)) {
+        space.spaceBookmarks = space.spaceBookmarks.filter(id => id !== tabId);
+        if (!space.temporaryTabs.includes(tabId)) space.temporaryTabs.push(tabId);
+        await Utils.removePinnedTabState(tabId);
+    }
+    if (temporaryDisplayOrder) {
+        space.temporaryTabs = mergeCapturedTemporaryOrder(space.temporaryTabs, temporaryDisplayOrder, inverted);
+    }
+    showUndoToast('Pinned split removed.', async () => {
+        const siblings = await chrome.bookmarks.getChildren(folder.parentId);
+        const restored = await chrome.bookmarks.create({
+            parentId: folder.parentId, index: Math.min(folder.index, siblings.length), title: folder.title
+        });
+        for (const [index, child] of folder.children.entries()) {
+            const bookmark = await chrome.bookmarks.create({ parentId: restored.id, index, title: child.title, url: child.url });
+            const half = halfTabs[child.id];
+            if (half) await restoreFavoriteTab(space.id, half.tabId, half.index, bookmark);
+        }
+        scheduleBookmarkRefresh();
+    });
+    await persistSpaceTabOrder(space.id);
+    await refreshActiveSpaceUI();
+}
+
+// Separates a split. A pinned split becomes two favorites where the split was.
+async function unsplitRow(tabElement) {
+    const splitElement = tabElement.closest('.split-folder');
+    if (splitElement) {
+        const [folder] = await chrome.bookmarks.getSubTree(splitElement.dataset.bookmarkId);
+        for (const [offset, child] of folder.children.entries()) {
+            await chrome.bookmarks.move(child.id, { parentId: folder.parentId, index: folder.index + offset });
+        }
+        await chrome.bookmarks.remove(folder.id);
+    }
+    const tab = tabElement.dataset.tabId ? await chrome.tabs.get(Number(tabElement.dataset.tabId)).catch(() => null) : null;
+    if (isInSplit(tab)) await chrome.tabs.unsplit(tab.splitViewId);
+    scheduleBookmarkRefresh();
+    await refreshActiveSpaceUI();
+}
+
+// Joins the two selected tabs, upper one on the left. Chrome splits hold exactly two tabs.
+async function splitSelectedTabs(tabIds) {
+    const ordered = getOrderedTabElementsById(tabIds).map(element => Number(element.dataset.tabId));
+    if (ordered.length !== 2) return;
+    const space = spaces.find(s => s.id === activeSpaceId);
+    const bindings = await Utils.getPinnedTabStates();
+    for (const id of ordered) {
+        if (await getSplitFolderOf(bindings[id]?.bookmarkId)) throw new Error('Unsplit the pinned split first.');
+    }
+    clearTabSelection();
+    // Splits pin whole: if either side is a favorite, the new split is pinned.
+    const pinsFavorite = Boolean(space) && ordered.some(id => space.spaceBookmarks.includes(id));
+    // Stops the background moving this split off the favorite before it is pinned (split-from-favorite.js).
+    if (pinsFavorite) await chrome.storage.session.set({ [SPLIT_JOIN_KEY]: ordered });
+    try {
+        await ensureSplit(ordered[0], ordered[1]);
+        if (pinsFavorite) {
+            await pinSplit(space, await chrome.tabs.get(ordered[0]));
+            await persistSpaceTabOrder(space.id);
+            scheduleBookmarkRefresh();
+        }
+    } finally {
+        if (pinsFavorite) await chrome.storage.session.remove(SPLIT_JOIN_KEY);
+    }
+    await refreshActiveSpaceUI();
+}
+
+// Opens whichever halves are closed, pairs them as a split and focuses the clicked half.
+async function openPinnedSplit(clickedRow) {
+    const rows = [...clickedRow.closest('.split-folder').querySelectorAll(':scope > .folder-content > .tab')];
+    if (rows.length !== 2) return;
+    isOpeningBookmark = true;
+    try {
+        const windowTabs = await chrome.tabs.query({ windowId: currentWindow.id });
+        const bindings = await Utils.getPinnedTabStates();
+        const tabIds = [];
+        for (const row of rows) {
+            const live = windowTabs.find(t =>
+                ownerOf(spaces, t.id)?.id === activeSpaceId && bindings[t.id]?.bookmarkId === row.dataset.bookmarkId);
+            if (live) {
+                tabIds.push(live.id);
+                continue;
+            }
+            const space = spaces.find(s => s.id === activeSpaceId);
+            const opened = await BookmarkUtils.openBookmarkAsTab({
+                url: row.dataset.pinnedUrl || row.dataset.url,
+                title: row.querySelector('.tab-title-display')?.textContent || row.dataset.url,
+                spaceName: space?.name,
+                pinnedUrl: row.dataset.pinnedUrl || row.dataset.url,
+                bookmarkId: row.dataset.bookmarkId
+            }, activeSpaceId, null, {
+                spaces, activeSpaceId, currentWindow, saveSpaces, createTabElement, activateTabInDOM, Utils, persistSpaceTabOrder
+            }, true);
+            tabIds.push(opened.id);
+        }
+        await ensureSplit(tabIds[0], tabIds[1]);
+        await Utils.focusTab(tabIds[rows.indexOf(clickedRow)]);
+    } catch (error) {
+        Logger.error('Could not open pinned split:', error);
+        alert(error.message);
+    } finally {
+        isOpeningBookmark = false;
+        await pendingSpaceSaves;
+        await refreshActiveSpaceUI();
+        refreshCoordinator.schedule();
+    }
 }
 
 function offerFavoriteUndo(removed, restoreTab = null) {
@@ -1544,6 +1765,11 @@ async function restoreFavoriteTab(spaceId, tabId, index, bookmark) {
 async function moveTabToTemp(space, tab, { temporaryDisplayOrder = null, inverted = false, refresh = true, offerUndo = true } = {}) {
     space = spaces.find(s => s.id === space.id);
     if (!space) return;
+    const splitFolder = await getSplitFolderOf((await Utils.getPinnedTabState(tab.id))?.bookmarkId);
+    if (splitFolder) {
+        await unpinSplit(space, splitFolder);
+        return;
+    }
     const favoriteIndex = space.spaceBookmarks.indexOf(tab.id);
     const removed = await removeSpacePin(space, tab);
     if (offerUndo) offerFavoriteUndo(removed,
@@ -1677,18 +1903,28 @@ async function createFolderWithTabs(tabIds) {
             selected.push({ tabId, tab, stored, bookmarkId });
         }
         const folder = await createFolder(spaceFolder.id, spaceFolder.id, 'New Folder');
+        const movedSplits = new Set();
         for (const item of selected) {
+            // A split goes in whole, as one favorite, even when only one half is selected.
+            if (pinsAsSplit(item.tab)) {
+                if (movedSplits.has(item.tab.splitViewId)) continue;
+                movedSplits.add(item.tab.splitViewId);
+                await pinSplit(space, item.tab);
+                const splitFolder = await getSplitFolderOf((await Utils.getPinnedTabState(item.tabId))?.bookmarkId);
+                await chrome.bookmarks.move(splitFolder.id, { parentId: folder.id });
+                continue;
+            }
             let { bookmarkId } = item;
             if (bookmarkId) {
                 await chrome.bookmarks.move(bookmarkId, { parentId: folder.id });
             } else {
                 bookmarkId = (await chrome.bookmarks.create({
-                    parentId: folder.id, title: item.tab.title, url: item.tab.url
+                    parentId: folder.id, title: item.tab.title || tabUrl(item.tab), url: tabUrl(item.tab)
                 })).id;
             }
             space.temporaryTabs = space.temporaryTabs.filter(id => id !== item.tabId);
             if (!space.spaceBookmarks.includes(item.tabId)) space.spaceBookmarks.push(item.tabId);
-            await Utils.setPinnedTabState(item.tabId, { bookmarkId, pinnedUrl: item.stored?.pinnedUrl || item.tab.url });
+            await Utils.setPinnedTabState(item.tabId, { bookmarkId, pinnedUrl: item.stored?.pinnedUrl || tabUrl(item.tab) });
         }
         clearTabSelection();
         await saveSpaces();
@@ -1902,6 +2138,15 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
         return;
     }
 
+    if (draggingElement.classList.contains('split-folder') && container.dataset.tabType === 'temporary') {
+        const space = spaces.find(s => s.id === container.closest('.space')?.dataset.spaceId);
+        const [folder] = await chrome.bookmarks.getSubTree(draggingElement.dataset.bookmarkId);
+        // The re-render only clears tab rows from this section, so the folder shell must go here.
+        draggingElement.remove();
+        if (space && folder) await unpinSplit(space, folder, dropIntent);
+        return { orderHandled: true };
+    }
+
     if (draggingElement.classList.contains('folder')) {
         const space = spaces.find(s => s.id === container.closest('.space')?.dataset.spaceId);
         const spaceFolder = space && await getSpaceBookmarkFolder(space);
@@ -1975,6 +2220,17 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 Logger.error(`Tab not found for ID: ${tabId}`);
                 return;
             }
+            let splitHalves = null;
+            if (!draggingElement.dataset.bookmarkId && pinsAsSplit(tab)) {
+                splitHalves = await getSplitHalves(tab, space);
+                const bindings = await Utils.getPinnedTabStates();
+                // The other half is already a favorite; pinSplit moves its bookmark in instead of duplicating it.
+                if (splitHalves.some(half => bindings[half.id]?.bookmarkId)) {
+                    await pinSplit(space, tab);
+                    await persistSpaceTabOrder(space.id);
+                    return { orderHandled: true };
+                }
+            }
 
             // Determine the target folder
             const targetFolderElement = targetFolder ? targetFolder.closest('.folder') : null;
@@ -1982,7 +2238,7 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
             const spaceFolder = await getSpaceBookmarkFolder(space);
             if (targetFolderElement && !targetFolderElement.dataset.bookmarkId) throw new Error('Folder creation is not complete.');
             let bookmarkId = draggingElement.dataset.bookmarkId;
-            const pinnedUrl = draggingElement.dataset.pinnedUrl || tab.url;
+            const pinnedUrl = draggingElement.dataset.pinnedUrl || tabUrl(tab);
             if (!dropIntent?.bookmarkSourceContent || !dropIntent?.bookmarkTargetContent) {
                 throw new Error('Bookmark drop context is unavailable. Refresh and retry.');
             }
@@ -1991,9 +2247,21 @@ async function handleBookmarkOperations(event, draggingElement, container, targe
                 targetContent: dropIntent.bookmarkTargetContent,
                 draggingElement,
                 rootId: spaceFolder.id,
-                tab
+                tab,
+                splitHalves
             });
             const result = await saveBookmarkOperation(operation);
+            if (splitHalves) {
+                for (const [id, order] of Object.entries(result.orders || {})) bookmarkOrderBaselines.set(String(id), order.map(String));
+                for (const [index, half] of splitHalves.entries()) {
+                    await Utils.setPinnedTabState(half.id, { bookmarkId: result.createdChildIds[index], pinnedUrl: tabUrl(half) });
+                    space.temporaryTabs = space.temporaryTabs.filter(id => id !== half.id);
+                    if (!space.spaceBookmarks.includes(half.id)) space.spaceBookmarks.push(half.id);
+                }
+                await persistSpaceTabOrder(space.id);
+                updatePinnedSectionPlaceholders();
+                return { orderHandled: true };
+            }
             bookmarkId = result.createdId || bookmarkId;
             for (const [id, order] of Object.entries(result.orders || {})) bookmarkOrderBaselines.set(String(id), order.map(String));
             draggingElement.dataset.bookmarkId = bookmarkId;
@@ -2126,7 +2394,7 @@ function bookmarkParentIdForContent(content, rootId) {
     return String(content.closest('.folder')?.dataset.bookmarkId || rootId);
 }
 
-function makeBookmarkDropOperation({ sourceContent, targetContent, draggingElement, rootId, tab }) {
+function makeBookmarkDropOperation({ sourceContent, targetContent, draggingElement, rootId, tab, splitHalves = null }) {
     const bookmarkId = draggingElement.dataset.bookmarkId || null;
     const sourceParentId = bookmarkId ? bookmarkParentIdForContent(sourceContent, rootId) : null;
     const targetParentId = bookmarkParentIdForContent(targetContent, rootId);
@@ -2140,8 +2408,13 @@ function makeBookmarkDropOperation({ sourceContent, targetContent, draggingEleme
         return { parentId, expectedCanonicalIds: [...expectedCanonicalIds], desiredCanonicalIds };
     });
     let relocation = null;
-    if (!bookmarkId) {
-        relocation = { kind: 'create', parentId: targetParentId, title: tab.title, url: draggingElement.dataset.pinnedUrl || tab.url };
+    if (!bookmarkId && splitHalves) {
+        relocation = {
+            kind: 'createSplit', parentId: targetParentId, title: splitFolderTitle(splitHalves[0].title, splitHalves[1].title),
+            children: splitHalves.map(half => ({ title: half.title || tabUrl(half), url: tabUrl(half) }))
+        };
+    } else if (!bookmarkId) {
+        relocation = { kind: 'create', parentId: targetParentId, title: tab.title || tabUrl(tab), url: draggingElement.dataset.pinnedUrl || tabUrl(tab) };
     } else if (sourceParentId !== targetParentId) {
         relocation = { kind: 'move', bookmarkId, parentId: targetParentId };
     }
@@ -2576,6 +2849,133 @@ async function loadTabs(space, pinnedContainer, tempContainer) {
     finally { if (spaceRenderTasks.get(space.id) === run) spaceRenderTasks.delete(space.id); }
 }
 
+const SPLIT_ROW_LABELS = { left: 'Split view, left side', right: 'Split view, right side', alone: 'In a split view' };
+
+// Adjacent halves of a split share one line; a half shown without its partner gets an icon.
+// Favorites are never reordered for this, so pinned halves only pair when already adjacent.
+function markSplitRows(root, liveSplitNames = {}) {
+    for (const container of [root, ...root.querySelectorAll('.folder-content')]) {
+        const rows = [...container.children];
+        const roles = splitRowRoles(rows.map(row => {
+            if (!row.classList.contains('tab')) return undefined;
+            if (row.dataset.splitFolderId) return `folder:${row.dataset.splitFolderId}`;
+            return row.dataset.splitViewId ? `view:${row.dataset.splitViewId}` : undefined;
+        }));
+        rows.forEach((row, i) => {
+            const role = roles[i];
+            if (!role) return;
+            row.classList.add(`split-${role}`);
+            const name = role === 'left'
+                && (row.closest('.split-folder')?.dataset.splitName || liveSplitNames[row.dataset.splitViewId]);
+            const label = document.createElement('span');
+            label.className = 'visually-hidden';
+            label.textContent = name ? 'Split view' : SPLIT_ROW_LABELS[role];
+            row.querySelector('.tab-details')?.appendChild(label);
+            if (name) showSplitName(row, name);
+            if (role === 'alone') {
+                const icon = document.createElement('span');
+                icon.className = 'tab-split-indicator';
+                icon.setAttribute('aria-hidden', 'true');
+                icon.innerHTML = SPLIT_VIEW_ICON;
+                row.querySelector('.tab-details')?.after(icon);
+            }
+        });
+    }
+}
+
+// A named split is one row: the left half's icon, then the name.
+function showSplitName(row, name) {
+    row.classList.add('split-named');
+    row.dataset.splitName = name;
+    const nameElement = document.createElement('span');
+    nameElement.className = 'tab-split-name';
+    nameElement.textContent = name;
+    row.querySelector('.tab-details')?.prepend(nameElement);
+    // Capture beats the title's own double-click, which would rename just this half.
+    row.addEventListener('dblclick', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        renameSplit(row);
+    }, { capture: true });
+}
+
+// The row that stands for a split pair, or null when row isn't shown beside its partner.
+function splitLeftRowOf(row) {
+    if (row.classList.contains('split-right')) return row.previousElementSibling;
+    return row.classList.contains('split-left') ? row : null;
+}
+
+// The Rename shortcut renames the active tab, or its split as a whole.
+async function renameActiveRow() {
+    const [tab] = await chrome.tabs.query({ active: true, windowId: currentWindow.id });
+    const row = tab && document.querySelector(`.space.active .tab[data-tab-id="${tab.id}"]`);
+    if (!row) return;
+    // Focus is usually in the page; the field needs it to take typing.
+    window.focus();
+    const splitRow = splitLeftRowOf(row);
+    if (splitRow) renameSplit(splitRow);
+    else row.querySelector('.tab-details')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+}
+
+// Names a split as a whole; an empty name goes back to showing both halves.
+function renameSplit(row) {
+    const folderId = row.closest('.split-folder')?.dataset.bookmarkId;
+    const current = row.dataset.splitName || '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tab-title-input split-name-input';
+    input.value = current;
+    input.placeholder = 'Split view name';
+    input.setAttribute('aria-label', 'Split view name');
+    input.spellcheck = false;
+    row.classList.add('split-renaming');
+    // A draggable row swallows text selection in the field.
+    const wasDraggable = row.draggable;
+    row.draggable = false;
+    row.querySelector('.tab-details').appendChild(input);
+    const session = editorSessions.begin('split', folderId ?? row.dataset.splitViewId);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    const finish = async save => {
+        if (finished) return;
+        finished = true;
+        const name = input.value.trim();
+        input.remove();
+        row.classList.remove('split-renaming');
+        row.draggable = wasDraggable;
+        try {
+            await editorSessions.complete(session, async () => {
+                if (!save || name === current) return;
+                if (folderId) {
+                    const [left, right] = await chrome.bookmarks.getChildren(folderId);
+                    await chrome.bookmarks.update(folderId, { title: namedSplitFolderTitle(name, left.title, right.title) });
+                } else {
+                    await setLiveSplitName(Number(row.dataset.splitViewId), name);
+                }
+            });
+        } catch (error) {
+            Logger.error('Error renaming split view:', error);
+            alert(error.message);
+        }
+        await refreshActiveSpaceUI();
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+        event.stopPropagation();
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            finish(true);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            finish(false);
+        }
+    });
+    // Clicks in the field would otherwise open the split.
+    input.addEventListener('click', event => event.stopPropagation());
+}
+
 async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     Logger.log('Loading tabs for space:', space.id);
     Logger.log('Space bookmarks in space:', space.spaceBookmarks);
@@ -2599,6 +2999,26 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
 
                 // Favorites follow bookmark order; invertTabOrder applies to temporary tabs only.
                 for (const item of bookmarks) {
+                    if (isSplitFolder(item) && canCreateSplit()) {
+                        // Kept as a folder so ordering, moves and removal treat the pair as one item.
+                        const splitElement = document.getElementById('folderTemplate').content.cloneNode(true).querySelector('.folder');
+                        splitElement.classList.remove('collapsed');
+                        splitElement.classList.add('split-folder');
+                        splitElement.dataset.bookmarkId = item.id;
+                        splitElement.dataset.splitName = splitFolderName(item);
+                        const splitContent = splitElement.querySelector('.folder-content');
+                        splitContent.classList.remove('collapsed');
+                        container.appendChild(splitElement);
+                        await processBookmarkNode(item, splitContent);
+                        // Halves aren't draggable, so a drag from either one picks up the whole row.
+                        splitContent.querySelectorAll(':scope > .tab').forEach(row => {
+                            row.dataset.splitFolderId = item.id;
+                            row.draggable = false;
+                        });
+                        splitElement.draggable = true;
+                        setupFolderDragHandlers(splitElement, splitElement);
+                        continue;
+                    }
                     if (!item.url) {
                         // This is a folder
                         const folderTemplate = document.getElementById('folderTemplate');
@@ -2755,7 +3175,8 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
     const temporaryTabIds = [...new Set([...space.temporaryTabs, ...unrepresentedBookmarkIds])]
         .filter(id => !fallbackFavoriteIds.includes(id));
     if (invertTabOrder) temporaryTabIds.reverse();
-    const tabsToLoad = [...new Set([...fallbackFavoriteIds, ...temporaryTabIds])];
+    const pairedTemporaryTabIds = pairSplits(temporaryTabIds, new Map(tabs.map(tab => [tab.id, tab])));
+    const tabsToLoad = [...new Set([...fallbackFavoriteIds, ...pairedTemporaryTabIds])];
     for (const tabId of tabsToLoad) {
         const tab = tabs.find(t => t.id === tabId);
         if (!tab || representedPinnedTabIds.has(tabId)) continue;
@@ -2779,6 +3200,7 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         tempFragment.appendChild(tabElement);
     }
 
+    const liveSplitNames = await getLiveSplitNames();
     if (editorSessions.isActive()) {
         refreshCoordinator.invalidateSpaces();
         return false;
@@ -2792,6 +3214,8 @@ async function renderSpaceTabs(space, pinnedContainer, tempContainer) {
         disposeEditorsInElement(el);
         el.remove();
     });
+    markSplitRows(pinnedFragment, liveSplitNames);
+    markSplitRows(tempFragment, liveSplitNames);
     pinnedContainer.appendChild(pinnedFragment);
     tempContainer.appendChild(tempFragment);
     const spaceElement = pinnedContainer.closest('.space');
@@ -2852,6 +3276,25 @@ function updateChevronState(spaceElement, pinnedContainer) {
 async function closeTab(tabElement, tab, isPinned = false, isBookmarkOnly = false) {
     Logger.log('Closing tab:', tab, tabElement, isPinned, isBookmarkOnly);
 
+    const splitElement = tabElement.closest('.split-folder');
+    if (splitElement) {
+        const liveIds = [...splitElement.querySelectorAll('.tab[data-tab-id]')].map(row => Number(row.dataset.tabId));
+        if (liveIds.length) {
+            await chrome.tabs.remove(liveIds);
+            return;
+        }
+        const space = spaces.find(s => s.id === splitElement.closest('.space')?.dataset.spaceId);
+        const [folder] = await chrome.bookmarks.getSubTree(splitElement.dataset.bookmarkId);
+        if (space && folder) await unpinSplit(space, folder);
+        return;
+    }
+    const liveTab = isBookmarkOnly ? null : await chrome.tabs.get(tab.id).catch(() => null);
+    if (isInSplit(liveTab)) {
+        const halves = (await chrome.tabs.query({ windowId: liveTab.windowId })).filter(t => t.splitViewId === liveTab.splitViewId);
+        await chrome.tabs.remove(halves.map(t => t.id));
+        return;
+    }
+
     if (isBookmarkOnly) {
         const space = spaces.find(s => s.id === tabElement.closest('.space')?.dataset.spaceId);
         if (!space) return;
@@ -2887,6 +3330,7 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
     } else {
         tabElement.dataset.tabId = tab.id;
         tabElement.dataset.url = tab.url;
+        if (isInSplit(tab)) tabElement.dataset.splitViewId = tab.splitViewId;
         if (selectedTabIds.has(tab.id)) {
             tabElement.classList.add('multi-selected');
             tabElement.setAttribute('aria-selected', 'true');
@@ -3137,6 +3581,11 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 selectTabRange(tab.id);
                 return;
             }
+            if (!isBookmarkOnly && isSelectionToggle(event)) {
+                event.preventDefault();
+                toggleTabSelection(tab.id);
+                return;
+            }
 
             if (!isBookmarkOnly) {
                 selectOnlyTab(tab.id);
@@ -3144,6 +3593,11 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
 
             // Remove active class from all tabs and favicons
             clearAllActiveStates();
+
+            if (tabElement.dataset.splitFolderId) {
+                await openPinnedSplit(tabElement);
+                return;
+            }
 
             let chromeTab = null;
             try {
@@ -3319,6 +3773,14 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
         const currentlyPinned = currentSpace
             ? currentSpace.spaceBookmarks.includes(tab.id)
             : isPinned;
+        // Split state comes from the last render, to keep the menu open synchronous.
+        const splitLeftRow = splitLeftRowOf(tabElement);
+        const splitActions = canCreateSplit() ? {
+            onUnsplit: tabElement.dataset.splitFolderId || tabElement.dataset.splitViewId ? () => unsplitRow(tabElement) : null,
+            onRename: splitLeftRow ? () => renameSplit(splitLeftRow) : null,
+            selectedCount: tabIds.length,
+            onSplitSelected: tabIds.length === 2 ? () => splitSelectedTabs(tabIds) : null
+        } : null;
         const arcifyFolder = await LocalStorage.getOrCreateArcifyFolder();
         const allBookmarkSpaceFolders = await chrome.bookmarks.getChildren(arcifyFolder.id);
         showTabContextMenu(
@@ -3349,7 +3811,8 @@ async function createTabElement(tab, isPinned = false, isBookmarkOnly = false) {
                 },
                 close: closeSelectedTabs,
                 clearSelection: clearTabSelection
-            } : null
+            } : null,
+            splitActions
         );
     });
 
@@ -3640,6 +4103,13 @@ async function handleTabRemove(tabId) {
             if (bookmark?.url) {
                 const row = await createTabElement({ id: null, title: bookmark.title,
                     url: bookmark.url, pinnedUrl: bookmark.url, bookmarkId: bookmark.id }, true, true);
+                // A pinned split half stays paired until the next full render, or a click opens only this half.
+                if (tabElement.dataset.splitFolderId) {
+                    row.dataset.splitFolderId = tabElement.dataset.splitFolderId;
+                    row.draggable = false;
+                    row.classList.add(...[...tabElement.classList].filter(name => name.startsWith('split-')));
+                    row.querySelector('.tab-details')?.append(...tabElement.querySelectorAll('.tab-details > .visually-hidden'));
+                }
                 tabElement.replaceWith(row);
             } else tabElement.remove();
         } catch { tabElement.remove(); }
@@ -3912,6 +4382,16 @@ async function moveTabToSpace(tabId, spaceId, pinned = false, openerTabId = null
         }
     }
 
+    // Both halves of a split belong to one space.
+    const movedTab = await chrome.tabs.get(tabId).catch(() => null);
+    if (isInSplit(movedTab)) {
+        const partner = (await chrome.tabs.query({ windowId: movedTab.windowId }))
+            .find(t => t.splitViewId === movedTab.splitViewId && t.id !== tabId);
+        if (partner && !processingTabMoves.has(partner.id) && ownerOf(spaces, partner.id)?.id !== spaceId) {
+            await moveTabToSpace(partner.id, spaceId, pinned);
+        }
+    }
+
     // 5. Save the updated spaces to storage
     saveSpaces();
     } finally {
@@ -3932,6 +4412,16 @@ async function moveFavoriteToSpace(tab, tabElement, spaceId) {
     const bookmark = await getSpaceBookmarkById(source, tabElement.dataset.bookmarkId || binding?.bookmarkId);
     if (!bookmark) throw new Error('The favorite binding is no longer valid for this space.');
     const targetFolder = await getSpaceBookmarkFolder(target);
+    const splitFolder = await getSplitFolderOf(bookmark.id);
+    if (splitFolder) {
+        // A pinned split moves whole, with every open tab of either half.
+        const boundIds = [];
+        for (const child of splitFolder.children) boundIds.push(...await getTabsBoundToBookmark(source, child.id));
+        await chrome.bookmarks.move(splitFolder.id, { parentId: targetFolder.id });
+        for (const id of boundIds) await moveTabToSpace(id, target.id, true);
+        scheduleBookmarkRefresh();
+        return;
+    }
     const boundTabIds = (await getTabsBoundToBookmark(source, bookmark.id)).filter(id => id !== tab.id);
     await chrome.bookmarks.move(bookmark.id, { parentId: targetFolder.id });
     if (tab.id) {

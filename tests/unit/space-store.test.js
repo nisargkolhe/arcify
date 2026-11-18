@@ -111,6 +111,24 @@ test('sync is opt-in and disabling it performs no mutations', async () => {
     mutations.length = 0; sync.syncTabGroups = false;
     await syncSpaceGroups(local.spaces); assert.deepEqual(mutations, []);
 });
+test('assign can put a tab at the start of a section', async () => {
+    local.spaces = [space('a', [1])];
+    tabs.push({ id: 3, windowId: 1, url: 'https://three.test/', groupId: -1 });
+    const store = new SpaceStore();
+    await store.dispatch({ action: 'get' });
+    await store.dispatch({ action: 'assign', tabId: 3, spaceId: 'a', pinned: false, atStart: true });
+    assert.deepEqual(local.spaces[0].temporaryTabs.slice(0, 2), [3, 1]);
+});
+test('sync keeps split halves adjacent instead of reordering them apart', async () => {
+    local.spaces = [space('a', [1, 2, 3])];
+    tabs = [{ id: 1, windowId: 1, index: 0, splitViewId: 9, groupId: -1 },
+        { id: 3, windowId: 1, index: 1, splitViewId: 9, groupId: -1 },
+        { id: 2, windowId: 1, index: 2, splitViewId: -1, groupId: -1 }];
+    sync.syncTabGroups = true;
+    await syncSpaceGroups(local.spaces);
+    assert.deepEqual(mutations.find(m => m[0] === 'group')[1].tabIds, [1, 3, 2]);
+    assert.deepEqual(mutations.filter(m => m[0] === 'move'), []);
+});
 test('sync creates each group in its tabs original window', async () => {
     tabs[1].windowId = 2;
     sync.syncTabGroups = true;

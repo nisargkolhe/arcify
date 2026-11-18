@@ -183,7 +183,7 @@ export function activateSpaceInDOM(spaceId, spaces, updateSpaceSwitcher) {
     updateSpaceSwitcher();
 }
 
-export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive, onReplaceBookmarkUrlWithCurrent = null, moveFavoriteToSpace = null, bulkActions = null) {
+export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabElement, closeTab, spaces, moveTabToSpace, setActiveSpace, allBookmarkSpaceFolders, createSpaceFromInactive, onReplaceBookmarkUrlWithCurrent = null, moveFavoriteToSpace = null, bulkActions = null, splitActions = null) {
     // Remove any existing context menus
     const existingMenu = document.getElementById('tab-context-menu');
     if (existingMenu) {
@@ -207,6 +207,47 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
     };
 
     // --- Menu Items ---
+
+    // splitActions is null when Chrome can't create splits.
+    const runSplitAction = action => async () => {
+        contextMenu.remove();
+        try {
+            await action();
+        } catch (error) {
+            Logger.error('[ContextMenu] Split action failed:', error);
+            alert(error.message);
+        }
+    };
+    if (splitActions?.selectedCount >= 2) {
+        const splitOption = document.createElement('div');
+        splitOption.className = 'context-menu-item';
+        splitOption.setAttribute('role', 'menuitem');
+        if (splitActions.onSplitSelected) {
+            splitOption.textContent = 'Split View';
+            splitOption.addEventListener('click', runSplitAction(splitActions.onSplitSelected));
+        } else {
+            splitOption.textContent = 'Split View (select 2 tabs)';
+            splitOption.classList.add('disabled');
+            splitOption.setAttribute('aria-disabled', 'true');
+        }
+        contextMenu.appendChild(splitOption);
+    }
+    if (splitActions?.onUnsplit) {
+        const unsplitOption = document.createElement('div');
+        unsplitOption.className = 'context-menu-item';
+        unsplitOption.setAttribute('role', 'menuitem');
+        unsplitOption.textContent = 'Unsplit';
+        unsplitOption.addEventListener('click', runSplitAction(splitActions.onUnsplit));
+        contextMenu.appendChild(unsplitOption);
+    }
+    if (splitActions?.onRename) {
+        const renameOption = document.createElement('div');
+        renameOption.className = 'context-menu-item';
+        renameOption.setAttribute('role', 'menuitem');
+        renameOption.textContent = 'Rename Split View';
+        renameOption.addEventListener('click', runSplitAction(splitActions.onRename));
+        contextMenu.appendChild(renameOption);
+    }
 
     // Only show these options for actual tabs that are part of a space
     if (!isBookmarkOnly) {
@@ -618,7 +659,12 @@ export function setupQuickPinListener(moveTabToSpace, moveTabToPinned, moveTabTo
 
                     if (spaceWithTempTab) {
                         Logger.log(`[QuickPin] Tab ${tabToToggle.id} is a temporary tab in space "${spaceWithTempTab.name}". Pinning it.`);
-                        await moveTabToPinned(spaceWithTempTab, tabToToggle);
+                        try {
+                            await moveTabToPinned(spaceWithTempTab, tabToToggle);
+                        } catch (error) {
+                            Logger.error('[QuickPin] Pin failed:', error);
+                            alert(error.message);
+                        }
                     } else {
                         const spaceWithBookmark = spaces.find(space =>
                             space.spaceBookmarks.includes(tabToToggle.id)
