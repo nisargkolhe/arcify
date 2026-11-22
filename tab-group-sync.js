@@ -1,3 +1,5 @@
+import { pairSplits } from './split-view.js';
+
 // Optional, one-way projection. This is the only module allowed to mutate groups.
 // Space identity and ordering never depend on the projection succeeding.
 export async function syncSpaceGroups(spaces, activeSpaces = {}) {
@@ -16,7 +18,8 @@ export async function syncSpaceGroups(spaces, activeSpaces = {}) {
             if (!(await chrome.storage.sync.get('syncTabGroups')).syncTabGroups) return;
             const key = `${space.id}:${windowId}`;
             const ordered = members.filter(t => t.windowId === windowId);
-            const ids = ordered.map(t => t.id);
+            // Chrome keeps a split's two tabs adjacent; reordering them apart would break it.
+            const ids = pairSplits(ordered.map(t => t.id), byId);
             let groupId = spaceGroupProjection[key];
             const liveGroup = groups.find(g => g.id === groupId && g.windowId === windowId);
             if (!liveGroup) groupId = undefined;

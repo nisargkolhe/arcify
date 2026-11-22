@@ -15,6 +15,7 @@ import { getSpaceTabs, spaceRequest } from './space-client.js';
  */
 
 import { BookmarkUtils } from './bookmark-utils.js';
+import { isInSplit } from './split-view.js';
 import { Logger } from './logger.js';
 
 const MAX_ARCHIVED_TABS = 100;
@@ -265,6 +266,15 @@ const Utils = {
 
     // Function to archive a tab (likely called from context menu)
     archiveTab: async function (tabId) {
+        // Both halves of a split go to the archive together.
+        const tab = await chrome.tabs.get(tabId).catch(() => null);
+        const halfIds = isInSplit(tab)
+            ? (await chrome.tabs.query({ windowId: tab.windowId })).filter(t => t.splitViewId === tab.splitViewId).map(t => t.id)
+            : [tabId];
+        for (const id of halfIds) await this.archiveOneTab(id);
+    },
+
+    archiveOneTab: async function (tabId) {
         try {
             const tab = await chrome.tabs.get(tabId);
             const spaces = await spaceRequest('get');

@@ -857,6 +857,77 @@ h3 {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* The two halves of a Chrome split view share one line, as in Arc.
+   Only while adjacent: a collapsed folder may project one half on its own. */
+.tab.split-left:has(+ .tab.split-right),
+.tab.split-left + .tab.split-right {
+    display: inline-flex;
+    box-sizing: border-box;
+    width: calc(50% - 2px);
+    vertical-align: top;
+}
+
+.tab.split-left:has(+ .tab.split-right) {
+    margin-right: 4px;
+}
+
+/* Folders are a flex column, which would stack split halves; flow layout lets them share a line */
+.folder-content:has(> .tab.split-left) {
+    display: block;
+}
+
+/* A pinned split is a bookmark folder drawn as a single row: no header, no indent */
+.folder.split-folder {
+    margin: 0;
+    background: none;
+    border-radius: 0;
+    overflow: visible;
+}
+
+.folder.split-folder > .folder-header,
+.folder.split-folder > .folder-collapsed-tabs,
+.folder.split-folder .tab-placeholder {
+    display: none;
+}
+
+.folder.split-folder > .folder-content {
+    padding: 0;
+    min-height: 0;
+}
+
+.context-menu-item.disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Marks a split half shown without its partner beside it */
+.tab-split-indicator {
+    display: inline-flex;
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-left: 6px;
+    opacity: 0.6;
+}
+
+.tab-split-indicator svg {
+    width: 100%;
+    height: 100%;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* Favorites with no open tab are dimmed so open ones stand out, as in Arc */
 .tab.bookmark-only .tab-favicon {
     opacity: 0.5;

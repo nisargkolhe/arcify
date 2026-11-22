@@ -29,6 +29,7 @@ function install(initialByParent, { delayed = false } = {}) {
         create: async data => {
             const node = { ...data, id: String(nextId++), parentId: data.parentId };
             trees[data.parentId].splice(data.index, 0, node);
+            if (!data.url) trees[node.id] = [];
             creates.push(node);
             if (afterCreate) await afterCreate({ trees, creates, node });
             return structuredClone(node);
@@ -152,4 +153,27 @@ test('malformed create membership is rejected before creating a bookmark', async
     }), error => error.code === 'invalid_request' && error.moved === false);
     assert.equal(state.creates.length, 0);
     assert.deepEqual(state.ids('p'), ['a', 'b']);
+});
+
+test('createSplit adds a split folder at the drop position with both bookmarks inside, left first', async () => {
+    const env = install({ root: ['1', '2'] });
+    const result = await enqueueBookmarkOperation({
+        parents: [{ parentId: 'root', expectedCanonicalIds: ['1', '2'], desiredCanonicalIds: ['1', '$new', '2'] }],
+        relocation: {
+            kind: 'createSplit', parentId: 'root', title: '⧉ A | B',
+            children: [{ title: 'A', url: 'https://a.test/' }, { title: 'B', url: 'https://b.test/' }]
+        }
+    });
+    assert.deepEqual(env.ids('root'), ['1', result.createdId, '2']);
+    assert.deepEqual(env.ids(result.createdId), result.createdChildIds);
+    assert.deepEqual(env.creates.slice(1).map(node => node.url), ['https://a.test/', 'https://b.test/']);
+});
+
+test('createSplit without exactly two bookmarks is refused before anything is created', async () => {
+    const env = install({ root: ['1'] });
+    await assert.rejects(enqueueBookmarkOperation({
+        parents: [{ parentId: 'root', expectedCanonicalIds: ['1'], desiredCanonicalIds: ['$new', '1'] }],
+        relocation: { kind: 'createSplit', parentId: 'root', title: '⧉ A', children: [{ title: 'A', url: 'https://a.test/' }] }
+    }), /exactly two bookmarks/);
+    assert.deepEqual(env.creates, []);
 });

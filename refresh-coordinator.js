@@ -14,6 +14,8 @@ export class RefreshCoordinator {
         this.bookmarkGeneration = 0;
         this.handledBookmarkGeneration = 0;
         this.spacesDirty = false;
+        this.viewGeneration = 0;
+        this.handledViewGeneration = 0;
         this.running = false;
         this.timer = null;
         this.retryCount = 0;
@@ -27,6 +29,13 @@ export class RefreshCoordinator {
 
     invalidateSpaces() {
         this.spacesDirty = true;
+        this.retryCount = 0;
+        this.schedule();
+    }
+
+    // Re-render even though no data changed, e.g. when Chrome pairs tabs into a split view.
+    invalidateView() {
+        this.viewGeneration++;
         this.retryCount = 0;
         this.schedule();
     }
@@ -47,11 +56,13 @@ export class RefreshCoordinator {
     async drain() {
         if (this.running) return;
         const hasBookmarkWork = this.bookmarkGeneration > this.handledBookmarkGeneration;
-        if (!hasBookmarkWork && !this.spacesDirty) return;
+        const hasViewWork = this.viewGeneration > this.handledViewGeneration;
+        if (!hasBookmarkWork && !hasViewWork && !this.spacesDirty) return;
         if (this.isBusy()) return;
 
         this.running = true;
         const generation = this.bookmarkGeneration;
+        const viewGeneration = this.viewGeneration;
         let failed = false;
         try {
             const next = await this.readSpaces();
@@ -59,12 +70,13 @@ export class RefreshCoordinator {
             const adoption = await this.adoptSpaces(next);
             if (this.isBusy() || adoption?.completed === false) return;
             const metadataNeedsRender = typeof adoption === 'object' ? adoption.needsRender : adoption;
-            if (metadataNeedsRender || generation > this.handledBookmarkGeneration) {
+            if (metadataNeedsRender || generation > this.handledBookmarkGeneration || viewGeneration > this.handledViewGeneration) {
                 const renderCompleted = await this.render();
                 if (renderCompleted === false || this.isBusy()) return;
             }
             this.spacesDirty = false;
             this.handledBookmarkGeneration = generation;
+            this.handledViewGeneration = viewGeneration;
             this.retryCount = 0;
         } catch (error) {
             failed = true;
@@ -78,6 +90,7 @@ export class RefreshCoordinator {
             this.running = false;
         }
 
-        if (!failed && (this.spacesDirty || this.bookmarkGeneration > this.handledBookmarkGeneration)) this.schedule();
+        if (!failed && (this.spacesDirty || this.bookmarkGeneration > this.handledBookmarkGeneration
+            || this.viewGeneration > this.handledViewGeneration)) this.schedule();
     }
 }
