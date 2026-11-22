@@ -82,6 +82,31 @@ export function splitFolderTitle(leftTitle, rightTitle) {
     return `${SPLIT_FOLDER_PREFIX}${leftTitle} | ${rightTitle}`;
 }
 
+// A split folder's own name, or '' while its title is still just its halves' titles.
+export function splitFolderName(folder) {
+    const [left, right] = folder.children;
+    if (folder.title === splitFolderTitle(left.title, right.title)) return '';
+    return folder.title.slice(SPLIT_FOLDER_PREFIX.length).trim();
+}
+
+export function namedSplitFolderTitle(name, leftTitle, rightTitle) {
+    return name ? `${SPLIT_FOLDER_PREFIX}${name}` : splitFolderTitle(leftTitle, rightTitle);
+}
+
+// Unpinned splits have no bookmark, so their names last for the browser session, keyed by splitViewId.
+const LIVE_SPLIT_NAMES_KEY = 'splitNamesByViewId';
+
+export async function getLiveSplitNames(storage = globalThis.chrome.storage.session) {
+    return (await storage.get(LIVE_SPLIT_NAMES_KEY))[LIVE_SPLIT_NAMES_KEY] || {};
+}
+
+export async function setLiveSplitName(splitViewId, name, storage = globalThis.chrome.storage.session) {
+    const names = await getLiveSplitNames(storage);
+    if (name) names[splitViewId] = name;
+    else delete names[splitViewId];
+    await storage.set({ [LIVE_SPLIT_NAMES_KEY]: names });
+}
+
 /**
  * Splits two tabs with leftId on the left, moving the right tab beside it and
  * first releasing either tab from any other split.

@@ -68,6 +68,12 @@
     "PrevTabInSpace": {
       "description": "Navigates to prev tab in space"
     },
+    "renameTab": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Rename the current tab, or its split view"
+    },
     "copyCurrentUrl": {
       "description": "Copy current tab URL"
     }

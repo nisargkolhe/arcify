@@ -240,6 +240,14 @@ export function showTabContextMenu(x, y, tab, isPinned, isBookmarkOnly, tabEleme
         unsplitOption.addEventListener('click', runSplitAction(splitActions.onUnsplit));
         contextMenu.appendChild(unsplitOption);
     }
+    if (splitActions?.onRename) {
+        const renameOption = document.createElement('div');
+        renameOption.className = 'context-menu-item';
+        renameOption.setAttribute('role', 'menuitem');
+        renameOption.textContent = 'Rename Split View';
+        renameOption.addEventListener('click', runSplitAction(splitActions.onRename));
+        contextMenu.appendChild(renameOption);
+    }
 
     // Only show these options for actual tabs that are part of a space
     if (!isBookmarkOnly) {
